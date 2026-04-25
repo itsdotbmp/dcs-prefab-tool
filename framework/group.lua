@@ -5,8 +5,12 @@
 -- __index = sms.group, so handle:method() dispatches to sms.group.method(handle).
 --
 -- All methods accept either a handle or a raw name string, normalized at
--- entry. Methods other than is_alive internally check is_alive first; if
--- the group is not alive, they log and return nil — they never throw.
+-- entry. Methods that touch DCS state internally check is_alive first;
+-- if the group is not alive, they log and return nil — they never throw.
+-- _name_of also accepts garbage input (nil, numbers, ...) and returns nil,
+-- which then makes is_alive return false and the standard log+nil path
+-- triggers. This protects the framework-wide "never throw" promise even
+-- when callers pass bad values.
 --
 -- See docs/superpowers/specs/2026-04-25-framework-group-design.md.
 
@@ -18,12 +22,17 @@ sms.group = sms.group or {}
 local _coalition_str = {[0] = "neutral", [1] = "red", [2] = "blue"}
 
 -- Accept either a handle ({name=...}) or a raw name string; return the name.
+-- Returns nil for any other input (nil, number, boolean, table-without-name).
+-- Callers handle nil names as "not alive" rather than throwing.
 local function _name_of(g)
-  return type(g) == "string" and g or g.name
+  if type(g) == "string" then return g end
+  if type(g) == "table" and type(g.name) == "string" then return g.name end
+  return nil
 end
 
 sms.group.is_alive = function(g)
   local name = _name_of(g)
+  if not name then return false end
   local obj = Group.getByName(name)
   return obj ~= nil and obj:isExist()
 end
@@ -39,7 +48,12 @@ sms.group.get_coalition = function(g)
     return nil
   end
   local c = Group.getByName(name):getCoalition()
-  return _coalition_str[c]
+  local s = _coalition_str[c]
+  if not s then
+    log.error("get_coalition: '" .. tostring(name) .. "' returned unknown coalition " .. tostring(c))
+    return nil
+  end
+  return s
 end
 
 sms.group.get_position = function(g)
