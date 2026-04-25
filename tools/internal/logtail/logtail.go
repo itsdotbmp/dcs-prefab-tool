@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"regexp"
@@ -39,7 +40,7 @@ func (r *Reader) ReadFrom(from int64, grep string, tailN int) ([]string, int64, 
 	if from > stat.Size() {
 		from = 0
 	}
-	if _, err := f.Seek(from, 0); err != nil {
+	if _, err := f.Seek(from, io.SeekStart); err != nil {
 		return nil, 0, err
 	}
 
@@ -55,6 +56,9 @@ func (r *Reader) ReadFrom(from int64, grep string, tailN int) ([]string, int64, 
 	scanner := bufio.NewScanner(f)
 	// dcs.log can have very long lines (huge stack traces).
 	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	// The returned offset advances past every line we read, including lines
+	// the grep pattern filtered out. The cursor tracks what's been seen, not
+	// what matched — so toggling --grep between calls doesn't re-scan old lines.
 	for scanner.Scan() {
 		line := scanner.Text()
 		if pattern != nil && !pattern.MatchString(line) {
@@ -63,6 +67,10 @@ func (r *Reader) ReadFrom(from int64, grep string, tailN int) ([]string, int64, 
 		lines = append(lines, line)
 	}
 	if err := scanner.Err(); err != nil {
+		if errors.Is(err, bufio.ErrTooLong) {
+			// Don't advance the cursor — caller would skip past unread bytes.
+			return nil, from, fmt.Errorf("dcs.log line exceeds 4MB scanner limit: %w", err)
+		}
 		return nil, 0, err
 	}
 

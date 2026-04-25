@@ -116,3 +116,59 @@ func TestReadCursorMissingReturnsZero(t *testing.T) {
 		t.Errorf("expected 0, got %d", got)
 	}
 }
+
+func TestReadFromFileShrink(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "dcs.log")
+	writeLog(t, logPath, "alpha", "beta", "gamma")
+
+	r := &Reader{LogPath: logPath, CursorPath: filepath.Join(dir, "cursor")}
+	_, eof, err := r.ReadFrom(0, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Truncate (simulates DCS rotating dcs.log).
+	if err := os.WriteFile(logPath, []byte("delta\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Resume from old offset that is now past EOF.
+	lines, _, err := r.ReadFrom(eof, "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || lines[0] != "delta" {
+		t.Errorf("after rotation expected only 'delta', got %v", lines)
+	}
+}
+
+func TestReadFromInvalidGrep(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "dcs.log")
+	writeLog(t, logPath, "x")
+	r := &Reader{LogPath: logPath, CursorPath: filepath.Join(dir, "cursor")}
+	_, _, err := r.ReadFrom(0, "[invalid", 0)
+	if err == nil {
+		t.Fatal("expected error for invalid grep pattern")
+	}
+	if !strings.Contains(err.Error(), "grep") {
+		t.Errorf("expected error to mention 'grep', got %v", err)
+	}
+}
+
+func TestWriteCursorOverwrites(t *testing.T) {
+	dir := t.TempDir()
+	r := &Reader{CursorPath: filepath.Join(dir, "cursor")}
+	if err := r.WriteCursor(100); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	if err := r.WriteCursor(200); err != nil {
+		t.Fatalf("second write (overwrite): %v", err)
+	}
+	got, err := r.ReadCursor()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 200 {
+		t.Errorf("expected 200 after overwrite, got %d", got)
+	}
+}
