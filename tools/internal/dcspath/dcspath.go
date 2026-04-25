@@ -15,6 +15,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -50,6 +51,9 @@ func DiscoverFromConfig(configPath string) (string, error) {
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
+		// Only full-line comments are recognized. Mid-line '#' is intentionally
+		// kept as part of the value — Windows paths can contain '#', and TOML's
+		// real comment rules add complexity we don't need for one key.
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -106,11 +110,18 @@ func Discover(override, configPath string) (string, error) {
 		return override, nil
 	}
 	if v, ok := DiscoverFromEnv(); ok {
+		if info, err := os.Stat(v); err != nil || !info.IsDir() {
+			return "", fmt.Errorf("DCS_SMS_SAVED_GAMES=%q is not an existing directory", v)
+		}
 		return v, nil
 	}
 	if configPath != "" {
-		if v, err := DiscoverFromConfig(configPath); err == nil {
+		v, err := DiscoverFromConfig(configPath)
+		if err == nil {
 			return v, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("reading %s: %w", configPath, err)
 		}
 	}
 	if v, ok := DiscoverDefault(); ok {

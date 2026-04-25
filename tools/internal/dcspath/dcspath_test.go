@@ -67,3 +67,38 @@ func tomlString(s string) string {
 	}
 	return out + "\""
 }
+
+func TestParseTomlString(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		want    string
+		wantErr bool
+	}{
+		{"plain", `"hello"`, "hello", false},
+		{"backslash escape", `"a\\b"`, `a\b`, false},
+		{"quote escape", `"he said \"hi\""`, `he said "hi"`, false},
+		{"newline escape", `"line1\nline2"`, "line1\nline2", false},
+		{"tab escape", `"a\tb"`, "a\tb", false},
+		{"unquoted error", `hello`, "", true},
+		{"trailing backslash error", `"foo\`, "", true},
+		{"unknown escape error", `"\z"`, "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseTomlString(tc.raw)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
