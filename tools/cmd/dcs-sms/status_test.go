@@ -62,7 +62,30 @@ func TestStatusMissingHookFile(t *testing.T) {
 	t.Setenv("DCS_SMS_SAVED_GAMES", root)
 	var stdout, stderr bytes.Buffer
 	code := statusCmd(nil, &stdout, &stderr)
-	if code == 0 {
-		t.Error("expected non-zero exit with no hook.json")
+	if code != 3 {
+		t.Errorf("exit %d, want 3 (hook file missing)", code)
+	}
+}
+
+func TestStatusStaleHeartbeat(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "dcs-sms", "state")
+	_ = os.MkdirAll(stateDir, 0o755)
+	// 10 seconds in the past — well outside the 2s freshness window.
+	st := proto.HookState{
+		HookVersion: "0.1.0",
+		LastFrameAt: time.Now().UTC().Add(-10 * time.Second).Format(time.RFC3339Nano),
+	}
+	data, _ := json.Marshal(st)
+	_ = os.WriteFile(filepath.Join(stateDir, "hook.json"), data, 0o644)
+
+	t.Setenv("DCS_SMS_SAVED_GAMES", root)
+	var stdout, stderr bytes.Buffer
+	code := statusCmd(nil, &stdout, &stderr)
+	if code != 4 {
+		t.Errorf("exit %d, want 4 (stale heartbeat)", code)
+	}
+	if !strings.Contains(stderr.String(), "stale") {
+		t.Errorf("expected 'stale' in stderr, got %q", stderr.String())
 	}
 }

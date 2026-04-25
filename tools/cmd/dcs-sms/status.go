@@ -15,6 +15,12 @@ func init() {
 	register("status", statusCmd)
 }
 
+// statusCmd prints the hook's current state. Exit codes:
+//
+//	0 — hook found and heartbeat is fresh
+//	2 — flag parse error
+//	3 — hook file missing or unreadable (DCS not running, or wrong --saved-games)
+//	4 — heartbeat present but stale (DCS may be paused/hung)
 func statusCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -59,6 +65,7 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if !fresh {
+		fmt.Fprintf(stderr, "dcs-sms status: heartbeat stale (last frame at %s)\n", st.LastFrameAt)
 		return 4
 	}
 	return 0

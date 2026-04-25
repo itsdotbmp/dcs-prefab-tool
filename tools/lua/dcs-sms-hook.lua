@@ -159,22 +159,23 @@ local function execute_request(filename)
   local raw = read_file(req_path)
   if not raw then return end
 
-  -- We don't have a full JSON parser in the hook env, but the request files
-  -- are produced by the CLI and have a well-known shape. We extract just
-  -- the fields we need with patterns.
+  -- DCS provides net.json2lua in the hook env (mirror of net.lua2json),
+  -- so we parse the request properly instead of regex-matching it. Fall
+  -- back to the request-id from the filename if the JSON is malformed.
   local req_id = parse_request_id_from_filename(filename)
-  local code   = raw:match('"code"%s*:%s*"(.-)"%s*[,}]')
-  if not req_id or not code then
-    log.write("dcs-sms", log.ERROR, "could not parse request " .. filename)
+  local ok, parsed = pcall(net.json2lua, raw)
+  if not ok or type(parsed) ~= "table" or type(parsed.code) ~= "string" or not req_id then
+    log.write("dcs-sms", log.ERROR, "could not parse request " .. filename
+      .. " (" .. tostring(parsed) .. ")")
     os.remove(req_path)
     return
   end
-  -- Unescape JSON string to actual code.
-  code = code:gsub('\\"', '"')
-              :gsub('\\\\', '\\')
-              :gsub('\\n', '\n')
-              :gsub('\\r', '\r')
-              :gsub('\\t', '\t')
+  -- Prefer the request-id parsed from JSON when present; fall back to the
+  -- filename-derived one (which we use anyway to delete the request file).
+  if type(parsed.id) == "string" and parsed.id ~= "" then
+    req_id = parsed.id
+  end
+  local code = parsed.code
 
   local wrapper = build_wrapper(req_id, DCS_SMS.frame, code)
   local ok_out, err_out = pcall(net.dostring_in, 'mission', wrapper)
