@@ -108,45 +108,147 @@ end
 -- ----------------------------------------------------------------------------
 -- request execution
 
--- build_wrapper takes the user's Lua snippet and wraps it in code that:
+-- build_wrapper takes the user's Lua snippet and produces a chunk that runs
+-- in the mission env. The wrapper:
 --   * captures print() output
 --   * runs the snippet under xpcall to get a traceback on error
---   * builds a JSON-serializable response with id/frame/duration metadata
---   * stashes the resulting JSON string in __DCS_SMS_RESPONSE_JSON
-local function build_wrapper(req_id, frame, user_code)
-  return string.format([[
+--   * encodes the result as JSON in pure Lua (no net.lua2json dependency,
+--     because that function isn't reliably present in the mission env)
+--   * writes the response file directly to the outbox via io.open + rename
+--     (relies on the user having un-sanitized io/os in MissionScripting.lua)
+--
+-- This avoids the previous architecture of stashing the JSON in a global
+-- and fetching it via a second net.dostring_in call — `dostring_in` doesn't
+-- reliably pass non-trivial values across the env boundary.
+-- build_wrapper produces the Lua chunk we send via net.dostring_in('mission').
+-- Architecture:
+--
+--   net.dostring_in('mission', code)
+--     ↓
+--   Server-side scripting state  ← env/trigger/io NOT here
+--     ↓ a_do_script(inner)
+--   Real mission scripting env   ← env/trigger/io ARE here
+--
+-- net.dostring_in lands in DCS's server-side scripting state, which doesn't
+-- have access to the mission scripting environment. To reach the mission
+-- scripting env (where env, trigger, io, etc. are visible), the code must
+-- call a_do_script(...) which forwards a string to be executed there. This
+-- is the same indirection dcs_code_injector uses.
+local function build_wrapper(req_id, frame, user_code, outbox_path)
+  -- The inner chunk runs in the real mission scripting env. It captures
+  -- print, runs the user's snippet under xpcall, encodes the response as
+  -- JSON in pure Lua (no net.lua2json dependency), and writes the response
+  -- file directly via io.open + os.rename.
+  local inner = string.format([[
 do
-  local __dcs_sms_id    = %q
-  local __dcs_sms_frame = %d
-  local __dcs_sms_start = os.clock()
-  local __dcs_sms_out   = {}
+  local __id     = %q
+  local __frame  = %d
+  local __outbox = %q
+  local __start  = os.clock()
+  local __out    = {}
 
-  local __dcs_sms_orig_print = print
+  local __orig_print = print
   print = function(...)
     local parts = {}
     for i = 1, select('#', ...) do parts[i] = tostring(select(i, ...)) end
-    __dcs_sms_out[#__dcs_sms_out+1] = table.concat(parts, '\t')
+    __out[#__out+1] = table.concat(parts, '\t')
   end
 
-  local __dcs_sms_ok, __dcs_sms_ret = xpcall(function()
+  local __ok, __ret = xpcall(function()
 %s
   end, debug.traceback)
 
-  print = __dcs_sms_orig_print
+  print = __orig_print
+  local __dur = (os.clock() - __start) * 1000
 
-  local __dcs_sms_dur = (os.clock() - __dcs_sms_start) * 1000
-  local __dcs_sms_resp = {
-    id             = __dcs_sms_id,
-    ok             = __dcs_sms_ok,
-    output         = table.concat(__dcs_sms_out, '\n'),
-    return_value   = (__dcs_sms_ok and __dcs_sms_ret) or nil,
-    error          = (not __dcs_sms_ok) and { message = tostring(__dcs_sms_ret), traceback = "" } or nil,
-    frame_executed = __dcs_sms_frame,
-    duration_ms    = __dcs_sms_dur,
+  -- Pure-Lua JSON encoder for our response shape. Handles nil, booleans,
+  -- numbers, strings, arrays, and string-keyed tables.
+  local function __jstr(s)
+    s = tostring(s)
+    s = s:gsub("\\", "\\\\")
+    s = s:gsub('"', '\\"')
+    s = s:gsub("\n", "\\n")
+    s = s:gsub("\r", "\\r")
+    s = s:gsub("\t", "\\t")
+    s = s:gsub("[%%z\1-\31]", function(c) return string.format("\\u%%04x", string.byte(c)) end)
+    return '"' .. s .. '"'
+  end
+  local function __jval(v)
+    if v == nil then return "null" end
+    local t = type(v)
+    if t == "boolean" then return tostring(v) end
+    if t == "number" then
+      if v ~= v or v == math.huge or v == -math.huge then return "null" end
+      if v == math.floor(v) and math.abs(v) < 1e15 then
+        return string.format("%%d", v)
+      end
+      return string.format("%%.6g", v)
+    end
+    if t == "string" then return __jstr(v) end
+    if t == "table" then
+      local n = 0
+      local is_array = true
+      for k in pairs(v) do
+        n = n + 1
+        if type(k) ~= "number" or k ~= math.floor(k) or k < 1 then is_array = false end
+      end
+      if is_array and n == #v then
+        local parts = {}
+        for i = 1, n do parts[i] = __jval(v[i]) end
+        return "[" .. table.concat(parts, ",") .. "]"
+      end
+      local parts = {}
+      for k, val in pairs(v) do
+        parts[#parts+1] = __jstr(k) .. ":" .. __jval(val)
+      end
+      return "{" .. table.concat(parts, ",") .. "}"
+    end
+    return "null"
+  end
+
+  local __resp = {
+    id             = __id,
+    ok             = __ok,
+    output         = table.concat(__out, '\n'),
+    return_value   = (__ok and __ret) or nil,
+    error          = (not __ok) and { message = tostring(__ret), traceback = "" } or nil,
+    frame_executed = __frame,
+    duration_ms    = __dur,
   }
-  __DCS_SMS_RESPONSE_JSON = net.lua2json(__dcs_sms_resp)
+
+  local __json_ok, __json_or_err = pcall(__jval, __resp)
+  if not __json_ok then
+    if env and env.error then env.error("dcs-sms: json encode failed: " .. tostring(__json_or_err)) end
+    return
+  end
+  local __json = __json_or_err
+
+  -- Atomic write: tmp + rename. Mission env has io because the user has
+  -- commented out the sanitizeModule lines in MissionScripting.lua.
+  if not io or not io.open then
+    if env and env.error then env.error("dcs-sms: io is not available — check MissionScripting.lua") end
+    return
+  end
+  local __tmp = __outbox .. ".tmp"
+  local __f, __ferr = io.open(__tmp, "wb")
+  if not __f then
+    if env and env.error then env.error("dcs-sms: io.open failed: " .. tostring(__ferr)) end
+    return
+  end
+  __f:write(__json)
+  __f:close()
+  local __rok = os.rename(__tmp, __outbox)
+  if not __rok then
+    -- Fallback: delete target then retry (older Windows behavior).
+    os.remove(__outbox)
+    os.rename(__tmp, __outbox)
+  end
 end
-]], req_id, frame, user_code)
+]], req_id, frame, outbox_path, user_code)
+  -- Wrap inner in a_do_script(...) so it lands in the real mission env.
+  -- Long-bracket level 4 ([====[ ]====]) avoids collisions with any [===[
+  -- that might appear inside inner or user code.
+  return "a_do_script([====[\n" .. inner .. "\n]====])\n"
 end
 
 local function parse_request_id_from_filename(name)
@@ -176,22 +278,16 @@ local function execute_request(filename)
     req_id = parsed.id
   end
   local code = parsed.code
+  local outbox_path = DCS_SMS.outbox .. req_id .. ".res.json"
 
-  local wrapper = build_wrapper(req_id, DCS_SMS.frame, code)
+  local wrapper = build_wrapper(req_id, DCS_SMS.frame, code, outbox_path)
   local ok_out, err_out = pcall(net.dostring_in, 'mission', wrapper)
   if not ok_out then
-    log.write("dcs-sms", log.ERROR, "wrapper exec failed: " .. tostring(err_out))
-    os.remove(req_path)
-    return
+    log.write("dcs-sms", log.ERROR, "wrapper exec failed for " .. req_id .. ": " .. tostring(err_out))
   end
-  local response_json = net.dostring_in('mission', "return __DCS_SMS_RESPONSE_JSON")
-  if type(response_json) ~= "string" or response_json == "" then
-    log.write("dcs-sms", log.ERROR, "no response JSON for " .. req_id)
-    os.remove(req_path)
-    return
-  end
-
-  write_atomic(DCS_SMS.outbox .. req_id .. ".res.json", response_json)
+  -- The wrapper writes the response file directly. We always remove the
+  -- request — if the wrapper crashed before writing the response, the CLI
+  -- will time out (and the dcs.log entry above is the diagnostic).
   os.remove(req_path)
 end
 
