@@ -77,3 +77,38 @@ func TestIsFreshUnparseable(t *testing.T) {
 		t.Error("expected stale on unparseable timestamp")
 	}
 }
+
+func TestIsFreshFutureTimestamp(t *testing.T) {
+	now := time.Now().UTC()
+	// Hook's clock is 1s ahead of CLI's — well within maxAge=2s.
+	st := proto.HookState{LastFrameAt: now.Add(1 * time.Second).Format(time.RFC3339Nano)}
+	if !IsFresh(st, 2*time.Second, now) {
+		t.Error("expected fresh with hook clock 1s ahead within maxAge")
+	}
+	// 10s in the future — far enough out that even with clock skew it's stale.
+	st2 := proto.HookState{LastFrameAt: now.Add(10 * time.Second).Format(time.RFC3339Nano)}
+	if IsFresh(st2, 2*time.Second, now) {
+		t.Error("expected stale with hook timestamp 10s in the future")
+	}
+}
+
+func TestIsFreshNoFractionalSeconds(t *testing.T) {
+	// The Lua hook emits whole-second timestamps via os.date("!%Y-%m-%dT%H:%M:%SZ").
+	// Make sure we still parse them.
+	now := time.Now().UTC().Truncate(time.Second)
+	st := proto.HookState{LastFrameAt: now.Format("2006-01-02T15:04:05Z")}
+	if !IsFresh(st, 2*time.Second, now) {
+		t.Error("expected fresh with whole-second timestamp")
+	}
+}
+
+func TestReadMalformedJSON(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hook.json"), []byte("{not-json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Read(dir)
+	if err == nil {
+		t.Fatal("expected parse error for malformed JSON")
+	}
+}
