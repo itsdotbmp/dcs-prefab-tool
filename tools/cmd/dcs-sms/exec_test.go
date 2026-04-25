@@ -225,3 +225,22 @@ func TestExecFileFlag(t *testing.T) {
 		t.Errorf("hook saw %q, want %q", seen, "return 7")
 	}
 }
+
+func TestExecPollRespectsTightDeadline(t *testing.T) {
+	root := t.TempDir()
+	startFakeHook(t, root, func(req proto.ExecRequest) proto.ExecResponse {
+		return proto.ExecResponse{}
+	}, true /*heartbeat*/, false /*processInbox*/)
+
+	start := time.Now()
+	code, _, _ := runExec(t, root, []string{"--code", "x", "--timeout", "100ms"})
+	elapsed := time.Since(start)
+	if code != 2 {
+		t.Errorf("exit %d, want 2 (timeout)", code)
+	}
+	// Should return within ~150ms (100ms deadline + small slack), not 125ms+.
+	// We allow up to 200ms to keep CI happy.
+	if elapsed > 200*time.Millisecond {
+		t.Errorf("oversleep: took %v, want < 200ms", elapsed)
+	}
+}

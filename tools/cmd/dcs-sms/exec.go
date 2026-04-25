@@ -108,6 +108,14 @@ func readCode(file, code string, stdin io.Reader) (string, error) {
 	if code != "" {
 		return code, nil
 	}
+	// If stdin is a terminal, ReadAll would block forever waiting for EOF.
+	// Detect that case (real *os.File only — tests inject strings.Reader,
+	// which doesn't implement *os.File and harmlessly falls through).
+	if f, ok := stdin.(*os.File); ok {
+		if fi, err := f.Stat(); err == nil && (fi.Mode()&os.ModeCharDevice) != 0 {
+			return "", errors.New("no code provided (use --file, --code, or pipe via stdin)")
+		}
+	}
 	data, err := io.ReadAll(stdin)
 	if err != nil {
 		return "", fmt.Errorf("read stdin: %w", err)
@@ -136,10 +144,13 @@ func ensureMailboxDirs(root string) error {
 
 var errPollTimeout = errors.New("poll timeout")
 
-// pollResponse polls outbox/<id>.res.json every 25ms until found or timeout.
+// pollResponse polls outbox/<id>.res.json every ~25ms until found or
+// timeout. The poll interval shrinks if the deadline is closer than 25ms
+// so we don't oversleep past it.
 func pollResponse(mb *mailbox.Mailbox, id string, timeout time.Duration) (proto.ExecResponse, error) {
 	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+	const pollInterval = 25 * time.Millisecond
+	for {
 		resp, ok, err := mb.ReadResponse(id)
 		if err != nil {
 			return proto.ExecResponse{}, err
@@ -147,7 +158,14 @@ func pollResponse(mb *mailbox.Mailbox, id string, timeout time.Duration) (proto.
 		if ok {
 			return resp, nil
 		}
-		time.Sleep(25 * time.Millisecond)
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return proto.ExecResponse{}, errPollTimeout
+		}
+		sleep := pollInterval
+		if remaining < sleep {
+			sleep = remaining
+		}
+		time.Sleep(sleep)
 	}
-	return proto.ExecResponse{}, errPollTimeout
 }
