@@ -6,7 +6,7 @@
 
 **Architecture:** Stateless Go CLI writes JSON request files; Lua hook running in DCS GUI env scans an inbox each frame, runs snippets in the mission env via `net.dostring_in`, captures `print` + return values, writes JSON response files. No sockets, no daemons. Single static Go binary embeds the hook via `//go:embed`.
 
-**Tech Stack:** Go 1.22+ (stdlib only — `flag` for CLI, `encoding/json`, `os`, `path/filepath`, `time`, `testing`), one tiny dep `github.com/google/uuid`, optional `github.com/BurntSushi/toml` for config. DCS-side: Lua 5.2, `lfs` and `net.dostring_in` / `net.lua2json` from DCS.
+**Tech Stack:** Go 1.22+ (stdlib only — `flag` for CLI, `encoding/json`, `os`, `path/filepath`, `time`, `testing`), one tiny dep `github.com/google/uuid`, optional `github.com/BurntSushi/toml` for config. DCS-side: Lua 5.1, `lfs` and `net.dostring_in` from DCS (note: `net.lua2json` isn't reliably available in the mission scripting env, so the hook hand-rolls JSON instead).
 
 **Reference design:** `docs/superpowers/specs/2026-04-25-execution-bridge-design.md` — read this first if you need background.
 
@@ -2978,7 +2978,7 @@ Expected: no output, exit 0.
 
 - [ ] **Step 4: Lua syntax check (best-effort)**
 
-If `luac` (Lua 5.2) is on the PATH, syntax-check the file:
+If `luac` is on the PATH, syntax-check the file:
 
 ```bash
 luac -p tools/lua/dcs-sms-hook.lua

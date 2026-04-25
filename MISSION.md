@@ -24,7 +24,7 @@ A small, focused, maintainable framework that:
 
 ## Constraints to remember
 
-- DCS embeds **Lua 5.2**. All scripts that run inside the simulator must be Lua 5.2 compatible.
+- DCS embeds **Lua 5.1**. All scripts that run inside the simulator must be Lua 5.1 compatible. (Earlier docs said 5.2 — that was wrong, confirmed via `_VERSION` from inside a running mission.)
 - The mission environment is sandboxed by `MissionScripting.lua` — `os`, `io`, `lfs` are nilled. The hook environment (`Scripts/Hooks`) is not sandboxed and has access to LuaSocket.
 - The `dcs_code_injector` (D:\git\dcs_code_injector) is the user's existing Lua-injection tool. It works but is janky: it listens for a fresh TCP connection on every simulation frame and only acknowledges receipt — it does not return actual results. Replacing it with a cleaner execute-and-read-back mechanism is the first sub-project of dcs-sms.
 
