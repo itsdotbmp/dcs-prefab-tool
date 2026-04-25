@@ -23,6 +23,11 @@ echo "==> load framework/log.lua"
 echo "==> load framework/utils.lua"
 "${DCSSMS}" exec --file utils.lua >/dev/null
 
+echo "==> sms.version should be \"0.1.0\""
+version_result=$("${DCSSMS}" exec --code "return sms.version")
+echo "${version_result}" | grep -q '"return_value":"0.1.0"' \
+  || { echo "FAIL: expected sms.version=\"0.1.0\", got: ${version_result}"; exit 1; }
+
 echo "==> sms.utils.add_numbers(2, 3) should return 5"
 result=$("${DCSSMS}" exec --code "return sms.utils.add_numbers(2, 3)")
 echo "${result}"

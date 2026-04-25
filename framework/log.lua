@@ -19,7 +19,7 @@
 -- Auto-derivation falls back to "sms.unknown" when no .lua basename is
 -- recoverable.
 
-assert(sms, "framework/sms.lua must be loaded first")
+assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 sms.log = sms.log or {}
 
 sms.log.info  = function(msg) env.info ("[sms] " .. tostring(msg)) end
