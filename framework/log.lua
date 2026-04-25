@@ -3,14 +3,21 @@
 --
 -- Top-level sms.log.info / sms.log.error are untagged callers (prefix [sms]).
 -- sms.log.module(name?) returns a tagged logger whose calls prefix every
--- line with [<tag>]. When `name` is omitted the tag is auto-derived from
--- the caller's file path:
---   debug.getinfo(2, "S").source  ->  "@.../framework/utils.lua"
---   strip leading "@", take basename, strip ".lua"           ->  "utils"
---   prepend "sms."                                            ->  "sms.utils"
--- When `name` is provided it is used verbatim (no automatic "sms." prefix).
--- If auto-derivation fails (caller is a chunk loaded via the bridge,
--- source is "[string \"...\"]") the tag falls back to "sms.unknown".
+-- line with [<tag>]. When `name` is provided it is used verbatim (no
+-- automatic "sms." prefix) — caller is in full control.
+--
+-- Auto-derivation (when `name` is omitted) reads the caller's chunk source
+-- via debug.getinfo(2, "S").source and pulls the basename:
+--   "@.../framework/utils.lua"  ->  "utils"  ->  "sms.utils"
+--
+-- This works for files loaded via dofile()/loadfile() (mechanisms A and C
+-- in the framework's load story). It does NOT work for chunks loaded via
+-- the bridge (mechanism D, v1's only load path) — net.dostring_in does
+-- not set a chunkname, so info.source is the wrapper source string itself
+-- and the .lua$ pattern doesn't match. Bridge-loaded modules must pass
+-- the tag explicitly. See framework/utils.lua for the v1 pattern.
+-- Auto-derivation falls back to "sms.unknown" when no .lua basename is
+-- recoverable.
 
 assert(sms, "framework/sms.lua must be loaded first")
 sms.log = sms.log or {}
