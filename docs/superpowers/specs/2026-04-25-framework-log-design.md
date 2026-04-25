@@ -92,17 +92,22 @@ sms.log.error = function(msg) env.error("[sms] " .. tostring(msg)) end
 -- Per-module logger factory. Returns a small table with `info` and `error`
 -- functions that prefix every line with the module's tag.
 --
+-- If `name` is provided, it is used verbatim — no automatic "sms." prefix.
+-- The caller is in full control.
+--
 -- If `name` is omitted, the tag is derived from the caller's file path:
 --   debug.getinfo(2, "S").source  ->  "@.../framework/utils.lua"
 --   strip leading "@", take basename, strip ".lua"           ->  "utils"
 --   prepend "sms."                                            ->  "sms.utils"
 --
--- If `name` is provided explicitly, it is used as-is — no automatic
--- "sms." prefix. The caller is in full control. Use this from bridge
--- chunks or to override the file-derived tag.
---
--- If auto-derivation fails (caller is a chunk loaded via the bridge,
--- source is "[string \"...\"]") the tag falls back to "sms.unknown".
+-- Auto-derivation works for files loaded via dofile()/loadfile()
+-- (mechanisms A and C in the framework's load story). It does NOT work
+-- for chunks loaded via the bridge (mechanism D, v1's only load path) —
+-- net.dostring_in does not set a chunkname, so info.source is the
+-- wrapper source string itself and the .lua$ pattern doesn't match.
+-- Bridge-loaded modules in v1 must therefore pass the tag explicitly.
+-- Auto-derivation falls back to "sms.unknown" when no .lua basename is
+-- recoverable.
 sms.log.module = function(name)
   local tag = name
   if not tag then
@@ -128,7 +133,10 @@ The implementation is small and there are deliberately no helpers, no formatting
 
 ```lua
 assert(sms, "framework/sms.lua must be loaded first")
-local log = sms.log.module()       -- auto-tagged as "sms.utils"
+-- Explicit tag: in v1 the framework is bridge-loaded, and net.dostring_in
+-- chunks have no source path for auto-derive to find. The no-arg form
+-- of sms.log.module() will start working once mechanism C lands.
+local log = sms.log.module("sms.utils")
 sms.utils = sms.utils or {}
 
 sms.utils.add_numbers = function(a, b)
@@ -137,7 +145,7 @@ sms.utils.add_numbers = function(a, b)
 end
 ```
 
-`add_numbers` is the simplest function that exercises everything we care about: cross-module calls work, the logger's auto-tag picks up `sms.utils` from the file path, and the return value round-trips through the bridge as JSON.
+`add_numbers` is the simplest function that exercises everything we care about: cross-module calls work, the logger emits a tagged line through `env.info`, and the return value round-trips through the bridge as JSON.
 
 `utils` is a real module, not throwaway test scaffolding. As more genuinely-shared helpers appear, they go here. If `utils.lua` ever becomes a grab bag of unrelated things, that is the signal to split it — but for v1, one example function is fine.
 
@@ -212,7 +220,7 @@ The exact form (shell vs. Go test program vs. checklist in markdown) is an imple
 
 ### What's not tested
 
-- Auto-tag fallback to `sms.unknown` for bridge chunks. Easy to verify manually if we ever want; not part of the smoke run.
+- Auto-derived tags (the no-arg form of `sms.log.module()`). v1's load path can't produce a source `.lua` path for `debug.getinfo` to recover, so the auto-derive code path always falls back to `sms.unknown` in v1. It will be exercised once mechanism C lands and modules are loaded via `dofile`. The code is kept in place so the no-arg form works the day C ships.
 - Behavior when `framework/sms.lua` is not loaded first. The `assert` will trip; that's the test.
 - Concurrent calls. The bridge already serializes execs; nothing to check here.
 
@@ -221,7 +229,7 @@ The exact form (shell vs. Go test program vs. checklist in markdown) is an imple
 | Situation | Behavior |
 |---|---|
 | `log.lua` loaded before `sms.lua` | `assert` fails loudly; bridge response has `ok=false` and a clear error. Same for any non-root module loaded before the root. |
-| `sms.log.module()` called from a bridge chunk (not a real file) | Tag falls back to `sms.unknown`. Logger still works. |
+| `sms.log.module()` called from a bridge chunk (no `name` argument; v1's load path) | Tag falls back to `sms.unknown` because `net.dostring_in` chunks carry no source path. Logger still works. v1 modules pass the tag explicitly to avoid this; the no-arg form is reserved for `dofile`/`loadfile` (mechanisms A and C). |
 | `sms.log.module("explicit")` called explicitly | Tag is `explicit` (no automatic `sms.` prefix when name is given — caller is in control). |
 | Same module file reloaded | `sms.<name> = sms.<name> or {}` keeps the table identity stable; functions get replaced. Existing references to function values in other modules become stale (Lua semantics) — acceptable for v1's reload-via-bridge dev flow. |
 | Caller passes non-string (table, nil) | `tostring(msg)` handles it. Tables print as `table: 0x...` — fine for v1; better formatting can come with the levels rework. |
