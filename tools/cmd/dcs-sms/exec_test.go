@@ -37,6 +37,10 @@ func startFakeHook(t *testing.T, savedGames string, fn func(proto.ExecRequest) p
 		}
 	}
 	h := &fakeHook{root: root, behavior: fn, heartbeat: heartbeat, processInbox: processInbox, stop: make(chan struct{})}
+	// Write initial heartbeat immediately if enabled so tests don't race with freshness check
+	if heartbeat {
+		h.writeHeartbeat()
+	}
 	h.wg.Add(1)
 	go h.run()
 	t.Cleanup(func() {
@@ -242,5 +246,84 @@ func TestExecPollRespectsTightDeadline(t *testing.T) {
 	// We allow up to 200ms to keep CI happy.
 	if elapsed > 200*time.Millisecond {
 		t.Errorf("oversleep: took %v, want < 200ms", elapsed)
+	}
+}
+
+func TestExecFailsFastWhenHookStale(t *testing.T) {
+	root := t.TempDir()
+	// Create dirs but no heartbeat → state/hook.json missing.
+	for _, sub := range []string{"inbox", "outbox", "state", "log"} {
+		_ = os.MkdirAll(filepath.Join(root, "dcs-sms", sub), 0o755)
+	}
+	t.Setenv("DCS_SMS_SAVED_GAMES", root)
+	var stdout, stderr bytes.Buffer
+	code := execCmd([]string{"--code", "return 1", "--timeout", "500ms"}, &stdout, &stderr)
+	if code != 3 {
+		t.Errorf("exit %d, want 3 (hook not ready)", code)
+	}
+	if !strings.Contains(stderr.String(), "hook") {
+		t.Errorf("expected hook diagnostic in stderr, got %q", stderr.String())
+	}
+}
+
+func TestExecWaitWaitsForHook(t *testing.T) {
+	root := t.TempDir()
+	for _, sub := range []string{"inbox", "outbox", "state", "log"} {
+		_ = os.MkdirAll(filepath.Join(root, "dcs-sms", sub), 0o755)
+	}
+
+	// Start a goroutine that begins writing heartbeats after 200ms and also
+	// answers requests.
+	stop := make(chan struct{})
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		ticker := time.NewTicker(20 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				st := proto.HookState{
+					HookVersion:   "fake",
+					MissionLoaded: true,
+					LastFrameAt:   time.Now().UTC().Format(time.RFC3339Nano),
+				}
+				data, _ := json.Marshal(st)
+				p := filepath.Join(root, "dcs-sms", "state", "hook.json")
+				_ = os.WriteFile(p+".tmp", data, 0o644)
+				_ = os.Rename(p+".tmp", p)
+				// also process inbox
+				entries, _ := os.ReadDir(filepath.Join(root, "dcs-sms", "inbox"))
+				for _, e := range entries {
+					if !strings.HasSuffix(e.Name(), ".req.json") {
+						continue
+					}
+					reqPath := filepath.Join(root, "dcs-sms", "inbox", e.Name())
+					raw, err := os.ReadFile(reqPath)
+					if err != nil {
+						continue
+					}
+					var req proto.ExecRequest
+					if json.Unmarshal(raw, &req) != nil {
+						continue
+					}
+					resp := proto.ExecResponse{ID: req.ID, OK: true, ReturnValue: json.RawMessage(`1`)}
+					out, _ := json.Marshal(resp)
+					rp := filepath.Join(root, "dcs-sms", "outbox", req.ID+".res.json")
+					_ = os.WriteFile(rp+".tmp", out, 0o644)
+					_ = os.Rename(rp+".tmp", rp)
+					_ = os.Remove(reqPath)
+				}
+			}
+		}
+	}()
+	t.Cleanup(func() { close(stop) })
+
+	t.Setenv("DCS_SMS_SAVED_GAMES", root)
+	var stdout, stderr bytes.Buffer
+	code := execCmd([]string{"--code", "return 1", "--wait", "--timeout", "3s"}, &stdout, &stderr)
+	if code != 0 {
+		t.Errorf("exit %d, want 0; stderr=%s", code, stderr.String())
 	}
 }

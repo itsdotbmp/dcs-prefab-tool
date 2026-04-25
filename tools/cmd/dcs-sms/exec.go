@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nielsvaes/dcs-sms/tools/internal/dcspath"
+	"github.com/nielsvaes/dcs-sms/tools/internal/hookstatus"
 	"github.com/nielsvaes/dcs-sms/tools/internal/mailbox"
 	"github.com/nielsvaes/dcs-sms/tools/internal/proto"
 )
@@ -32,6 +33,7 @@ func execCmd(args []string, stdout, stderr io.Writer) int {
 		flagTimeout    = fs.Duration("timeout", 5*time.Second, "wall-clock timeout")
 		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
 		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
+		flagWait       = fs.Bool("wait", false, "if hook isn't ready, poll until it is or --timeout elapses")
 	)
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -50,6 +52,11 @@ func execCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	mb := mailbox.New(filepath.Join(root, "dcs-sms"))
 	if err := ensureMailboxDirs(mb.Root); err != nil {
+		fmt.Fprintln(stderr, "dcs-sms exec:", err)
+		return 3
+	}
+
+	if err := waitForHook(mb.State(), *flagWait, *flagTimeout); err != nil {
 		fmt.Fprintln(stderr, "dcs-sms exec:", err)
 		return 3
 	}
@@ -167,5 +174,34 @@ func pollResponse(mb *mailbox.Mailbox, id string, timeout time.Duration) (proto.
 			sleep = remaining
 		}
 		time.Sleep(sleep)
+	}
+}
+
+// waitForHook returns nil if the hook heartbeat is fresh. If wait is true,
+// it polls every 50ms until fresh or timeout. If wait is false and the hook
+// isn't fresh, it returns immediately with an error.
+func waitForHook(stateDir string, wait bool, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		st, err := hookstatus.Read(stateDir)
+		if err == nil && hookstatus.IsFresh(st, 2*time.Second, time.Now()) {
+			if !st.MissionLoaded {
+				if !wait {
+					return errors.New("hook is running but no mission loaded — load a mission or pass --wait")
+				}
+				// fall through to wait
+			} else {
+				return nil
+			}
+		} else if !wait {
+			if err != nil {
+				return fmt.Errorf("hook not ready (%v) — start DCS or pass --wait", err)
+			}
+			return errors.New("hook heartbeat stale — DCS may be paused/hung; pass --wait to retry")
+		}
+		if time.Now().After(deadline) {
+			return errors.New("timed out waiting for hook to become ready")
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
