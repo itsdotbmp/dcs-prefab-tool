@@ -27,6 +27,7 @@ func New(root string) *Mailbox {
 func (m *Mailbox) Inbox() string  { return filepath.Join(m.Root, "inbox") }
 func (m *Mailbox) Outbox() string { return filepath.Join(m.Root, "outbox") }
 func (m *Mailbox) State() string  { return filepath.Join(m.Root, "state") }
+func (m *Mailbox) Log() string    { return filepath.Join(m.Root, "log") }
 
 // WriteRequest writes req to inbox/<id>.req.json atomically.
 func (m *Mailbox) WriteRequest(req proto.ExecRequest) error {
@@ -41,9 +42,19 @@ func (m *Mailbox) WriteRequest(req proto.ExecRequest) error {
 	return WriteAtomic(dst, data)
 }
 
-// ReadResponse reads outbox/<id>.res.json. Returns (resp, true, nil) on
-// success, deleting the file. Returns (zero, false, nil) if the file is not
-// yet present. Returns (zero, false, err) for IO/parse errors.
+// ReadResponse reads outbox/<id>.res.json and best-effort deletes the file.
+//
+// Returns:
+//   - (resp, true, nil)  — response was read and parsed successfully.
+//   - (zero, false, nil) — file is not yet present.
+//   - (zero, false, err) — IO or JSON-parse error.
+//
+// A failure to delete the file after a successful read is intentionally
+// swallowed: the data has already been delivered to the caller, and the
+// orphan response file will be reaped by the next SweepOutboxOlderThan
+// (or by the hook's startup sweep). Surfacing the delete error to the
+// caller would risk callers using `if err != nil { return }` and silently
+// discarding valid data.
 func (m *Mailbox) ReadResponse(id string) (proto.ExecResponse, bool, error) {
 	path := filepath.Join(m.Outbox(), id+".res.json")
 	data, err := os.ReadFile(path)
@@ -57,10 +68,7 @@ func (m *Mailbox) ReadResponse(id string) (proto.ExecResponse, bool, error) {
 	if err := json.Unmarshal(data, &resp); err != nil {
 		return proto.ExecResponse{}, false, fmt.Errorf("parse response %s: %w", path, err)
 	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		// Non-fatal — log via returned error, but we got the data.
-		return resp, true, fmt.Errorf("read ok but failed to delete %s: %w", path, err)
-	}
+	_ = os.Remove(path) // best-effort; orphan reaped by SweepOutboxOlderThan
 	return resp, true, nil
 }
 

@@ -126,3 +126,25 @@ func TestSweepStaleRemovesOldFiles(t *testing.T) {
 		t.Errorf("expected fresh file kept: %v", err)
 	}
 }
+
+func TestSweepStaleRemovesOldTmpFiles(t *testing.T) {
+	root := newTestRoot(t)
+	mb := New(root)
+
+	// Simulate a leftover sibling temp from a crashed WriteAtomic.
+	tmpPath := filepath.Join(root, "outbox", "abc-123.res.json.deadbeef.tmp")
+	if err := os.WriteFile(tmpPath, []byte("partial"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	twoMinAgo := time.Now().Add(-2 * time.Minute)
+	if err := os.Chtimes(tmpPath, twoMinAgo, twoMinAgo); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mb.SweepOutboxOlderThan(60 * time.Second); err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+		t.Errorf("expected tmp file removed, stat err=%v", err)
+	}
+}
