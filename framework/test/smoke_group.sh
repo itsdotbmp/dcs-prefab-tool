@@ -101,7 +101,7 @@ echo "${result}" | grep -q '"return_value":true' \
 
 echo "==> dcs.log should contain [sms.group] miss line"
 log_window=$("${DCSSMS}" tail-log --grep '\[sms.group\]' -n 200)
-echo "${log_window}" | grep -q "couldn't find '_definitely_does_not_exist'" \
+echo "${log_window}" | grep -q "couldn't find group '_definitely_does_not_exist'" \
   || { echo "FAIL: missing log line for nonexistent group"; echo "${log_window}"; exit 1; }
 
 echo "smoke ok"
