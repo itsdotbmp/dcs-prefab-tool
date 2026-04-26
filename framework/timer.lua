@@ -94,6 +94,11 @@ sms.timer.every = function(seconds, fn, max)
   }, _handle_mt)
 
   handle.id = timer.scheduleFunction(function(_, t)
+    -- Note: handle.active stays true while fn runs. A user calling
+    -- :is_active() from inside their `every` callback sees true; the
+    -- handle only deactivates AFTER fn returns false or max is reached.
+    -- (This differs from `after`, which deactivates before calling fn
+    -- because the post-fire state is final.)
     handle.iterations = handle.iterations + 1
     local ok, result = pcall(fn)
     if not ok then

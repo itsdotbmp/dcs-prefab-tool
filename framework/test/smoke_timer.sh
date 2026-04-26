@@ -46,6 +46,7 @@ echo "==> load framework files"
 echo "==> bad-arg validation"
 expect_true "after: negative seconds returns nil" 'return sms.timer.after(-1, function() end) == nil'
 expect_true "after: non-function fn returns nil" 'return sms.timer.after(1, "not a function") == nil'
+expect_true "after: zero seconds is accepted (next-frame defer)" 'return sms.timer.after(0, function() end) ~= nil'
 expect_true "every: zero seconds returns nil" 'return sms.timer.every(0, function() end) == nil'
 expect_true "every: negative max returns nil" 'return sms.timer.every(1, function() end, -3) == nil'
 
@@ -117,6 +118,12 @@ echo "==> verify [sms.timer] log lines for bad args and user errors"
 log_window=$("${DCSSMS}" tail-log --grep '\[sms.timer\]' -n 200)
 echo "${log_window}" | grep -q "after: seconds must be a non-negative" \
   || { echo "FAIL: missing log line for negative seconds"; echo "${log_window}"; exit 1; }
+echo "${log_window}" | grep -q "after: fn must be a function" \
+  || { echo "FAIL: missing log line for non-function fn"; echo "${log_window}"; exit 1; }
+echo "${log_window}" | grep -q "every: seconds must be a positive" \
+  || { echo "FAIL: missing log line for zero seconds"; echo "${log_window}"; exit 1; }
+echo "${log_window}" | grep -q "every: max must be a positive" \
+  || { echo "FAIL: missing log line for negative max"; echo "${log_window}"; exit 1; }
 echo "${log_window}" | grep -q "boom from smoke test" \
   || { echo "FAIL: missing log line for user error"; echo "${log_window}"; exit 1; }
 
