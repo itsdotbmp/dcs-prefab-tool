@@ -120,11 +120,13 @@ local function _build_dcs_unit(u_spec, anchor, category, base_unit_name, idx)
 
   -- Auto-suffix the unit name. If user provided one, suffix it. Otherwise
   -- auto-generate from the resolved group name + index.
+  -- Note: unit auto-gen uses "_" separator (not "-") to avoid colliding
+  -- with auto-suffixed group names which use "-<n>".
   local desired_name
   if type(u_spec.name) == "string" then
     desired_name = u_spec.name
   else
-    desired_name = base_unit_name .. "-" .. idx
+    desired_name = base_unit_name .. "_" .. idx
   end
   local resolved_unit_name = _resolve_unique_name(desired_name, Unit.getByName)
 
@@ -421,9 +423,10 @@ sms.group.clone = function(template_name, overrides)
   local resolved_group_name = _resolve_unique_name(overrides.name, Group.getByName)
   def.name = resolved_group_name
 
-  -- Resolve unique unit names per unit.
+  -- Resolve unique unit names per unit. Unit auto-gen uses "_" to avoid
+  -- collision with auto-suffixed group names ("-<n>").
   for i, u in ipairs(def.units) do
-    local desired_unit_name = u.name or (resolved_group_name .. "-" .. i)
+    local desired_unit_name = u.name or (resolved_group_name .. "_" .. i)
     u.name = _resolve_unique_name(desired_unit_name, Unit.getByName)
   end
 
