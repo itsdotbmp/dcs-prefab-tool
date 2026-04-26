@@ -157,7 +157,7 @@ expect_eq_string "single AAV-7 type" "
     units     = {{ type = 'AAV7' }},
   })
   if not g then return 'NO_HANDLE' end
-  return sms.unit('_smoke_spawn_single-1'):get_type()
+  return sms.unit('_smoke_spawn_single_1'):get_type()
 " "AAV7"
 
 echo "==> [create] cleanup single AAV-7"
@@ -224,7 +224,7 @@ expect_true "heading translated" "
   -- {p = {x,y,z}, x = {x,y,z}, y = {x,y,z}, z = {x,y,z}}
   -- The unit's facing yaw (heading angle in radians, 0=N, pi/2=E in DCS conv)
   -- can be derived from the x-vector (forward-facing direction).
-  local u = Unit.getByName('_smoke_spawn_heading-1')
+  local u = Unit.getByName('_smoke_spawn_heading_1')
   local pos = u:getPosition()
   -- pos.x.z and pos.x.x give us atan2 for yaw.
   local yaw = math.atan2(pos.x.z, pos.x.x)
@@ -259,7 +259,7 @@ expect_true "air spawned at altitude" "
     },
   })
   if not g then return false end
-  local u = Unit.getByName('_smoke_spawn_air-1')
+  local u = Unit.getByName('_smoke_spawn_air_1')
   if not u then return false end
   local p = u:getPoint()
   -- Altitude (DCS world y) should be ~5000m, allow large tolerance for terrain reference.
