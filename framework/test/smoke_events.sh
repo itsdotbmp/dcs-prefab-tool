@@ -162,4 +162,15 @@ echo "==> subscriber error does not break dispatch"
 ' >/dev/null
 expect_eq "good subscriber fires after bad one raised" 'return _G._sms_events_smoke.good' 1
 
+echo "==> verify [sms.events] log lines for bad args and user errors"
+log_window=$("${DCSSMS}" tail-log --grep '\[sms.events\]' -n 200)
+echo "${log_window}" | grep -q "connect: name must be a string" \
+  || { echo "FAIL: missing log line for nil name"; echo "${log_window}"; exit 1; }
+echo "${log_window}" | grep -q "connect: fn must be a function" \
+  || { echo "FAIL: missing log line for non-function fn"; echo "${log_window}"; exit 1; }
+echo "${log_window}" | grep -q "disconnect: argument must be a Connection handle" \
+  || { echo "FAIL: missing log line for non-connection disconnect"; echo "${log_window}"; exit 1; }
+echo "${log_window}" | grep -q "subscriber for 'err_test' raised" \
+  || { echo "FAIL: missing log line for subscriber error"; echo "${log_window}"; exit 1; }
+
 echo "smoke ok"

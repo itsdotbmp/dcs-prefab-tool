@@ -90,11 +90,13 @@ sms.events.emit = function(name, ...)
   end
   local subs = _subscribers[name]
   if not subs then return end
-  -- Snapshot active subscribers before iterating. Connections that are
-  -- inactive BEFORE emit are excluded here. Connections disconnected DURING
-  -- dispatch (mid-emit) are already in the snapshot and fire unconditionally
-  -- this iteration (Godot semantics). Subscribers added during dispatch are
-  -- NOT seen by the in-flight emit; they take effect on the next emit.
+  -- Snapshot only currently-active subscribers. Any connection that was
+  -- already inactive before emit() is called is excluded here and will
+  -- not fire this iteration. Connections that are disconnected DURING
+  -- dispatch were active at snapshot time, are included in the snapshot,
+  -- and will still fire for the in-flight emit (Godot semantics).
+  -- Subscribers added during dispatch are NOT in the snapshot and take
+  -- effect on the next emit.
   local snapshot = {}
   for _, c in ipairs(subs) do
     if c.active then snapshot[#snapshot + 1] = c end
