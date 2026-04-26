@@ -253,9 +253,11 @@ local function _build_def(cfg, resolved_name)
   if cfg.shape_name ~= nil then def.shape_name = cfg.shape_name end
   if cfg.livery_id  ~= nil then def.livery_id  = cfg.livery_id  end
 
-  -- Pitch/bank handling: warn-and-drop (DCS silently ignores them)
+  -- Pitch/bank handling: warn-and-drop (DCS silently ignores them).
+  -- sms.log v1 has no `warning` level; log.info is used with explicit
+  -- "warning:" text so the log entry is searchable and self-explanatory.
   if cfg.pitch ~= nil or cfg.bank ~= nil then
-    log.warning("create: pitch/bank are ignored by DCS on statics; dropping (only heading is applied)")
+    log.info("create: warning: pitch/bank are ignored by DCS on statics; dropping (only heading is applied)")
   end
 
   -- Pass-through unknown fields, EXCEPT pitch/bank (filtered above)
@@ -416,7 +418,7 @@ end
 | `create()` `country` not a string, or unknown | log + nil |
 | `create()` `type` not a non-empty string | log + nil |
 | `create()` `heading` present but not a number | log + nil |
-| `create()` `pitch` or `bank` present | log warning, drop the field, **continue spawning** |
+| `create()` `pitch` or `bank` present | `log.info` with explicit `warning:` prefix text, drop the field, **continue spawning** |
 | `coalition.addStaticObject` errors | log `create: DCS rejected the spawn: <err>`, return `nil` |
 | `coalition.addStaticObject` succeeds but post-call verify fails | log `DCS accepted addStaticObject but static '<name>' not found post-call (check type/category validity)`, return `nil` |
 | `clone()` template_name not a non-empty string | log + nil |
@@ -441,7 +443,7 @@ end
 6. **`dead = true`** — spawn a wreckage variant; `is_alive()` is true (the static object exists), but the visual state is dead per DCS.
 7. **Auto-suffix** — three calls with `name = "crate"`. Verify resolved names via the returned handles' `:get_name()` are `"crate"`, `"crate-1"`, `"crate-2"`.
 8. **Namespace separation** — spawn `sms.static.create({name = "ns_test", ...})` and `sms.group.create({name = "ns_test", ...})`. Both must succeed; static `:get_name() == "ns_test"` (no suffix); group's resolved name handling is its own. Proves we're not over-probing.
-9. **Pitch/bank warning** — spawn with `pitch = 0.5`, assert spawn succeeds, assert log file contains a warning line tagged `[sms.static]` mentioning pitch/bank.
+9. **Pitch/bank warning** — spawn with `pitch = 0.5`, assert spawn succeeds (handle returned, `is_alive() == true`), assert log file contains a line tagged `[sms.static]` containing the substring `pitch/bank` (the call uses `log.info` with explicit `warning:` text since v1 logger has no `warning` level).
 10. **`create` negative paths** (each independent):
     - Missing `name` → nil
     - Missing `type` → nil
