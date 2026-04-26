@@ -34,6 +34,7 @@ sms.log.module = function(name)
     tag = base and ("sms." .. base) or "sms.unknown"
   end
   return {
+    tag   = tag,
     info  = function(msg) env.info ("[" .. tag .. "] " .. tostring(msg)) end,
     error = function(msg) env.error("[" .. tag .. "] " .. tostring(msg)) end,
   }
