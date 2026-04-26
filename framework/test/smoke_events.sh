@@ -162,6 +162,66 @@ echo "==> subscriber error does not break dispatch"
 ' >/dev/null
 expect_eq "good subscriber fires after bad one raised" 'return _G._sms_events_smoke.good' 1
 
+echo "==> live DCS round-trip — DEAD event"
+# Re-check heartbeat freshness — this section needs sim time to advance.
+"${DCSSMS}" status | grep -q "fresh: *true" \
+  || { echo "FAIL: live DCS section requires fresh heartbeat (mission unpaused). Skip or focus DCS."; exit 1; }
+
+# Spawn a single-unit ground group, capture the resolved name (sms.spawn
+# auto-suffixes on collision so concurrent agents don't break us).
+"${DCSSMS}" exec --code '
+  _G._sms_events_smoke = {dead_evt = nil, target_name = nil}
+  local g = sms.group.create({
+    name = "smoke_evt_target",
+    position = {x = 0, y = 0, z = 0},
+    country = "USA",
+    category = "ground",
+    units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
+  })
+  if g then
+    _G._sms_events_smoke.target_name = g:get_units()[1]:get_name()
+  end
+' >/dev/null
+expect_true "spawned target unit captured" \
+  'return type(_G._sms_events_smoke.target_name) == "string" and _G._sms_events_smoke.target_name ~= ""'
+
+# Subscribe to DEAD, but only record the event if it matches OUR target
+# (defensive — other agents may also be killing units in this DCS instance).
+"${DCSSMS}" exec --code '
+  sms.events.connect(sms.events.DEAD, function(evt)
+    if evt.initiator and evt.initiator.name == _G._sms_events_smoke.target_name then
+      _G._sms_events_smoke.dead_evt = evt
+    end
+  end)
+' >/dev/null
+
+# Kill the unit with an explosion (fires S_EVENT_DEAD). Unit:destroy() removes
+# the unit silently without triggering death events; an explosion triggers the
+# full hit → unit_lost → dead sequence.
+"${DCSSMS}" exec --code '
+  local u = Unit.getByName(_G._sms_events_smoke.target_name)
+  if u then
+    local pos = u:getPoint()
+    trigger.action.explosion(pos, 5000)
+  end
+' >/dev/null
+
+# Wait for sim time to deliver the event.
+sleep 2
+
+expect_true "DEAD event received" \
+  'return _G._sms_events_smoke.dead_evt ~= nil'
+expect_str "DEAD event has correct name" \
+  'return _G._sms_events_smoke.dead_evt.name' 'dead'
+expect_true "DEAD event initiator is an sms.unit handle" \
+  'return type(_G._sms_events_smoke.dead_evt.initiator) == "table" and type(_G._sms_events_smoke.dead_evt.initiator.get_name) == "function"'
+expect_true "DEAD event initiator name matches our target" \
+  'return _G._sms_events_smoke.dead_evt.initiator.name == _G._sms_events_smoke.target_name'
+expect_true "DEAD event initiator is no longer alive" \
+  'return _G._sms_events_smoke.dead_evt.initiator:is_alive() == false'
+expect_true "DEAD event time is a positive number" \
+  'return type(_G._sms_events_smoke.dead_evt.time) == "number" and _G._sms_events_smoke.dead_evt.time > 0'
+
 echo "==> verify [sms.events] log lines for bad args and user errors"
 log_window=$("${DCSSMS}" tail-log --grep '\[sms.events\]' -n 200)
 echo "${log_window}" | grep -q "connect: name must be a string" \

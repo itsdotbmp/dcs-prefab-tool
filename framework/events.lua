@@ -60,11 +60,58 @@ local function _is_connection(c)
   return type(c) == "table" and getmetatable(c) == _conn_mt
 end
 
--- Lazy world-handler install. Stub for Task 3 (synthetic-only); real
--- world.addEventHandler call lands in Task 4.
+-- Build the user-facing evt payload from a raw DCS world event. Every
+-- DCS-side method call is pcall-wrapped because half-deconstructed
+-- unit/weapon/place objects are a real failure mode in DCS during
+-- destruction events. A field that fails to extract just stays nil; the
+-- rest of the event still dispatches.
+local function _normalize_event(raw)
+  local evt = {
+    id   = raw.id,
+    name = _id_to_name[raw.id] or ("unknown_" .. tostring(raw.id)),
+    time = raw.time,
+  }
+  if raw.initiator then
+    local ok, n = pcall(raw.initiator.getName, raw.initiator)
+    if ok and n then evt.initiator = sms._make_handle(sms.unit, n) end
+  end
+  if raw.target then
+    local ok, n = pcall(raw.target.getName, raw.target)
+    if ok and n then evt.target = sms._make_handle(sms.unit, n) end
+  end
+  if raw.weapon then
+    local ok, t = pcall(raw.weapon.getTypeName, raw.weapon)
+    if ok and t then evt.weapon_type = t end
+  end
+  if raw.place then
+    local ok, p = pcall(raw.place.getName, raw.place)
+    if ok and p then evt.place_name = p end
+  end
+  return evt
+end
+
+-- Lazy world-handler install. Called from connect(). One install for the
+-- lifetime of the mission load; no teardown API.
 local function _ensure_world_handler()
-  -- Implementation in Task 4. For now this is a no-op so connect() works
-  -- for the synthetic emit() path without needing live DCS.
+  if _world_handler_installed then return end
+  _world_handler_installed = true
+  world.addEventHandler({
+    onEvent = function(self, raw)
+      local evt = _normalize_event(raw)
+      local subs = _subscribers[evt.name]
+      if not subs then return end
+      local snapshot = {}
+      for i, c in ipairs(subs) do snapshot[i] = c end
+      for _, conn in ipairs(snapshot) do
+        if conn.active then
+          local ok, err = pcall(conn.fn, evt)
+          if not ok then
+            log.error("dispatch '" .. evt.name .. "': " .. tostring(err))
+          end
+        end
+      end
+    end,
+  })
 end
 
 sms.events.connect = function(name, fn)
