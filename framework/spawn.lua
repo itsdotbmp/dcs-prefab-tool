@@ -290,7 +290,7 @@ sms.group.create = function(cfg)
     return nil
   end
 
-  local category_str = cfg.category or "ground"
+  local category_str = (cfg.category or "ground"):lower()
   local category_int = _resolve_category(category_str)
   if not category_int then
     log.error("create: unknown category '" .. tostring(cfg.category) .. "'")
@@ -412,7 +412,7 @@ sms.group.clone = function(template_name, overrides)
 
   -- Resolve unique unit names per unit.
   for i, u in ipairs(def.units) do
-    local desired_unit_name = resolved_group_name .. "-" .. i
+    local desired_unit_name = u.name or (resolved_group_name .. "-" .. i)
     u.name = _resolve_unique_name(desired_unit_name, Unit.getByName)
   end
 
