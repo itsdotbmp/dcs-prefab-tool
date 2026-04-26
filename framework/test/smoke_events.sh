@@ -285,8 +285,15 @@ echo "==> entity sugar — group filter (synthetic via emit, requires get_group)
     name = "dead",
     initiator = sms._make_handle(sms.unit, our_unit.name),
   })
+  -- Synthetic dispatch with an initiator that is NOT in our group.
+  -- "definitely_not_our_unit_xyz" does not exist; get_group() will
+  -- log + return nil for it, which the filter must treat as "no match".
+  sms.events.emit("dead", {
+    name = "dead",
+    initiator = sms._make_handle(sms.unit, "definitely_not_our_unit_xyz"),
+  })
 ' >/dev/null
-expect_eq "g:connect fires for unit in our group" \
+expect_eq "g:connect fires only for unit in our group (not for non-group unit)" \
   'return _G._sms_events_smoke.gmatched' 1
 
 # Cleanup — best-effort. Group is alive; this should succeed cleanly.

@@ -216,7 +216,7 @@ local _entity_scoped = {
 -- u:connect(name, fn) — fires only when evt.initiator.name == self.name.
 -- Returns the wrapped Connection (so :disconnect() works as expected).
 sms.unit.connect = function(self, name, fn)
-  if type(self) ~= "table" or type(self.name) ~= "string" then
+  if not sms._is_handle_of(self, sms.unit) then
     log.error("unit:connect: self must be an sms.unit handle")
     return nil
   end
@@ -232,6 +232,8 @@ sms.unit.connect = function(self, name, fn)
     log.error("unit:connect: event '" .. name .. "' has no entity scope")
     return nil
   end
+  -- Capture name into a local so the closure doesn't keep a reference to
+  -- the caller's self table (defensive; lets the caller drop the handle).
   local target_name = self.name
   return sms.events.connect(name, function(evt)
     if evt.initiator and evt.initiator.name == target_name then
@@ -245,7 +247,7 @@ end
 -- callback 4 times. Users compose "fully dead" via
 -- evt.initiator:get_group():is_alive() inside the callback.
 sms.group.connect = function(self, name, fn)
-  if type(self) ~= "table" or type(self.name) ~= "string" then
+  if not sms._is_handle_of(self, sms.group) then
     log.error("group:connect: self must be an sms.group handle")
     return nil
   end
@@ -261,6 +263,8 @@ sms.group.connect = function(self, name, fn)
     log.error("group:connect: event '" .. name .. "' has no entity scope")
     return nil
   end
+  -- Capture name into a local so the closure doesn't keep a reference to
+  -- the caller's self table (defensive; lets the caller drop the handle).
   local target_name = self.name
   return sms.events.connect(name, function(evt)
     if evt.initiator then
