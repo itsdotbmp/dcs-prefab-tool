@@ -182,3 +182,92 @@ sms.events.is_active = function(conn)
   if not _is_connection(conn) then return false end
   return conn.active == true
 end
+
+-- Whitelist of event names with a meaningful .initiator field. Entity
+-- sugar (u:connect / g:connect) rejects everything else at connect time
+-- so users get a clear error instead of silent never-fires. Hand-
+-- maintained — new DCS events default to non-entity-scoped (safe).
+local _entity_scoped = {
+  birth              = true,
+  dead               = true,
+  hit                = true,
+  kill               = true,
+  takeoff            = true,
+  land               = true,
+  crash              = true,
+  ejection           = true,
+  pilot_dead         = true,
+  shot               = true,
+  engine_startup     = true,
+  engine_shutdown    = true,
+  refueling          = true,
+  refueling_stop     = true,
+  player_enter_unit  = true,
+  player_leave_unit  = true,
+  human_failure      = true,
+  unit_lost          = true,
+  shooting_start     = true,
+  shooting_end       = true,
+  landing_quality_mark = true,
+  landing_after_ejection = true,
+  emergency_landing  = true,
+}
+
+-- u:connect(name, fn) — fires only when evt.initiator.name == self.name.
+-- Returns the wrapped Connection (so :disconnect() works as expected).
+sms.unit.connect = function(self, name, fn)
+  if type(self) ~= "table" or type(self.name) ~= "string" then
+    log.error("unit:connect: self must be an sms.unit handle")
+    return nil
+  end
+  if type(name) ~= "string" then
+    log.error("unit:connect: event name must be a string, got " .. type(name))
+    return nil
+  end
+  if type(fn) ~= "function" then
+    log.error("unit:connect: fn must be a function, got " .. type(fn))
+    return nil
+  end
+  if not _entity_scoped[name] then
+    log.error("unit:connect: event '" .. name .. "' has no entity scope")
+    return nil
+  end
+  local target_name = self.name
+  return sms.events.connect(name, function(evt)
+    if evt.initiator and evt.initiator.name == target_name then
+      fn(evt)
+    end
+  end)
+end
+
+-- g:connect(name, fn) — fires per-unit-death (etc.) for any unit whose
+-- group is this group. A 4-vehicle group losing all units fires the
+-- callback 4 times. Users compose "fully dead" via
+-- evt.initiator:get_group():is_alive() inside the callback.
+sms.group.connect = function(self, name, fn)
+  if type(self) ~= "table" or type(self.name) ~= "string" then
+    log.error("group:connect: self must be an sms.group handle")
+    return nil
+  end
+  if type(name) ~= "string" then
+    log.error("group:connect: event name must be a string, got " .. type(name))
+    return nil
+  end
+  if type(fn) ~= "function" then
+    log.error("group:connect: fn must be a function, got " .. type(fn))
+    return nil
+  end
+  if not _entity_scoped[name] then
+    log.error("group:connect: event '" .. name .. "' has no entity scope")
+    return nil
+  end
+  local target_name = self.name
+  return sms.events.connect(name, function(evt)
+    if evt.initiator then
+      local g = evt.initiator:get_group()
+      if g and g.name == target_name then
+        fn(evt)
+      end
+    end
+  end)
+end

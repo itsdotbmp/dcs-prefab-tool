@@ -230,6 +230,71 @@ expect_true "DEAD event time is a positive number" \
   if g then pcall(g.destroy, g) end
 ' >/dev/null
 
+echo "==> entity sugar — non-entity event rejected"
+# Spawn a throwaway group just to get a real handle. Position is far from
+# origin AND from the Task 4 round-trip spawn to avoid any collision with
+# the concurrent sms.static agent.
+"${DCSSMS}" exec --code '
+  _G._sms_events_smoke = {sugar_group_name = nil}
+  _G._sms_events_smoke.g = sms.group.create({
+    name = "smoke_evt_sugar_grp",
+    position = {x = -49000, y = 0, z = -49000},
+    country = "USA",
+    category = "ground",
+    units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
+  })
+  if _G._sms_events_smoke.g then
+    _G._sms_events_smoke.sugar_group_name = _G._sms_events_smoke.g:get_name()
+  end
+' >/dev/null
+expect_true "g:connect on MISSION_START rejected (returns nil)" \
+  'return _G._sms_events_smoke.g:connect(sms.events.MISSION_START, function() end) == nil'
+expect_true "u:connect on MISSION_START rejected (returns nil)" \
+  'local u = _G._sms_events_smoke.g:get_units()[1]; return u:connect(sms.events.MISSION_START, function() end) == nil'
+
+echo "==> entity sugar — initiator filter (synthetic via emit)"
+"${DCSSMS}" exec --code '
+  _G._sms_events_smoke.matched = 0
+  local target = _G._sms_events_smoke.g:get_units()[1]
+  target:connect(sms.events.DEAD, function(evt) _G._sms_events_smoke.matched = _G._sms_events_smoke.matched + 1 end)
+  -- Synthetic emit with matching initiator.
+  sms.events.emit("dead", {
+    name = "dead",
+    initiator = sms._make_handle(sms.unit, target.name),
+  })
+  -- Synthetic emit with non-matching initiator.
+  sms.events.emit("dead", {
+    name = "dead",
+    initiator = sms._make_handle(sms.unit, "definitely_not_our_unit_xyz"),
+  })
+' >/dev/null
+expect_eq "u:connect fires only for matching initiator" \
+  'return _G._sms_events_smoke.matched' 1
+
+echo "==> entity sugar — group filter (synthetic via emit, requires get_group)"
+# Note: this test exercises g:connect's filter via real DCS .get_group()
+# call, which requires the unit to still be alive. We use the live group
+# spawned above (still alive — only the previous round-trip target was
+# destroyed).
+"${DCSSMS}" exec --code '
+  _G._sms_events_smoke.gmatched = 0
+  _G._sms_events_smoke.g:connect(sms.events.DEAD, function(evt) _G._sms_events_smoke.gmatched = _G._sms_events_smoke.gmatched + 1 end)
+  local our_unit = _G._sms_events_smoke.g:get_units()[1]
+  -- Synthetic dispatch with a real (alive) initiator from our group.
+  sms.events.emit("dead", {
+    name = "dead",
+    initiator = sms._make_handle(sms.unit, our_unit.name),
+  })
+' >/dev/null
+expect_eq "g:connect fires for unit in our group" \
+  'return _G._sms_events_smoke.gmatched' 1
+
+# Cleanup — best-effort. Group is alive; this should succeed cleanly.
+"${DCSSMS}" exec --code '
+  local g = Group.getByName(_G._sms_events_smoke.sugar_group_name)
+  if g then pcall(g.destroy, g) end
+' >/dev/null
+
 echo "==> verify [sms.events] log lines for bad args and user errors"
 log_window=$("${DCSSMS}" tail-log --grep '\[sms.events\]' -n 200)
 echo "${log_window}" | grep -q "connect: name must be a string" \
