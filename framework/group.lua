@@ -12,7 +12,12 @@
 -- triggers. This protects the framework-wide "never throw" promise even
 -- when callers pass bad values.
 --
+-- get_units() returns sms.unit handles, so sms.unit must be loaded by
+-- the time get_units is *called* (not at load time). Loading order:
+-- framework/sms.lua -> log.lua -> group.lua -> unit.lua.
+--
 -- See docs/superpowers/specs/2026-04-25-framework-group-design.md.
+-- See docs/superpowers/specs/2026-04-26-framework-unit-design.md (get_units).
 
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 local log = sms.log.module("sms.group")
@@ -80,6 +85,20 @@ sms.group.destroy = function(g)
   end
   Group.getByName(name):destroy()
   return true
+end
+
+sms.group.get_units = function(g)
+  local name = _name_of(g)
+  if not sms.group.is_alive(name) then
+    log.error("get_units: '" .. tostring(name) .. "' no longer exists in mission")
+    return nil
+  end
+  local raw = Group.getByName(name):getUnits()
+  local handles = {}
+  for i, u in ipairs(raw or {}) do
+    handles[i] = sms.unit(u:getName())
+  end
+  return handles
 end
 
 -- Sugar constructor: sms.group("name") -> handle | nil + log.
