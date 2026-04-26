@@ -170,15 +170,16 @@ echo "==> live DCS round-trip — DEAD event"
 # Spawn a single-unit ground group, capture the resolved name (sms.spawn
 # auto-suffixes on collision so concurrent agents don't break us).
 "${DCSSMS}" exec --code '
-  _G._sms_events_smoke = {dead_evt = nil, target_name = nil}
+  _G._sms_events_smoke = {dead_evt = nil, target_name = nil, group_name = nil}
   local g = sms.group.create({
     name = "smoke_evt_target",
-    position = {x = 0, y = 0, z = 0},
+    position = {x = -50000, y = 0, z = -50000},
     country = "USA",
     category = "ground",
     units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
   })
   if g then
+    _G._sms_events_smoke.group_name = g:get_name()
     _G._sms_events_smoke.target_name = g:get_units()[1]:get_name()
   end
 ' >/dev/null
@@ -221,6 +222,13 @@ expect_true "DEAD event initiator is no longer alive" \
   'return _G._sms_events_smoke.dead_evt.initiator:is_alive() == false'
 expect_true "DEAD event time is a positive number" \
   'return type(_G._sms_events_smoke.dead_evt.time) == "number" and _G._sms_events_smoke.dead_evt.time > 0'
+
+# Cleanup — best-effort. Group is already dead from the explosion; this
+# attempts to remove the wreckage. DCS may leave wreckage regardless.
+"${DCSSMS}" exec --code '
+  local g = Group.getByName(_G._sms_events_smoke.group_name)
+  if g then pcall(g.destroy, g) end
+' >/dev/null
 
 echo "==> verify [sms.events] log lines for bad args and user errors"
 log_window=$("${DCSSMS}" tail-log --grep '\[sms.events\]' -n 200)

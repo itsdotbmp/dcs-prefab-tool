@@ -100,14 +100,17 @@ local function _ensure_world_handler()
       local evt = _normalize_event(raw)
       local subs = _subscribers[evt.name]
       if not subs then return end
+      -- Same snapshot semantics as sms.events.emit: snapshot only currently-
+      -- active subscribers; mid-dispatch disconnects of subs already in the
+      -- snapshot will still fire this iteration (Godot semantics).
       local snapshot = {}
-      for i, c in ipairs(subs) do snapshot[i] = c end
+      for _, c in ipairs(subs) do
+        if c.active then snapshot[#snapshot + 1] = c end
+      end
       for _, conn in ipairs(snapshot) do
-        if conn.active then
-          local ok, err = pcall(conn.fn, evt)
-          if not ok then
-            log.error("dispatch '" .. evt.name .. "': " .. tostring(err))
-          end
+        local ok, err = pcall(conn.fn, evt)
+        if not ok then
+          log.error("dispatch '" .. evt.name .. "': " .. tostring(err))
         end
       end
     end,
