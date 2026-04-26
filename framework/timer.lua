@@ -25,8 +25,10 @@ assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 local log = sms.log.module("sms.timer")
 sms.timer = sms.timer or {}
 
--- Handle metatable. Identity-checked so callers can't slip arbitrary
--- tables into module functions and get unexpected behavior.
+-- Handle metatable. __index points at the module table itself so
+-- handle:method() dispatches via sms.timer.method(handle). Identity-
+-- checked so callers can't slip arbitrary tables into module functions
+-- and get unexpected behavior.
 local _handle_mt = {__index = sms.timer}
 
 -- Returns true if h is a real timer handle (created by after/every).
@@ -44,6 +46,9 @@ sms.timer.after = function(seconds, fn)
     return nil
   end
 
+  -- `kind` is unused at runtime today; carried so a future debug aid
+  -- (e.g. sms.timer.list(), explicitly out of scope per the spec) can
+  -- distinguish one-shot timers from repeating ones.
   local now = timer.getTime()
   local handle = setmetatable({
     kind = "after",
@@ -93,6 +98,8 @@ sms.timer.every = function(seconds, fn, max)
     local ok, result = pcall(fn)
     if not ok then
       log.error("every: user fn raised: " .. tostring(result))
+      -- Caught errors continue iterating per spec; clobber `result`
+      -- so the error message string isn't mistaken for a self-cancel.
       result = nil
     end
     if result == false then
@@ -105,6 +112,8 @@ sms.timer.every = function(seconds, fn, max)
       handle.next_fire_time = nil
       return nil
     end
+    -- Rebase from t (actual fire time) instead of next_fire_time so
+    -- DCS-side late dispatch doesn't compound into runaway drift.
     handle.next_fire_time = t + handle.interval
     return handle.next_fire_time
   end, nil, handle.next_fire_time)
