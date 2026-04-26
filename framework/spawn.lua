@@ -95,9 +95,7 @@ end
 
 -- Resolve a unique name using base + numeric suffix. Probes both group
 -- and unit namespaces; counter is a hint, probing is source of truth.
--- The `getter` parameter is unused but kept for backward compat with
--- existing call sites; future cleanup may remove it.
-local function _resolve_unique_name(base, getter)
+local function _resolve_unique_name(base)
   if not _name_taken(base) then return base end
   local n = _name_counters[base] or 1
   while _name_taken(base .. "-" .. n) do
@@ -128,7 +126,7 @@ local function _build_dcs_unit(u_spec, anchor, category, base_unit_name, idx)
   else
     desired_name = base_unit_name .. "_" .. idx
   end
-  local resolved_unit_name = _resolve_unique_name(desired_name, Unit.getByName)
+  local resolved_unit_name = _resolve_unique_name(desired_name)
 
   local dcs_unit = {
     name    = resolved_unit_name,
@@ -324,7 +322,7 @@ sms.group.create = function(cfg)
     end
   end
 
-  local resolved_group_name = _resolve_unique_name(cfg.name, Group.getByName)
+  local resolved_group_name = _resolve_unique_name(cfg.name)
   local group_def = _build_dcs_group_def(cfg, resolved_group_name, category_str)
   return _spawn(group_def, country_int, category_int, resolved_group_name)
 end
@@ -408,6 +406,14 @@ sms.group.clone = function(template_name, overrides)
     return nil
   end
 
+  -- Strip the template's groupId / unitId so DCS assigns fresh IDs to
+  -- the clone. Empirically DCS forgives duplicate IDs, but relying on
+  -- undocumented forgiveness is fragile.
+  def.groupId = nil
+  for _, u in ipairs(def.units) do
+    u.unitId = nil
+  end
+
   -- Compute original anchor (leader unit's DCS-2D position).
   local orig_x = def.units[1].x
   local orig_y = def.units[1].y  -- DCS-2D y == our z
@@ -424,14 +430,14 @@ sms.group.clone = function(template_name, overrides)
   end
 
   -- Resolve unique group name from overrides.
-  local resolved_group_name = _resolve_unique_name(overrides.name, Group.getByName)
+  local resolved_group_name = _resolve_unique_name(overrides.name)
   def.name = resolved_group_name
 
   -- Resolve unique unit names per unit. Unit auto-gen uses "_" to avoid
   -- collision with auto-suffixed group names ("-<n>").
   for i, u in ipairs(def.units) do
     local desired_unit_name = u.name or (resolved_group_name .. "_" .. i)
-    u.name = _resolve_unique_name(desired_unit_name, Unit.getByName)
+    u.name = _resolve_unique_name(desired_unit_name)
   end
 
   -- Update route waypoint 1 if present (keep relative shape; just shift first point to new anchor).
