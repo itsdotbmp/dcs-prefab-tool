@@ -102,12 +102,6 @@ sms.unit.destroy = function(u)
 end
 
 -- Sugar constructor: sms.unit("name") -> handle | nil + log.
-setmetatable(sms.unit, {
-  __call = function(_, name)
-    if not Unit.getByName(name) then
-      log.error("couldn't find unit '" .. tostring(name) .. "'")
-      return nil
-    end
-    return setmetatable({name = name}, {__index = sms.unit})
-  end,
-})
+-- The factory lives in sms.lua; this call wires it up using Unit.getByName
+-- as the existence check.
+sms._make_callable_handle(sms.unit, Unit.getByName, log)
