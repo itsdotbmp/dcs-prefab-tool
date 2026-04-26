@@ -85,11 +85,22 @@ end
 -- Auto-suffix name resolution
 -- ============================================================
 
--- getter: function(name) -> non-nil if name is taken (Group.getByName or Unit.getByName)
+-- Check whether `name` is taken by any group OR unit — DCS shares the
+-- name namespace across both, so a unit named "tank-1" makes
+-- Group.getByName("tank-1") return truthy too. We check both to ensure
+-- the resolved name is genuinely free in DCS.
+local function _name_taken(name)
+  return Group.getByName(name) ~= nil or Unit.getByName(name) ~= nil
+end
+
+-- Resolve a unique name using base + numeric suffix. Probes both group
+-- and unit namespaces; counter is a hint, probing is source of truth.
+-- The `getter` parameter is unused but kept for backward compat with
+-- existing call sites; future cleanup may remove it.
 local function _resolve_unique_name(base, getter)
-  if not getter(base) then return base end
+  if not _name_taken(base) then return base end
   local n = _name_counters[base] or 1
-  while getter(base .. "-" .. n) do
+  while _name_taken(base .. "-" .. n) do
     n = n + 1
   end
   _name_counters[base] = n + 1
