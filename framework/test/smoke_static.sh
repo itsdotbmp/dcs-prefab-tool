@@ -242,45 +242,45 @@ echo "==> [create] cleanup dead"
 # ----------------------------------------------------------------
 # Section 8: auto-suffix on name collision (within static namespace only)
 # ----------------------------------------------------------------
-echo "==> [auto-suffix] first 'crate' resolves to 'crate'"
-expect_eq_string "crate first" "
+echo "==> [auto-suffix] first '_smoke_static_crate' resolves to '_smoke_static_crate'"
+expect_eq_string "_smoke_static_crate first" "
   local s = sms.static.create({
-    name     = 'crate',
+    name     = '_smoke_static_crate',
     type     = 'iso_container',
     position = {x = ${SPAWN_X} + 700, y = 0, z = ${SPAWN_Z} + 700},
     country  = 'USA',
     category = 'Cargos',
   })
   return s and s:get_name() or 'NIL'
-" "crate"
+" "_smoke_static_crate"
 
-echo "==> [auto-suffix] second 'crate' resolves to 'crate-1'"
-expect_eq_string "crate second" "
+echo "==> [auto-suffix] second '_smoke_static_crate' resolves to '_smoke_static_crate-1'"
+expect_eq_string "_smoke_static_crate second" "
   local s = sms.static.create({
-    name     = 'crate',
+    name     = '_smoke_static_crate',
     type     = 'iso_container',
     position = {x = ${SPAWN_X} + 720, y = 0, z = ${SPAWN_Z} + 720},
     country  = 'USA',
     category = 'Cargos',
   })
   return s and s:get_name() or 'NIL'
-" "crate-1"
+" "_smoke_static_crate-1"
 
-echo "==> [auto-suffix] third 'crate' resolves to 'crate-2'"
-expect_eq_string "crate third" "
+echo "==> [auto-suffix] third '_smoke_static_crate' resolves to '_smoke_static_crate-2'"
+expect_eq_string "_smoke_static_crate third" "
   local s = sms.static.create({
-    name     = 'crate',
+    name     = '_smoke_static_crate',
     type     = 'iso_container',
     position = {x = ${SPAWN_X} + 740, y = 0, z = ${SPAWN_Z} + 740},
     country  = 'USA',
     category = 'Cargos',
   })
   return s and s:get_name() or 'NIL'
-" "crate-2"
+" "_smoke_static_crate-2"
 
 echo "==> [auto-suffix] cleanup"
 "${DCSSMS}" exec --code "
-  for _, name in ipairs({'crate', 'crate-1', 'crate-2'}) do
+  for _, name in ipairs({'_smoke_static_crate', '_smoke_static_crate-1', '_smoke_static_crate-2'}) do
     local s = sms.static(name)
     if s then s:destroy() end
   end
@@ -289,19 +289,19 @@ echo "==> [auto-suffix] cleanup"
 # ----------------------------------------------------------------
 # Section 9: namespace separation — static & group named the same coexist
 # ----------------------------------------------------------------
-echo "==> [namespace] static 'ns_test' and group 'ns_test' coexist (no over-probing)"
+echo "==> [namespace] static '_smoke_static_ns' and group '_smoke_static_ns' coexist (no over-probing)"
 expect_true "namespace separation" "
   local s = sms.static.create({
-    name     = 'ns_test',
+    name     = '_smoke_static_ns',
     type     = 'Hangar B',
     position = {x = ${SPAWN_X} + 800, y = 0, z = ${SPAWN_Z} + 800},
     country  = 'USA',
   })
   if not s then return false end
-  if s:get_name() ~= 'ns_test' then return false end
+  if s:get_name() ~= '_smoke_static_ns' then return false end
   -- Now spawn a group with the same name. It must succeed (separate namespace).
   local g = sms.group.create({
-    name     = 'ns_test',
+    name     = '_smoke_static_ns',
     position = {x = ${SPAWN_X} + 850, y = 0, z = ${SPAWN_Z} + 850},
     country  = 'USA',
     category = 'ground',
@@ -314,9 +314,9 @@ expect_true "namespace separation" "
 
 echo "==> [namespace] cleanup"
 "${DCSSMS}" exec --code "
-  local s = sms.static('ns_test')
+  local s = sms.static('_smoke_static_ns')
   if s then s:destroy() end
-  local g = sms.group('ns_test')
+  local g = sms.group('_smoke_static_ns')
   if g then g:destroy() end
 " >/dev/null
 
@@ -482,27 +482,27 @@ else
     if s then s:destroy() end
   " >/dev/null
 
-  echo "==> [clone] auto-suffix: first 'dup_clone' resolves to 'dup_clone'"
-  expect_eq_string "dup_clone first" "
+  echo "==> [clone] auto-suffix: first '_smoke_static_dup' resolves to '_smoke_static_dup'"
+  expect_eq_string "_smoke_static_dup first" "
     local s = sms.static.clone('${TEMPLATE_NAME}', {
-      name     = 'dup_clone',
+      name     = '_smoke_static_dup',
       position = {x = ${SPAWN_X} + 1100, y = 0, z = ${SPAWN_Z} + 1100},
     })
     return s and s:get_name() or 'NIL'
-  " "dup_clone"
+  " "_smoke_static_dup"
 
-  echo "==> [clone] auto-suffix: second 'dup_clone' resolves to 'dup_clone-1'"
-  expect_eq_string "dup_clone second" "
+  echo "==> [clone] auto-suffix: second '_smoke_static_dup' resolves to '_smoke_static_dup-1'"
+  expect_eq_string "_smoke_static_dup second" "
     local s = sms.static.clone('${TEMPLATE_NAME}', {
-      name     = 'dup_clone',
+      name     = '_smoke_static_dup',
       position = {x = ${SPAWN_X} + 1150, y = 0, z = ${SPAWN_Z} + 1150},
     })
     return s and s:get_name() or 'NIL'
-  " "dup_clone-1"
+  " "_smoke_static_dup-1"
 
   echo "==> [clone] cleanup duplicates"
   "${DCSSMS}" exec --code "
-    for _, name in ipairs({'dup_clone', 'dup_clone-1'}) do
+    for _, name in ipairs({'_smoke_static_dup', '_smoke_static_dup-1'}) do
       local s = sms.static(name)
       if s then s:destroy() end
     end
