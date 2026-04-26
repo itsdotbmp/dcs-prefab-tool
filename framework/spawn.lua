@@ -149,7 +149,11 @@ local function _build_dcs_unit(u_spec, anchor, category, base_unit_name, idx)
   if category == "airplane" or category == "helicopter" then
     if u_spec.alt        ~= nil then dcs_unit.alt        = u_spec.alt end
     if u_spec.alt_type   ~= nil then dcs_unit.alt_type   = u_spec.alt_type else dcs_unit.alt_type = "BARO" end
-    if u_spec.speed      ~= nil then dcs_unit.speed      = u_spec.speed end
+    if u_spec.speed      ~= nil then
+      dcs_unit.speed = u_spec.speed
+    elseif category == "airplane" then
+      dcs_unit.speed = 200  -- airplanes need forward speed or they stall; helicopters default to 0 (hover)
+    end
     if u_spec.payload    ~= nil then dcs_unit.payload    = u_spec.payload end
     if u_spec.callsign   ~= nil then dcs_unit.callsign   = u_spec.callsign end
     if u_spec.frequency  ~= nil then dcs_unit.frequency  = u_spec.frequency end

@@ -273,6 +273,29 @@ echo "==> [create] cleanup air"
 " >/dev/null
 
 # ----------------------------------------------------------------
+# Section 6b: sms.group.create — air with default speed
+# ----------------------------------------------------------------
+echo "==> [create] air F-16 with no explicit speed (default 200)"
+expect_true "air no-speed defaults" "
+  local g = sms.group.create({
+    name      = '_smoke_spawn_air_default_speed',
+    position  = {x = ${SPAWN_X}, y = 0, z = ${SPAWN_Z}},
+    country   = 'USA',
+    category  = 'airplane',
+    units     = {{ type = 'F-16C_50', alt = 5000 }},
+  })
+  if not g then return false end
+  local u = Unit.getByName('_smoke_spawn_air_default_speed_1')
+  return u ~= nil and u:isExist()
+"
+
+echo "==> [create] cleanup air-default-speed"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_spawn_air_default_speed')
+  if g then g:destroy() end
+" >/dev/null
+
+# ----------------------------------------------------------------
 # Section 7: auto-suffix on name collision
 # ----------------------------------------------------------------
 echo "==> [auto-suffix] first 'tank' resolves to 'tank'"
