@@ -102,12 +102,6 @@ sms.group.get_units = function(g)
 end
 
 -- Sugar constructor: sms.group("name") -> handle | nil + log.
-setmetatable(sms.group, {
-  __call = function(_, name)
-    if not Group.getByName(name) then
-      log.error("couldn't find group '" .. tostring(name) .. "'")
-      return nil
-    end
-    return setmetatable({name = name}, {__index = sms.group})
-  end,
-})
+-- The factory lives in sms.lua; this call wires it up using Group.getByName
+-- as the existence check.
+sms._make_callable_handle(sms.group, Group.getByName, log)
