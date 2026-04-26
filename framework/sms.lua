@@ -6,6 +6,16 @@
 sms = sms or {}
 sms.version = "0.1.0"
 
+-- Build an entity handle for `name` without verifying the entity exists.
+-- Used by sms._make_callable_handle (which adds the existence check) and by
+-- sms.events (which needs to wrap units that have just died — Unit.getByName
+-- returns nil for them, but a handle whose :is_alive() returns false and
+-- whose :get_name() works from the cached name field is still useful for
+-- post-mortem event reporting).
+sms._make_handle = function(module, name)
+  return setmetatable({name = name}, {__index = module})
+end
+
 -- Set up a callable handle factory on `module`. After this, calling
 -- `module("name")` returns a {name=name} handle (or nil + log) based on
 -- whether `dcs_getter(name)` returns non-nil.
@@ -25,7 +35,7 @@ sms._make_callable_handle = function(module, dcs_getter, module_log)
         module_log.error("couldn't find " .. type_name .. " '" .. tostring(name) .. "'")
         return nil
       end
-      return setmetatable({name = name}, {__index = module})
+      return sms._make_handle(module, name)
     end,
   })
 end
