@@ -50,3 +50,83 @@ for k, v in pairs(world.event) do
     _id_to_name[v] = lname
   end
 end
+
+-- Connection handle metatable. __index points at sms.events so
+-- conn:disconnect() dispatches to sms.events.disconnect(conn). Identity-
+-- checked in disconnect/is_active so callers can't slip arbitrary tables in.
+local _conn_mt = {__index = sms.events}
+
+local function _is_connection(c)
+  return type(c) == "table" and getmetatable(c) == _conn_mt
+end
+
+-- Lazy world-handler install. Stub for Task 3 (synthetic-only); real
+-- world.addEventHandler call lands in Task 4.
+local function _ensure_world_handler()
+  -- Implementation in Task 4. For now this is a no-op so connect() works
+  -- for the synthetic emit() path without needing live DCS.
+end
+
+sms.events.connect = function(name, fn)
+  if type(name) ~= "string" then
+    log.error("connect: name must be a string, got " .. type(name))
+    return nil
+  end
+  if type(fn) ~= "function" then
+    log.error("connect: fn must be a function, got " .. type(fn))
+    return nil
+  end
+  _ensure_world_handler()
+  local conn = setmetatable({name = name, fn = fn, active = true}, _conn_mt)
+  _subscribers[name] = _subscribers[name] or {}
+  table.insert(_subscribers[name], conn)
+  return conn
+end
+
+sms.events.emit = function(name, ...)
+  if type(name) ~= "string" then
+    log.error("emit: name must be a string, got " .. type(name))
+    return
+  end
+  local subs = _subscribers[name]
+  if not subs then return end
+  -- Snapshot active subscribers before iterating. Connections that are
+  -- inactive BEFORE emit are excluded here. Connections disconnected DURING
+  -- dispatch (mid-emit) are already in the snapshot and fire unconditionally
+  -- this iteration (Godot semantics). Subscribers added during dispatch are
+  -- NOT seen by the in-flight emit; they take effect on the next emit.
+  local snapshot = {}
+  for _, c in ipairs(subs) do
+    if c.active then snapshot[#snapshot + 1] = c end
+  end
+  for _, conn in ipairs(snapshot) do
+    local ok, err = pcall(conn.fn, ...)
+    if not ok then
+      log.error("subscriber for '" .. name .. "' raised: " .. tostring(err))
+    end
+  end
+end
+
+sms.events.disconnect = function(conn)
+  if not _is_connection(conn) then
+    log.error("disconnect: argument must be a Connection handle")
+    return false
+  end
+  if not conn.active then return false end
+  conn.active = false
+  local subs = _subscribers[conn.name]
+  if subs then
+    for i, c in ipairs(subs) do
+      if c == conn then
+        table.remove(subs, i)
+        break
+      end
+    end
+  end
+  return true
+end
+
+sms.events.is_active = function(conn)
+  if not _is_connection(conn) then return false end
+  return conn.active == true
+end
