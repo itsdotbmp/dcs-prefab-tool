@@ -487,6 +487,35 @@ local function _adapt_task_for_category(task, category, g)
     end
     return
   end
+  -- hold(): "Nothing" works for air (DCS interprets as loiter) but DCS
+  -- rejects it as a runtime task on ground. Replace with a Mission to
+  -- the group's current position at speed 0 — that's how MOOSE / common
+  -- mission scripts stop a ground unit.
+  if task._sms_verb == "hold" then
+    if category ~= "airplane" and category ~= "helicopter" and g then
+      local cur = g:get_position()
+      if cur then
+        task.id = "Mission"
+        task.params = {
+          route = {
+            points = {
+              {
+                x            = cur.x,
+                y            = cur.z,
+                alt          = cur.y,
+                type         = "Turning Point",
+                action       = "Off Road",
+                speed        = 0,
+                speed_locked = true,
+                task         = { id = "ComboTask", params = { tasks = {} } },
+              },
+            },
+          },
+        }
+      end
+    end
+    return
+  end
   if task._sms_verb ~= "move_to" then return end
   local route = task.params and task.params.route
   local pt = route and route.points and route.points[1]
