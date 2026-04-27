@@ -283,11 +283,10 @@ echo "==> [apply] spawn air fixture _smoke_task_air"
 expect_true "air spawned" "
   local g = sms.group.create({
     name      = '_smoke_task_air',
-    position  = {x = ${SPAWN_X} + 5000, y = 5000, z = ${SPAWN_Z} + 5000},
+    position  = {x = ${SPAWN_X} + 5000, y = 0, z = ${SPAWN_Z} + 5000},
     country   = 'USA',
     category  = 'airplane',
-    altitude  = 5000,
-    units     = {{ type = 'F-16C_50' }},
+    units     = {{ type = 'F-16C_50', alt = 5000 }},
   })
   return g ~= nil
 "
