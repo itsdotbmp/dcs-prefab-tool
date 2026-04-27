@@ -642,6 +642,16 @@ expect_true "destroyed lookup nil" "
   return sms.static('_smoke_static_postdestroy') == nil
 "
 
+echo "==> [entity] method on stale handle hits is_alive gate -> nil + log (frame 2)"
+# Reconstruct a handle by name (bypassing the sms.static() callable so we get
+# a handle even though DCS no longer knows the name) and call get_position.
+# Exercises static.lua's is_alive gate against a name DCS has cleared, which
+# the same-frame variant of this test could not observe.
+expect_true "stale handle get_position nil" "
+  local s = setmetatable({name = '_smoke_static_postdestroy'}, {__index = sms.static})
+  return s:get_position() == nil
+"
+
 # ----------------------------------------------------------------
 # Section 16: tail-log assertion
 # ----------------------------------------------------------------
