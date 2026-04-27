@@ -100,7 +100,7 @@ local strike2 = sms.group.clone("Red-Strike-Package", {
 |---|---|---|---|---|
 | `alt` | number (meters) | ✓ for air | — | Altitude. DCS-native meters; matches rest of framework. |
 | `alt_type` | string | ✗ | `"BARO"` | `"BARO"` (MSL) or `"RADIO"` (AGL) |
-| `speed` | number (m/s) | ✗ | `0` | For airborne spawn, must be ≥ stall speed |
+| `speed` | number (m/s) | ✗ | `200` (airplane), `0` (helicopter) | For airborne airplane spawn, must be ≥ stall speed; airplanes need forward speed or they stall, helicopters can hover-spawn at 0 |
 | `payload` | table | ✗ | type defaults | `{ pylons, fuel, flare, chaff, gun }` |
 | `callsign` | table or number | ✗ | DCS auto | Numeric or `{name=..., 1, 1, 1}` |
 | `frequency` | number (Hz) | ✗ | type-specific | Radio frequency |
@@ -241,7 +241,7 @@ local world_z = anchor.z + (u_spec.offset and u_spec.offset.z or 0)
 -- For air units:
 --   unit.alt = u_spec.alt (meters)
 --   unit.alt_type = u_spec.alt_type or "BARO"
---   unit.speed = u_spec.speed or 0
+--   unit.speed = u_spec.speed (or 200 for airplanes; helicopters omit, defaulting to 0)
 -- For all units:
 --   unit.heading = sms.utils.deg_to_rad(u_spec.heading or 0)
 --   unit.psi = -unit.heading  (DCS internal; compute from heading)
@@ -274,7 +274,7 @@ Aircraft will fly toward the waypoint and then no-op (likely stalling or running
 
 ### Clone strategy
 
-Walk `env.mission.coalition[*].country[*].<category>.group[]` for a group with matching `name`. Sides are `red`/`blue`/`neutrals`; categories are `plane`/`helicopter`/`ground_units`/`ship`/`static` (DCS uses different category keys in the mission descriptor than `Group.Category.*`).
+Walk `env.mission.coalition[*].country[*].<category>.group[]` for a group with matching `name`. Sides are `red`/`blue`/`neutrals`; categories are `plane`/`helicopter`/`vehicle`/`ship`/`train` (DCS uses different category keys in the mission descriptor than `Group.Category.*` — note `vehicle` for ground, not `ground_units`).
 
 Walk implementation:
 
@@ -283,10 +283,11 @@ local function _find_template_in_mission(template_name)
   if not env.mission or not env.mission.coalition then return nil end
   local side_keys = {"red", "blue", "neutrals"}
   local category_keys = {
-    plane = "airplane",
+    plane      = "airplane",
     helicopter = "helicopter",
-    ground_units = "ground",
-    ship = "ship",
+    vehicle    = "ground",
+    ship       = "ship",
+    train      = "train",
   }
   for _, side_key in ipairs(side_keys) do
     local side = env.mission.coalition[side_key]
