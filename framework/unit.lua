@@ -135,6 +135,57 @@ sms.unit.destroy = function(u, opts)
   return true
 end
 
+-- Heading in degrees (0 = north, 90 = east). Computed from the forward
+-- axis of the unit's pose, projected to the horizontal plane and
+-- converted from radians. Returns nil + log if the unit is not alive.
+sms.unit.get_heading = function(u)
+  local name = _name_of(u)
+  if not sms.unit.is_alive(name) then
+    log.error("get_heading: '" .. tostring(name) .. "' no longer exists in mission")
+    return nil
+  end
+  local pos = Unit.getByName(name):getPosition()
+  -- DCS world coords: x = east, y = altitude, z = north. Forward is pos.x.
+  -- atan2(east, north) = heading from north, clockwise (DCS convention).
+  local heading_rad = math.atan2(pos.x.x, pos.x.z)
+  local heading_deg = heading_rad * 180 / math.pi
+  if heading_deg < 0 then heading_deg = heading_deg + 360 end
+  return heading_deg
+end
+
+-- Pitch in degrees, positive = nose up. Computed from the y-component
+-- (vertical) of the forward axis: asin(forward.y). Returns nil + log
+-- if the unit is not alive.
+sms.unit.get_pitch = function(u)
+  local name = _name_of(u)
+  if not sms.unit.is_alive(name) then
+    log.error("get_pitch: '" .. tostring(name) .. "' no longer exists in mission")
+    return nil
+  end
+  local pos = Unit.getByName(name):getPosition()
+  local pitch_rad = math.asin(pos.x.y)
+  return pitch_rad * 180 / math.pi
+end
+
+-- Altitude in meters. ASL (above sea level) by default; pass true for
+-- AGL (above ground level). Returns nil + log if the unit is not alive.
+sms.unit.get_altitude = function(u, agl)
+  local name = _name_of(u)
+  if not sms.unit.is_alive(name) then
+    log.error("get_altitude: '" .. tostring(name) .. "' no longer exists in mission")
+    return nil
+  end
+  local p = Unit.getByName(name):getPoint()
+  -- DCS world coords: y = altitude.
+  if not agl then
+    return p.y
+  end
+  -- AGL: subtract terrain height at the unit's horizontal position.
+  -- land.getHeight uses DCS-2D coords: input.y corresponds to vec3.z.
+  local terrain = land.getHeight({x = p.x, y = p.z})
+  return p.y - terrain
+end
+
 -- Sugar constructor: sms.unit("name") -> handle | nil + log.
 -- The factory lives in sms.lua; this call wires it up using Unit.getByName
 -- as the existence check.
