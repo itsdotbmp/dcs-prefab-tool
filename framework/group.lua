@@ -62,6 +62,31 @@ sms.group.get_coalition = function(g)
   return s
 end
 
+-- DCS Group.Category int -> normalized lowercase string. Inline (not in
+-- sms.utils) because no other module needs this mapping.
+local _category_str = {
+  [Group.Category.GROUND]     = "ground",
+  [Group.Category.AIRPLANE]   = "airplane",
+  [Group.Category.HELICOPTER] = "helicopter",
+  [Group.Category.SHIP]       = "ship",
+  [Group.Category.TRAIN]      = "train",
+}
+
+sms.group.get_category = function(g)
+  local name = _name_of(g)
+  if not sms.group.is_alive(name) then
+    log.error("get_category: '" .. tostring(name) .. "' no longer exists in mission")
+    return nil
+  end
+  local cat = Group.getByName(name):getCategory()
+  local s = _category_str[cat]
+  if not s then
+    log.error("get_category: '" .. tostring(name) .. "' returned unknown category " .. tostring(cat))
+    return nil
+  end
+  return s
+end
+
 sms.group.get_position = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
