@@ -152,6 +152,55 @@ SPAWN_Z=$("${DCSSMS}" exec --code '
 echo "==> using anchor x=${SPAWN_X} z=${SPAWN_Z}"
 
 # ----------------------------------------------------------------
+# Section 2b: spawn target group + synthetic shape for follow/attack/attack_in_area
+# These three builders need a real DCS handle to inspect IDs at build time,
+# so the synthetic shape tests live after target spawn.
+# ----------------------------------------------------------------
+echo "==> [build] spawn target fixture _smoke_task_target_grp"
+expect_true "target spawned" "
+  local g = sms.group.create({
+    name      = '_smoke_task_target_grp',
+    position  = {x = ${SPAWN_X} - 200, y = 0, z = ${SPAWN_Z} - 200},
+    country   = 'USA',
+    category  = 'ground',
+    units     = {{ type = 'AAV7' }},
+  })
+  return g ~= nil
+"
+
+echo "==> [build] follow(group_handle) returns air-only Follow task"
+expect_str "follow id" "return sms.task.follow(sms.group('_smoke_task_target_grp')).id" 'Follow'
+expect_str "follow verb tag" "return sms.task.follow(sms.group('_smoke_task_target_grp'))._sms_verb" 'follow'
+expect_true "follow air-only" "return sms.task.follow(sms.group('_smoke_task_target_grp'))._sms_air_only == true"
+
+echo "==> [build] follow with non-handle target -> nil"
+expect_true "follow bad target" 'return sms.task.follow("nope") == nil'
+
+echo "==> [build] follow with bad opts.offset -> nil"
+expect_true "follow bad offset" "return sms.task.follow(sms.group('_smoke_task_target_grp'), {offset='not vec3'}) == nil"
+
+echo "==> [build] attack(group_handle) returns air-only AttackGroup task"
+expect_str "attack id" "return sms.task.attack(sms.group('_smoke_task_target_grp')).id" 'AttackGroup'
+expect_str "attack verb tag" "return sms.task.attack(sms.group('_smoke_task_target_grp'))._sms_verb" 'attack'
+expect_true "attack air-only" "return sms.task.attack(sms.group('_smoke_task_target_grp'))._sms_air_only == true"
+
+echo "==> [build] attack with non-handle target -> nil"
+expect_true "attack bad target" 'return sms.task.attack("nope") == nil'
+
+echo "==> [build] attack_in_area(circular area) returns air-only EngageTargetsInZone"
+expect_str "attack_in_area id" "
+  local a = sms.area.create_circular({x=${SPAWN_X}, y=0, z=${SPAWN_Z}}, 500, '_smoke_task_zone')
+  return sms.task.attack_in_area(a).id
+" 'EngageTargetsInZone'
+expect_true "attack_in_area air-only" "
+  local a = sms.area.create_circular({x=${SPAWN_X}, y=0, z=${SPAWN_Z}}, 500, '_smoke_task_zone')
+  return sms.task.attack_in_area(a)._sms_air_only == true
+"
+
+echo "==> [build] attack_in_area with non-area target -> nil"
+expect_true "attack_in_area bad target" 'return sms.task.attack_in_area("nope") == nil'
+
+# ----------------------------------------------------------------
 # Section 3: live ground apply — move_to + air-only rejection
 # ----------------------------------------------------------------
 echo "==> [apply] spawn ground fixture _smoke_task_ground"
