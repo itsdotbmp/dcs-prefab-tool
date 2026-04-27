@@ -542,4 +542,72 @@ log_window=$("${DCSSMS}" tail-log --grep '\[sms.spawn\]' -n 200)
 echo "${log_window}" | grep -q "unknown country" \
   || { echo "FAIL: missing log line for unknown country"; echo "${log_window}"; exit 1; }
 
+# ----------------------------------------------------------------
+# Section 11: aircraft 4-unit cap (issue #5)
+# DCS silently truncates aircraft groups above 4 units. Framework
+# rejects with log + nil rather than auto-truncating; the cap applies
+# to airplane and helicopter categories.
+# ----------------------------------------------------------------
+echo "==> [create] 4-unit airplane group accepted (at the cap)"
+expect_true "4 air units ok" "
+  local g = sms.group.create({
+    name      = '_smoke_spawn_cap_4',
+    position  = {x = ${SPAWN_X}, y = 0, z = ${SPAWN_Z}},
+    country   = 'USA',
+    category  = 'airplane',
+    units     = {
+      { type = 'F-16C_50', alt = 5000 },
+      { type = 'F-16C_50', alt = 5000 },
+      { type = 'F-16C_50', alt = 5000 },
+      { type = 'F-16C_50', alt = 5000 },
+    },
+  })
+  return g ~= nil
+"
+
+echo "==> [create] cleanup 4-aircraft cap test"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_spawn_cap_4')
+  if g then g:destroy() end
+" >/dev/null
+
+echo "==> [create] 5-unit airplane group rejected (above the cap) -> nil"
+expect_true "5 air units rejected" "
+  return sms.group.create({
+    name = '_smoke_spawn_cap_5',
+    position = {x = ${SPAWN_X}, y = 0, z = ${SPAWN_Z}},
+    country = 'USA',
+    category = 'airplane',
+    units = {
+      { type = 'F-16C_50', alt = 5000 },
+      { type = 'F-16C_50', alt = 5000 },
+      { type = 'F-16C_50', alt = 5000 },
+      { type = 'F-16C_50', alt = 5000 },
+      { type = 'F-16C_50', alt = 5000 },
+    },
+  }) == nil
+"
+
+echo "==> [create] 24-unit ground group accepted (cap is air-only)"
+expect_true "ground large group ok" "
+  local units = {}
+  for i = 1, 8 do
+    units[i] = { type = 'AAV7', offset = {x = 0, y = 0, z = i * 20} }
+  end
+  local g = sms.group.create({
+    name     = '_smoke_spawn_cap_ground',
+    position = {x = ${SPAWN_X}, y = 0, z = ${SPAWN_Z}},
+    country  = 'USA',
+    category = 'ground',
+    units    = units,
+  })
+  return g ~= nil
+"
+
+echo "==> [create] cleanup ground cap test"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_spawn_cap_ground')
+  if g then g:destroy() end
+" >/dev/null
+
 echo "smoke ok"
