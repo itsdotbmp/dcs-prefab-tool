@@ -15,7 +15,7 @@ DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 # Fixture cleanup: nukes anything this smoke spawns, even on mid-run
 # abort (set -e). Idempotent — destroys only what currently exists.
 # Keep this list in sync with the names this smoke creates.
-SMOKE_FIXTURES="_smoke_static_cargo _smoke_static_clone _smoke_static_coords _smoke_static_crate _smoke_static_dead _smoke_static_dup _smoke_static_entity _smoke_static_hangar _smoke_static_heading _smoke_static_in _smoke_static_ns _smoke_static_out _smoke_static_pitch _smoke_static_postdestroy"
+SMOKE_FIXTURES="_smoke_static_cargo _smoke_static_clone _smoke_static_coords _smoke_static_crate _smoke_static_dead _smoke_static_dup _smoke_static_entity _smoke_static_hangar _smoke_static_heading _smoke_static_in _smoke_static_ns _smoke_static_out _smoke_static_pitch _smoke_static_postdestroy _smoke_static_typecheck"
 
 cleanup_smoke_fixtures() {
   [ -z "${SMOKE_FIXTURES}" ] && return 0

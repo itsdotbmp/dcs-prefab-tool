@@ -18,7 +18,7 @@ DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 # auto-suffix variants (tank-1, tank-2, ...) from the auto-suffix
 # section, since those are real groups in DCS even though the smoke
 # only writes the base name.
-SMOKE_FIXTURES="_smoke_spawn_air _smoke_spawn_air_default_speed _smoke_spawn_clone _smoke_spawn_clone_dup _smoke_spawn_heading _smoke_spawn_multi _smoke_spawn_single tank tank-1 tank-2 tank-3 tank-4"
+SMOKE_FIXTURES="_smoke_spawn_air _smoke_spawn_air_default_speed _smoke_spawn_cap_4 _smoke_spawn_cap_5 _smoke_spawn_cap_ground _smoke_spawn_clone _smoke_spawn_clone_dup _smoke_spawn_heading _smoke_spawn_multi _smoke_spawn_single tank tank-1 tank-2 tank-3 tank-4 reload_tank reload_tank-1 reload_tank-2"
 
 cleanup_smoke_fixtures() {
   [ -z "${SMOKE_FIXTURES}" ] && return 0
