@@ -173,6 +173,8 @@ The single global namespace. Idempotent on reload.
 
 ### `sms.utils` — `framework/utils.lua`
 
+Cross-cutting helpers shared across the framework. Scope is deliberately narrow — unit conversions, vec3 maths, and validation/lookup helpers that 2+ entity modules already needed. Failure mode: log + return nil (vec3 helpers log a contextual error; lookup helpers return nil silently so callers can wrap their own context).
+
 | Symbol | Purpose |
 |---|---|
 | `sms.utils.add_numbers(a, b)` | Smoke-test exerciser. Real, but trivial. |
@@ -180,6 +182,14 @@ The single global namespace. Idempotent on reload.
 | `sms.utils.rad_to_deg(rad)` | Inverse. |
 | `sms.utils.feet_to_meters(ft)` | Pilot-facing conversion (framework I/O is meters). |
 | `sms.utils.meters_to_feet(m)` | Inverse. |
+| `sms.utils.is_vec3(v)` | `bool` — structural check: table with numeric `x`, `y`, `z`. Silent (callers craft the contextual error). |
+| `sms.utils.vec3_length(v)` | `number` — 3D Euclidean length `sqrt(x² + y² + z²)`. Logs + returns nil on bad input. |
+| `sms.utils.vec3_distance(a, b)` | `number` — 3D Euclidean distance between two vec3s. Logs + returns nil on bad input. Pure maths; does not duck-type handles. |
+| `sms.utils.normalize_heading(deg)` | `number` — wrap any heading to `[0, 360)`. Handles negatives via Lua's mathematical modulo. Logs + returns nil on bad input. |
+| `sms.utils.bearing_to(from, to)` | `number` — compass bearing in **degrees** from one vec3 to another (0=north, 90=east, clockwise). Computed on the horizontal plane (xz); altitude is ignored. Logs + returns nil on bad input. |
+| `sms.utils.resolve_country(s)` | `int \| nil` — `country.id` lookup. Case-insensitive; spaces become underscores (`"United Kingdom"` → `country.id.UNITED_KINGDOM`). Silent on unknown / non-string. |
+| `sms.utils.coalition_int_to_str(c)` | `"red" \| "blue" \| "neutral" \| nil` — DCS coalition int → lowercase string. Silent on unknown int. |
+| `sms.utils.deep_copy(t)` | `t` — recursive copy of plain-table values. Non-tables pass through. Does not preserve metatables; does not handle cycles. |
 
 ### `sms.group` — `framework/group.lua` (+ `spawn.lua`, `events.lua`)
 

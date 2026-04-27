@@ -42,8 +42,8 @@ assert(type(sms.utils) == "table", "framework/utils.lua must be loaded first")
 local log = sms.log.module("sms.static")
 sms.static = sms.static or {}
 
--- DCS coalition int -> normalized lowercase string.
-local _coalition_str = {[0] = "neutral", [1] = "red", [2] = "blue"}
+-- DCS coalition int -> normalized lowercase string. Lookup now lives in
+-- sms.utils.coalition_int_to_str (issue #14).
 
 -- base_name -> next-index hint for auto-suffix. Lost on reload (probe recovers).
 local _name_counters = {}
@@ -72,18 +72,9 @@ local function _name_of(s)
   return nil
 end
 
-local function _is_vec3(v)
-  return type(v) == "table"
-     and type(v.x) == "number"
-     and type(v.y) == "number"
-     and type(v.z) == "number"
-end
-
-local function _resolve_country(s)
-  if type(s) ~= "string" then return nil end
-  local key = s:upper():gsub(" ", "_")
-  return country.id[key]
-end
+-- _is_vec3 / _resolve_country lifted to sms.utils (issue #14).
+local _is_vec3 = sms.utils.is_vec3
+local _resolve_country = sms.utils.resolve_country
 
 local function _name_taken(name)
   return StaticObject.getByName(name) ~= nil
@@ -103,14 +94,8 @@ local function _resolve_unique_name(base)
   return base .. "-" .. n
 end
 
-local function _deep_copy(t)
-  if type(t) ~= "table" then return t end
-  local copy = {}
-  for k, v in pairs(t) do
-    copy[k] = _deep_copy(v)
-  end
-  return copy
-end
+-- _deep_copy lifted to sms.utils.deep_copy (issue #14).
+local _deep_copy = sms.utils.deep_copy
 
 -- ============================================================
 -- Entity wrapper methods
@@ -152,7 +137,7 @@ sms.static.get_coalition = function(s)
     return nil
   end
   local c = StaticObject.getByName(name):getCoalition()
-  local s_str = _coalition_str[c]
+  local s_str = sms.utils.coalition_int_to_str(c)
   if not s_str then
     log.error("get_coalition: '" .. tostring(name) .. "' returned unknown coalition " .. tostring(c))
     return nil

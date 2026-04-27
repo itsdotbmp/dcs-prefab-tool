@@ -20,11 +20,12 @@
 -- See docs/superpowers/specs/2026-04-26-framework-unit-design.md.
 
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
+assert(type(sms.utils) == "table", "framework/utils.lua must be loaded first")
 local log = sms.log.module("sms.unit")
 sms.unit = sms.unit or {}
 
--- DCS coalition int -> normalized lowercase string.
-local _coalition_str = {[0] = "neutral", [1] = "red", [2] = "blue"}
+-- DCS coalition int -> normalized lowercase string. Lookup now lives in
+-- sms.utils.coalition_int_to_str (issue #14).
 
 -- Accept either a handle ({name=...}) or a raw name string; return the name.
 -- Returns nil for any other input (nil, number, boolean, table-without-name).
@@ -53,7 +54,7 @@ sms.unit.get_coalition = function(u)
     return nil
   end
   local c = Unit.getByName(name):getCoalition()
-  local s = _coalition_str[c]
+  local s = sms.utils.coalition_int_to_str(c)
   if not s then
     log.error("get_coalition: '" .. tostring(name) .. "' returned unknown coalition " .. tostring(c))
     return nil
@@ -148,9 +149,7 @@ sms.unit.get_heading = function(u)
   -- DCS world coords: x = east, y = altitude, z = north. Forward is pos.x.
   -- atan2(east, north) = heading from north, clockwise (DCS convention).
   local heading_rad = math.atan2(pos.x.x, pos.x.z)
-  local heading_deg = heading_rad * 180 / math.pi
-  if heading_deg < 0 then heading_deg = heading_deg + 360 end
-  return heading_deg
+  return sms.utils.normalize_heading(heading_rad * 180 / math.pi)
 end
 
 -- Pitch in degrees, positive = nose up. Computed from the y-component

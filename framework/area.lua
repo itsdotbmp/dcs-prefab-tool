@@ -34,6 +34,7 @@
 -- See docs/superpowers/specs/2026-04-26-framework-area-design.md.
 
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
+assert(type(sms.utils) == "table", "framework/utils.lua must be loaded first")
 local log = sms.log.module("sms.area")
 sms.area = sms.area or {}
 
@@ -41,12 +42,8 @@ sms.area = sms.area or {}
 -- Local helpers (private)
 -- ============================================================
 
-local function _validate_vec3(v)
-  return type(v) == "table"
-     and type(v.x) == "number"
-     and type(v.y) == "number"
-     and type(v.z) == "number"
-end
+-- _validate_vec3 lifted to sms.utils.is_vec3 (issue #14).
+local _validate_vec3 = sms.utils.is_vec3
 
 local function _point_in_circle(data, x, z)
   local dx = x - data.center.x
