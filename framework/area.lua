@@ -18,6 +18,7 @@
 --   :get_vertices()                             -- list of vec3 | nil + log on circle
 --   :is_vec3_in(vec3)                           -- bool
 --   :is_unit_in(sms.unit handle)                -- bool, strict handle check
+--   :is_static_in(sms.static handle)            -- bool, strict handle check
 --   :is_any_of_group_in(sms.group handle)       -- bool
 --   :is_all_of_group_in(sms.group handle)       -- bool
 --   :get_random_point()                         -- vec3 inside the area
@@ -25,7 +26,8 @@
 -- Failure model: log + return nil/false. Never throws.
 --
 -- Loading order: sms.lua -> log.lua -> group.lua -> unit.lua -> area.lua.
--- is_unit_in / is_*_of_group_in require sms.unit/sms.group at call time.
+-- is_unit_in / is_static_in / is_*_of_group_in require sms.unit/sms.static/sms.group
+-- at call time (loaded later in framework boot).
 -- Polygon get_random_point uses rejection sampling within the bounding box;
 -- triangulation-based replacement tracked in issue #4.
 --
@@ -240,6 +242,23 @@ sms.area.is_unit_in = function(a, u)
     return false
   end
   local p = sms.unit.get_position(u)
+  if not p then return false end
+  if a.kind == "circle" then
+    return _point_in_circle(a._data, p.x, p.z)
+  end
+  return _point_in_polygon(a._data.vertices, p.x, p.z)
+end
+
+sms.area.is_static_in = function(a, s)
+  if not sms._is_handle_of(a, sms.area) then
+    log.error("is_static_in: argument must be an sms.area handle")
+    return false
+  end
+  if not sms._is_handle_of(s, sms.static) then
+    log.error("is_static_in: target must be an sms.static handle")
+    return false
+  end
+  local p = sms.static.get_position(s)
   if not p then return false end
   if a.kind == "circle" then
     return _point_in_circle(a._data, p.x, p.z)
