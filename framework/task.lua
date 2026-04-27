@@ -589,8 +589,16 @@ end
 
 -- Push a task onto the group's task stack. Wraps Controller:pushTask
 -- via a one-frame deferred dispatch (same race-avoidance reason as
--- set_task). DCS pushTask is LIFO: the new task interrupts the current
--- one and runs to completion, then the previous task resumes.
+-- set_task).
+--
+-- DCS pushTask is *partially* LIFO: short-lived tasks like attack /
+-- bomb / land interrupt the current task, run to completion, and then
+-- the previous task resumes. But Mission tasks do NOT stack with each
+-- other — pushing a Mission on top of another Mission replaces the
+-- previous route, so push_task(move_to(B)) over set_task(move_to(A))
+-- behaves like set_task(move_to(B)) — the AI does not return to A.
+-- For "via B then to A" use a multi-waypoint route (planned for v1.1)
+-- or chain via timer/event callbacks.
 sms.group.push_task = function(g, task)
   local raw = _validate_apply("push_task", g, task)
   if not raw then return false end

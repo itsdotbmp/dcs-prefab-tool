@@ -40,7 +40,9 @@ strike:set_task(sms.task.combo({
 -- Move a ground group somewhere
 sms.group("convoy"):set_task(sms.task.move_to(rally_point))
 
--- Push an attack on top of an existing task; group resumes prior task when done
+-- Push an attack on top of an existing task; group resumes prior task when done.
+-- (Works because attack is a short-lived task. Pushing move_to / orbit over an
+-- existing Mission does NOT stack — it replaces. See the Apply API section.)
 defenders:push_task(sms.task.attack(intruder_group))
 ```
 
@@ -99,6 +101,8 @@ Two methods on `sms.group` metatable, installed by `task.lua`:
 group:set_task(task) → bool        -- replaces current; wraps Group:getController():setTask()
 group:push_task(task) → bool       -- pushes onto stack; wraps Group:getController():pushTask()
 ```
+
+**push_task is *partially* LIFO.** Short-lived tasks (`attack`, `bomb`, `land`) interrupt the current task, run to completion, and then the previous task resumes — exactly what you'd expect. But Mission tasks (`move_to`, `orbit`) do **not** stack with each other: pushing a Mission on top of another Mission replaces the previous route in DCS's controller, so `push_task(move_to(B))` over `set_task(move_to(A))` behaves like `set_task(move_to(B))` — the AI does not return to A. For "via B then to A" use a multi-waypoint route (planned for v1.1) or chain via `sms.timer.after` / events.
 
 **Returns `true`** on dispatch (DCS gives no completion feedback — completion handling stays event-driven via `sms.events`).
 

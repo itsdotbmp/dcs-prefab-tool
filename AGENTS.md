@@ -470,7 +470,7 @@ The fields are otherwise transparent to DCS. Manually-built task tables (no `_sm
 | Method | Returns |
 |---|---|
 | `:set_task(task)` | `true` on dispatch; `false` + log on bad input or air-only mismatch. Wraps `Group:getController():setTask`. |
-| `:push_task(task)` | `true` on dispatch; same failure modes. Wraps `Group:getController():pushTask`. LIFO — new task interrupts current; current resumes when new task ends. |
+| `:push_task(task)` | `true` on dispatch; same failure modes. Wraps `Group:getController():pushTask`. **Partially LIFO:** short-lived tasks (`attack`, `bomb`, `land`) interrupt and the previous task resumes when they finish. But Mission tasks (`move_to`, `orbit`) do **not** stack — pushing one over another replaces the previous route. For "via B then to A" semantics use a multi-waypoint route (v1.1) or chain via `sms.timer.after` / events. |
 
 **Out of v1:** `sequence` verb (use `push_task` LIFO ordering or event-driven retasking), ground-specific engage verbs (DCS ground engagement is ROE-driven, separate design problem), polygon-area `attack_in_area`, `pop_task`, current-task introspection (DCS doesn't expose it cleanly), per-waypoint task mutation.
 
