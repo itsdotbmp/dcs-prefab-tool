@@ -200,6 +200,7 @@ Constructor: `sms.group("name") → handle | nil + log`.
 | `:is_alive()` | `bool` (silent — false on missing). |
 | `:get_name()` | `string` (the name field, no validation). |
 | `:get_coalition()` | `"red" \| "blue" \| "neutral"`. |
+| `:get_category()` | `"ground" \| "airplane" \| "helicopter" \| "ship" \| "train"`. |
 | `:get_position()` | `vec3` (leader unit's position). |
 | `:get_units()` | List of `sms.unit` handles. |
 | `:destroy()` | `true` on success. |
@@ -428,6 +429,50 @@ sms.events.connect(sms.events.SHOT, function(evt)
   w:start_tracking()
 end)
 ```
+
+### `sms.task` — `framework/task.lua`
+
+Ergonomic builders for DCS task tables, plus runtime apply methods (`group:set_task`, `group:push_task`) installed on `sms.group`'s metatable. The split between *build* and *apply* keeps tasks as first-class values: a task can be stored, passed around, composed via `combo`, or built once and applied to multiple groups.
+
+Each builder returns a plain DCS task table with two private fields:
+
+- `_sms_verb` — string, used in apply-layer log messages
+- `_sms_air_only` — `true` for verbs DCS only honors on air groups; consumed by the apply-layer category check
+
+The fields are otherwise transparent to DCS. Manually-built task tables (no `_sms_*` tags) skip the air-only check at apply time — user's responsibility.
+
+**Builders:**
+
+| Function | Targets | DCS task | Categories |
+|---|---|---|---|
+| `sms.task.move_to(target)` | vec3 / sms.unit / sms.group / sms.static / sms.area | `Mission` (single waypoint at snapshot pos) | all |
+| `sms.task.hold()` | — | `Nothing` (DCS interprets per category: air loiters; ground stops) | all |
+| `sms.task.follow(target, opts?)` | sms.unit / sms.group; opts: `{offset = {x,y,z}}` | `Follow` | air (v1) |
+| `sms.task.orbit(pos, opts?)` | vec3; opts: `{altitude=5000, speed=200, pattern="Circle"\|"RaceTrack"}` | `Orbit` | air |
+| `sms.task.attack(target, opts?)` | sms.group / sms.unit; opts: `{weapon_type="Auto", expend="Auto", attack_qty}` | `AttackGroup` (group) / `AttackUnit` (unit) | air (v1) |
+| `sms.task.attack_in_area(area, opts?)` | circular sms.area; opts: `{altitude_min, altitude_max, weapon_type}` | `EngageTargetsInZone` | air (v1) |
+| `sms.task.bomb(target, opts?)` | vec3 / sms.area / sms.unit / sms.static; opts: `{altitude, weapon_type, expend, group_attack, direction}` | `Bombing` | air |
+| `sms.task.land(target, opts?)` | vec3 / sms.static / sms.unit / DCS Airbase; opts: `{duration=300}` | `Land` | air (incl. helo) |
+| `sms.task.combo({t1, t2, ...})` | array of task tables | `ComboTask` (parallel; propagates `_sms_air_only` if any constituent has it) | inherits |
+
+**Snapshot vs follow.** `move_to(unit)` reads `unit:get_position()` once at build time; if the unit moves before the task ends, the task still drives to the original location. For continuous tracking, use `follow(unit)`.
+
+**Air-only enforcement.** Six builders set `_sms_air_only = true`: `follow`, `orbit`, `attack`, `attack_in_area`, `bomb`, `land`. At apply time, `set_task`/`push_task` reads the flag and rejects-with-log if the group's category is not `airplane` or `helicopter`:
+
+```
+[sms.task] set_task: 'orbit' is air-only; group 'tank-1' is ground — not applied
+```
+
+**Weapon type strings** (accepted by builders that take `opts.weapon_type`): `"Auto"` (default), `"Guns"`, `"Rockets"`, `"Missiles"`, `"Bombs"`. Numeric DCS bitmasks are also accepted.
+
+**Apply API (on `sms.group`):**
+
+| Method | Returns |
+|---|---|
+| `:set_task(task)` | `true` on dispatch; `false` + log on bad input or air-only mismatch. Wraps `Group:getController():setTask`. |
+| `:push_task(task)` | `true` on dispatch; same failure modes. Wraps `Group:getController():pushTask`. LIFO — new task interrupts current; current resumes when new task ends. |
+
+**Out of v1:** `sequence` verb (use `push_task` LIFO ordering or event-driven retasking), ground-specific engage verbs (DCS ground engagement is ROE-driven, separate design problem), polygon-area `attack_in_area`, `pop_task`, current-task introspection (DCS doesn't expose it cleanly), per-waypoint task mutation.
 
 ---
 
