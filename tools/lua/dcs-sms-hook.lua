@@ -206,11 +206,18 @@ do
     return "null"
   end
 
+  -- Preserve Lua false in the response. The naive `(__ok and __ret) or nil`
+  -- short-circuits Lua false to nil before JSON encoding, making `return false`
+  -- and `return nil` indistinguishable to callers. Use a plain conditional so
+  -- false is forwarded to the JSON encoder (which serializes it as `false`).
+  local __return_value = nil
+  if __ok then __return_value = __ret end
+
   local __resp = {
     id             = __id,
     ok             = __ok,
     output         = table.concat(__out, '\n'),
-    return_value   = (__ok and __ret) or nil,
+    return_value   = __return_value,
     error          = (not __ok) and { message = tostring(__ret), traceback = "" } or nil,
     frame_executed = __frame,
     duration_ms    = __dur,

@@ -29,10 +29,7 @@ expect_false() {
   local code="$2"
   local result
   result=$("${DCSSMS}" exec --code "${code}")
-  # Bridge serializes Lua `false` as JSON `null` (and Lua `nil` also as `null`),
-  # so accept either. Tests using this helper care that the predicate is falsy,
-  # not the specific Lua type.
-  echo "${result}" | grep -qE '"return_value":(false|null)' \
+  echo "${result}" | grep -q '"return_value":false' \
     || { echo "FAIL: ${label}: ${result}"; exit 1; }
 }
 
