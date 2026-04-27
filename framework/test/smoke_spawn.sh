@@ -352,52 +352,57 @@ echo "==> [auto-suffix] cleanup"
 # authoritative (skipping the probe), the bug only surfaces across
 # mission reloads. This section forces that scenario by re-execing
 # spawn.lua mid-test.
-echo "==> [auto-suffix reload] first 'tank' resolves to 'tank'"
-expect_eq_string "reload tank first" "
+echo "==> [auto-suffix reload] first 'reload_tank' resolves to 'reload_tank'"
+expect_eq_string "reload_tank first" "
   local g = sms.group.create({
-    name      = 'tank',
+    name      = 'reload_tank',
     position  = {x = ${SPAWN_X}, y = 0, z = ${SPAWN_Z}},
     country   = 'USA',
     category  = 'ground',
     units     = {{ type = 'AAV7' }},
   })
   return g and g:get_name() or 'NIL'
-" "tank"
+" "reload_tank"
 
-echo "==> [auto-suffix reload] second 'tank' resolves to 'tank-1'"
-expect_eq_string "reload tank second" "
+echo "==> [auto-suffix reload] second 'reload_tank' resolves to 'reload_tank-1'"
+expect_eq_string "reload_tank second" "
   local g = sms.group.create({
-    name      = 'tank',
+    name      = 'reload_tank',
     position  = {x = ${SPAWN_X}, y = 0, z = ${SPAWN_Z}},
     country   = 'USA',
     category  = 'ground',
     units     = {{ type = 'AAV7' }},
   })
   return g and g:get_name() or 'NIL'
-" "tank-1"
+" "reload_tank-1"
 
 echo "==> [auto-suffix reload] reload spawn.lua to wipe _name_counters"
 "${DCSSMS}" exec --file spawn.lua >/dev/null
 
-echo "==> [auto-suffix reload] post-reload 'tank' must probe and resolve to 'tank-2'"
+echo "==> [auto-suffix reload] post-reload 'reload_tank' must probe and resolve to 'reload_tank-2'"
 # After the reload _name_counters is empty, so the counter would naively
-# pick suffix 1 — but 'tank' and 'tank-1' still exist as live groups, so
-# probing must skip past them. Asserting 'tank-2' (not 'tank' or 'tank-1')
-# proves the probe is still the source of truth.
-expect_eq_string "reload tank post-reload" "
+# pick suffix 1 — but 'reload_tank' and 'reload_tank-1' still exist as
+# live groups, so probing must skip past them. Asserting 'reload_tank-2'
+# (not 'reload_tank' or 'reload_tank-1') proves the probe is still the
+# source of truth.
+#
+# Uses 'reload_tank' (not 'tank') so the test is independent of section
+# 7's _name_counters['tank'] state — the counter is module-private and
+# persists across cleanup of the live groups.
+expect_eq_string "reload_tank post-reload" "
   local g = sms.group.create({
-    name      = 'tank',
+    name      = 'reload_tank',
     position  = {x = ${SPAWN_X}, y = 0, z = ${SPAWN_Z}},
     country   = 'USA',
     category  = 'ground',
     units     = {{ type = 'AAV7' }},
   })
   return g and g:get_name() or 'NIL'
-" "tank-2"
+" "reload_tank-2"
 
 echo "==> [auto-suffix reload] cleanup"
 "${DCSSMS}" exec --code "
-  for _, name in ipairs({'tank', 'tank-1', 'tank-2'}) do
+  for _, name in ipairs({'reload_tank', 'reload_tank-1', 'reload_tank-2'}) do
     local g = sms.group(name)
     if g then g:destroy() end
   end
