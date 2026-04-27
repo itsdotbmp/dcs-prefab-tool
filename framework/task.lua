@@ -463,10 +463,41 @@ local function _validate_apply(method, group_handle, task)
   return raw
 end
 
+-- Rewrite move_to waypoint fields to match the destination group's
+-- category. DCS's Mission task uses different waypoint actions per
+-- category — "Turning Point" for aircraft (with alt_type "BARO"),
+-- "Off Road" for ground/ship/train. The build-time builder doesn't
+-- know which group will receive the task, so the apply layer adapts.
+-- Recurses into combo so a move_to nested inside a combo is fixed up
+-- the same way. Mutates in place; idempotent across re-applies.
+local function _adapt_task_for_category(task, category)
+  if type(task) ~= "table" then return end
+  if task._sms_verb == "combo" then
+    local subtasks = task.params and task.params.tasks
+    if type(subtasks) == "table" then
+      for _, sub in ipairs(subtasks) do _adapt_task_for_category(sub, category) end
+    end
+    return
+  end
+  if task._sms_verb ~= "move_to" then return end
+  local pt = task.params
+            and task.params.route
+            and task.params.route.points
+            and task.params.route.points[1]
+  if not pt then return end
+  if category == "airplane" or category == "helicopter" then
+    pt.action   = "Turning Point"
+    pt.alt_type = pt.alt_type or "BARO"
+  else
+    pt.action = "Off Road"
+  end
+end
+
 -- Replace the group's current task. Wraps Controller:setTask.
 sms.group.set_task = function(g, task)
   local raw = _validate_apply("set_task", g, task)
   if not raw then return false end
+  _adapt_task_for_category(task, g:get_category())
   local controller = raw:getController()
   if not controller then
     log.error("set_task: group '" .. tostring(g.name) .. "' has no controller")
@@ -486,6 +517,7 @@ end
 sms.group.push_task = function(g, task)
   local raw = _validate_apply("push_task", g, task)
   if not raw then return false end
+  _adapt_task_for_category(task, g:get_category())
   local controller = raw:getController()
   if not controller then
     log.error("push_task: group '" .. tostring(g.name) .. "' has no controller")
