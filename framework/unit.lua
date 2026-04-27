@@ -91,13 +91,44 @@ sms.unit.get_group = function(u)
   return sms.group(group_name)
 end
 
-sms.unit.destroy = function(u)
+-- destroy(u, opts) — silently removes the unit from the mission. By default
+-- DCS fires NO event for this (it's not a "death", it's a removal). Pass
+-- {emit_event = true} to also synthesize a DEAD event onto the sms.events
+-- bus after the unit is gone. Useful when reactive code (g:connect(DEAD),
+-- subscribers, etc.) should treat a programmatic destroy the same as a
+-- combat death.
+sms.unit.destroy = function(u, opts)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
     log.error("destroy: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
+  -- If asked to emit a DEAD event, capture the group name BEFORE destroy.
+  -- After Unit:destroy() the unit is gone and the raw DCS object can no
+  -- longer answer :getGroup().
+  local group_name = nil
+  if opts and opts.emit_event then
+    local raw = Unit.getByName(name)
+    local ok, g = pcall(raw.getGroup, raw)
+    if ok and g then
+      local ok2, gn = pcall(g.getName, g)
+      if ok2 then group_name = gn end
+    end
+  end
   Unit.getByName(name):destroy()
+  if opts and opts.emit_event then
+    if sms.events and sms.events.emit then
+      sms.events.emit("dead", {
+        id   = world.event.S_EVENT_DEAD,
+        name = "dead",
+        time = timer.getTime(),
+        initiator = sms._make_handle(sms.unit, name),
+        initiator_group_name = group_name,
+      })
+    else
+      log.error("destroy: emit_event=true requested but sms.events not loaded")
+    end
+  end
   return true
 end
 
