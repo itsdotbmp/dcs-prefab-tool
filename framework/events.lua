@@ -17,12 +17,15 @@
 --   g:connect(name, fn)                        -> Connection | nil + log
 --
 -- DCS event payload is normalized into {name, id, time, initiator,
--- initiator_group_name, target, weapon_type, place_name}. initiator/target
--- are sms.unit handles (returned even for dead units; :is_alive() returns
--- false). initiator_group_name is captured from the raw DCS object at event
--- time so g:connect filters work even when the initiator is already dead
--- (sms.unit.get_group refuses dead units). User-emitted signals pass args
--- verbatim.
+-- initiator_group_name, target, weapon_type, weapon, place_name}.
+-- initiator/target are sms.unit handles (returned even for dead units;
+-- :is_alive() returns false). initiator_group_name is captured from the
+-- raw DCS object at event time so g:connect filters work even when the
+-- initiator is already dead (sms.unit.get_group refuses dead units).
+-- weapon_type (string) is always populated when raw.weapon is present;
+-- weapon (an sms.weapon handle) is populated lazily only when the
+-- sms.weapon module is loaded — see _normalize_event for the upgrade
+-- site. User-emitted signals pass args verbatim.
 --
 -- g:connect semantic: for DEAD specifically, fires once when the group is
 -- fully dead (last unit just died). For all other entity-scoped events,
