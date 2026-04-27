@@ -8,7 +8,7 @@
 ## Repo layout
 
 - `tools/` — host-side Go tooling. Currently: a CLI (`dcs-sms.exe`) that executes Lua snippets in a running DCS mission and reads back structured results. Hook for DCS lives at `tools/lua/dcs-sms-hook.lua` and is embedded into the binary.
-- `framework/` — in-DCS Lua framework. Modules: `sms`, `sms.log`, `sms.utils`, `sms.group`, `sms.unit`, `sms.area`, `sms.timer`, `sms.spawn` (factories on `sms.group`), `sms.static`, `sms.events`. See [`AGENTS.md`](AGENTS.md) for the surface and conventions.
+- `framework/` — in-DCS Lua framework. Modules: `sms`, `sms.log`, `sms.utils`, `sms.group`, `sms.unit`, `sms.area`, `sms.timer`, `sms.spawn` (factories on `sms.group`), `sms.static`, `sms.events`, `sms.weapon`. See [`AGENTS.md`](AGENTS.md) for the surface and conventions.
 - `docs/superpowers/specs/` — design documents for each sub-project.
 - `docs/superpowers/plans/` — implementation plans.
 

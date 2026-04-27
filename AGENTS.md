@@ -138,7 +138,7 @@ A handle is a small `{name = "..."}` table with a metatable whose `__index` poin
 The bridge currently loads framework files via `net.dostring_in` in this order:
 
 ```
-sms.lua → log.lua → utils.lua → group.lua → unit.lua → area.lua → timer.lua → spawn.lua → static.lua → events.lua
+sms.lua → log.lua → utils.lua → group.lua → unit.lua → area.lua → timer.lua → spawn.lua → static.lua → events.lua → weapon.lua
 ```
 
 Each module asserts the dependencies it actually uses. When adding a new module, decide where it slots in based on what it needs and append the assert.
@@ -214,6 +214,9 @@ Constructor: `sms.unit("name") → handle | nil + log`.
 | `:get_position()` | `vec3`. |
 | `:get_type()` | DCS type name string (e.g. `"M-2000C"`, `"T-72B"`). |
 | `:get_group()` | `sms.group` handle. |
+| `:get_heading()` | Heading in **degrees**, 0–360 (0=north, 90=east). |
+| `:get_pitch()` | Pitch in **degrees**, positive = nose up. |
+| `:get_altitude(agl?)` | Altitude in **meters**. ASL by default; pass `true` for AGL (subtracts terrain height). |
 | `:destroy(opts?)` | `true`. With `{emit_event = true}`, also synthesizes a DEAD event onto `sms.events` so reactive code treats programmatic destroy like a combat death. |
 | `:connect(event_name, fn)` | `Connection`. **From `events.lua`.** Filter by `evt.initiator.name == self.name`. |
 
@@ -297,6 +300,8 @@ Pub/sub bus over DCS world events plus user-emittable signals. Wraps DCS's singl
 
 **Event constants:** every `world.event.S_EVENT_FOO` is mirrored as `sms.events.FOO = "foo"`. Examples: `sms.events.SHOT`, `sms.events.HIT`, `sms.events.KILL`, `sms.events.DEAD`, `sms.events.BIRTH`, `sms.events.TAKEOFF`, `sms.events.LAND`, `sms.events.CRASH`, `sms.events.EJECTION`, `sms.events.PILOT_DEAD`, `sms.events.ENGINE_STARTUP`, `sms.events.ENGINE_SHUTDOWN`. The full list comes from DCS — iterate `world.event` if you need to confirm.
 
+One **fabricated** constant added by `sms.weapon`: `sms.events.WEAPON_IMPACT = "weapon_impact"`. Fired by the weapon tracker when a tracked weapon's DCS object stops existing. Payload: `{weapon, impact_position, time}`.
+
 | Function | Returns |
 |---|---|
 | `sms.events.connect(name, fn)` | `Connection` handle. `fn` receives a normalized event payload (see below). |
@@ -314,7 +319,8 @@ Pub/sub bus over DCS world events plus user-emittable signals. Wraps DCS's singl
   initiator = <sms.unit handle | nil>,        -- always a wrapped handle, even if dead
   initiator_group_name = <string | nil>,      -- captured live for dead-init events
   target = <sms.unit handle | nil>,
-  weapon_type = <string | nil>,               -- DCS type name, no full weapon object yet
+  weapon_type = <string | nil>,               -- DCS type name (back-compat string)
+  weapon = <sms.weapon handle | nil>,         -- present on SHOT/HIT when sms.weapon is loaded
   place_name = <string | nil>,                -- airbase name for takeoff/land
 }
 ```
@@ -332,6 +338,86 @@ group_handle:connect(sms.events.HIT, fn)       -- fires per-unit-hit for any uni
 ```
 
 Entity sugar only accepts events with a meaningful `initiator` field (BIRTH, DEAD, HIT, KILL, TAKEOFF, LAND, CRASH, EJECTION, PILOT_DEAD, SHOT, ENGINE_STARTUP, ENGINE_SHUTDOWN, REFUELING, REFUELING_STOP, PLAYER_ENTER_UNIT, PLAYER_LEAVE_UNIT, HUMAN_FAILURE, UNIT_LOST, SHOOTING_START, SHOOTING_END, LANDING_QUALITY_MARK, LANDING_AFTER_EJECTION, EMERGENCY_LANDING). Other events return nil + log if you try entity-scoping them.
+
+### `sms.weapon` — `framework/weapon.lua`
+
+Wraps DCS weapon objects from SHOT/HIT events. **Not name-addressable** — `Weapon.getByName` does not exist in DCS. The only constructor is `sms.weapon.wrap(raw)`, called automatically by `sms.events` to populate `evt.weapon`.
+
+State machine (forward-only): `created → tracking → impacted` (or `created/tracking → destroyed`).
+
+**Constructor:**
+
+| Function | Returns |
+|---|---|
+| `sms.weapon.wrap(raw_dcs_weapon)` | Handle. Snapshots release-time state; usable after the DCS object is gone. |
+
+**Always-available getters** (snapshotted at wrap; valid in any state):
+
+| Method | Returns |
+|---|---|
+| `:get_name()` | DCS-assigned name (usually numeric string). |
+| `:get_type()` | DCS type name. |
+| `:get_category()` | `"bomb" \| "missile" \| "rocket" \| "shell" \| "torpedo"`. |
+| `:get_coalition()` | `"red" \| "blue" \| "neutral"`. |
+| `:get_country()` | Lowercase country name. |
+| `:get_launcher()` | `sms.unit` handle, or nil if launcher absent. |
+| `:get_state()` | `"created" \| "tracking" \| "impacted" \| "destroyed"`. |
+| `:get_release_position()` | `vec3` at launcher's release time (nil if no launcher). |
+| `:get_release_heading()` | Heading in **degrees** at release. |
+| `:get_release_pitch()` | Pitch in **degrees** at release. |
+| `:get_release_altitude_asl()` | Meters ASL at release. |
+| `:get_release_altitude_agl()` | Meters AGL at release. |
+| `:is_bomb()` / `:is_missile()` / `:is_rocket()` / `:is_shell()` / `:is_torpedo()` | `bool` (silent — false on bad input). |
+
+**Tracking lifecycle:**
+
+| Method | Returns |
+|---|---|
+| `:start_tracking(opts?)` | `bool`. `opts = {rate = 60, ip_distance = 50}`. Idempotent (false on second call). |
+| `:stop_tracking()` | `bool`. Returns to `"created"`. Does NOT fire `on_impact` — explicit abort. |
+| `:is_tracking()` | `bool` (silent). |
+| `:on_tick(fn)` | Sets per-tick callback. Single-slot, last-write-wins. `fn(weapon)`. |
+| `:on_impact(fn)` | Sets impact callback. Single-slot. Fires once on natural impact (not on `stop_tracking()` or `destroy()`). `fn(weapon)`. |
+
+**Live getters** (state must be `"tracking"`; otherwise log + nil):
+
+| Method | Returns |
+|---|---|
+| `:is_alive()` | `bool` (silent). |
+| `:get_position()` | `vec3` from last poll (up to `1/rate` seconds stale). |
+| `:get_velocity()` | `vec3`. |
+| `:get_speed()` | `number`. |
+| `:get_target()` | `sms.unit` or `sms.static` handle, re-resolved each call (targets change mid-flight). |
+
+**Impact getters** (state must be `"impacted"`; otherwise log + nil):
+
+| Method | Returns |
+|---|---|
+| `:get_impact_position()` | `vec3` — extrapolated via `land.getIP` along last-known forward axis, falls back to last-known `pos.p`. |
+| `:get_last_known_position()` | `vec3` — raw last-polled position (unmassaged). |
+| `:get_impact_distance_from(target)` | `number` — Euclidean distance to a vec3 OR to any handle exposing `:get_position()` (duck-typed; works for `sms.unit`, `sms.static`, `sms.weapon`). |
+
+**Destroy:**
+
+| Method | Returns |
+|---|---|
+| `:destroy()` | `bool`. Stops tracking silently (no impact event), removes weapon from world. Idempotent. |
+
+**Bus integration:** `sms.events.WEAPON_IMPACT = "weapon_impact"` is fired when a tracked weapon impacts. Payload: `{weapon = handle, impact_position = vec3, time = sim_seconds}`.
+
+**Typical use:**
+
+```lua
+sms.events.connect(sms.events.SHOT, function(evt)
+  local w = evt.weapon
+  if not w or not w:is_bomb() then return end
+  if not range:is_vec3_in(w:get_release_position()) then return end
+  w:on_impact(function(weapon)
+    sms.log.info("impact " .. weapon:get_impact_distance_from(target_pos) .. "m from target")
+  end)
+  w:start_tracking()
+end)
+```
 
 ---
 
