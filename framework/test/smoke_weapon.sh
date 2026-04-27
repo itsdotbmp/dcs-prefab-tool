@@ -70,4 +70,90 @@ echo "${log_window}" | grep -q "wrap: argument must be a DCS weapon object" \
 echo "${log_window}" | grep -q "get_name: argument must be an sms.weapon handle" \
   || { echo "FAIL: missing log line for bad get_name arg"; echo "${log_window}"; exit 1; }
 
+echo "==> live DCS SHOT round-trip — spawn artillery and fire a shell"
+"${DCSSMS}" status | grep -q "fresh: *true" \
+  || { echo "FAIL: live DCS section requires fresh heartbeat (mission unpaused)"; exit 1; }
+
+# Spawn an M109 self-propelled howitzer far from origin to avoid colliding
+# with concurrent agents. Capture the resolved name (sms.spawn auto-suffixes).
+"${DCSSMS}" exec --code '
+  _G._sms_weapon_smoke = {
+    arty_group  = nil,
+    arty_unit   = nil,
+    target_pos  = {x = -49500, y = 0, z = -50000},  -- ~500m east of arty
+    shot_evt    = nil,   -- captured SHOT event
+    shot_count  = 0,     -- only track first shot
+  }
+  local g = sms.group.create({
+    name = "smoke_weapon_arty",
+    position = {x = -50000, y = 0, z = -50000},
+    country = "USA",
+    category = "ground",
+    units = {{ type = "M-109", offset = {x = 0, y = 0, z = 0}, heading = 90 }},
+  })
+  if g then
+    _G._sms_weapon_smoke.arty_group = g:get_name()
+    _G._sms_weapon_smoke.arty_unit  = g:get_units()[1]:get_name()
+  end
+' >/dev/null
+expect_true "artillery spawned" \
+  'return type(_G._sms_weapon_smoke.arty_unit) == "string" and _G._sms_weapon_smoke.arty_unit ~= ""'
+
+# Subscribe to SHOT and capture the first shell whose launcher is our arty.
+"${DCSSMS}" exec --code '
+  sms.events.connect(sms.events.SHOT, function(evt)
+    if _G._sms_weapon_smoke.shot_count > 0 then return end
+    if not evt.weapon then return end
+    local launcher = evt.weapon:get_launcher()
+    if not launcher or launcher.name ~= _G._sms_weapon_smoke.arty_unit then return end
+    _G._sms_weapon_smoke.shot_count = _G._sms_weapon_smoke.shot_count + 1
+    _G._sms_weapon_smoke.shot_evt = evt
+  end)
+' >/dev/null
+
+# Push a FireAtPoint task to the artillery. expendCnt=1 limits to one shell.
+"${DCSSMS}" exec --code '
+  local u = Unit.getByName(_G._sms_weapon_smoke.arty_unit)
+  if u then
+    local controller = u:getController()
+    controller:pushTask({
+      id = "FireAtPoint",
+      params = {
+        point     = { x = _G._sms_weapon_smoke.target_pos.x, y = _G._sms_weapon_smoke.target_pos.z },
+        radius    = 5,
+        expendQty = 1,
+        expendQtyEnabled = true,
+      },
+    })
+  end
+' >/dev/null
+
+# Wait for the shell to fire. M109 has a short prep time.
+sleep 20
+
+expect_true "SHOT event was captured" \
+  'return _G._sms_weapon_smoke.shot_evt ~= nil'
+expect_true "evt.weapon is an sms.weapon handle" \
+  'local e = _G._sms_weapon_smoke.shot_evt; return e and type(e.weapon) == "table" and type(e.weapon.get_name) == "function"'
+expect_str "evt.weapon:get_category() is shell" \
+  'return _G._sms_weapon_smoke.shot_evt.weapon:get_category()' 'shell'
+expect_true "evt.weapon:is_shell() is true" \
+  'return _G._sms_weapon_smoke.shot_evt.weapon:is_shell()'
+expect_true "evt.weapon:is_bomb() is false" \
+  'return _G._sms_weapon_smoke.shot_evt.weapon:is_bomb() == false'
+expect_true "evt.weapon:get_launcher() returns a unit handle" \
+  'local l = _G._sms_weapon_smoke.shot_evt.weapon:get_launcher(); return type(l) == "table" and l.name == _G._sms_weapon_smoke.arty_unit'
+expect_true "evt.weapon:get_state() is created" \
+  'return _G._sms_weapon_smoke.shot_evt.weapon:get_state() == "created"'
+expect_true "evt.weapon:get_release_position() returns a vec3" \
+  'local p = _G._sms_weapon_smoke.shot_evt.weapon:get_release_position(); return p ~= nil and type(p.x) == "number" and type(p.y) == "number" and type(p.z) == "number"'
+expect_true "evt.weapon_type back-compat string still present" \
+  'return type(_G._sms_weapon_smoke.shot_evt.weapon_type) == "string"'
+
+# Cleanup. Best-effort.
+"${DCSSMS}" exec --code '
+  local g = Group.getByName(_G._sms_weapon_smoke.arty_group)
+  if g then pcall(g.destroy, g) end
+' >/dev/null
+
 echo "smoke ok"

@@ -111,6 +111,13 @@ local function _normalize_event(raw)
   if raw.weapon then
     local ok, t = pcall(raw.weapon.getTypeName, raw.weapon)
     if ok and t then evt.weapon_type = t end
+    -- Lazy upgrade: if sms.weapon is loaded, also expose the wrapped
+    -- handle as evt.weapon. If sms.weapon isn't loaded, evt.weapon stays
+    -- nil (current behavior). Closes #10.
+    if sms.weapon and sms.weapon.wrap then
+      local w = sms.weapon.wrap(raw.weapon)
+      if w then evt.weapon = w end
+    end
   end
   if raw.place then
     local ok, p = pcall(raw.place.getName, raw.place)
