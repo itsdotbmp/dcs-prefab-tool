@@ -117,11 +117,14 @@ sms.unit.destroy = function(u, opts)
   end
   Unit.getByName(name):destroy()
   if opts and opts.emit_event then
+    -- emit_event requires both sms.events and sms.timer to be loaded.
+    -- The framework load order guarantees this: events.lua loads after
+    -- timer.lua, so if events is present, timer is too.
     if sms.events and sms.events.emit then
       sms.events.emit("dead", {
         id   = world.event.S_EVENT_DEAD,
         name = "dead",
-        time = timer.getTime(),
+        time = sms.timer.now(),
         initiator = sms._make_handle(sms.unit, name),
         initiator_group_name = group_name,
       })

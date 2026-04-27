@@ -29,15 +29,24 @@
 -- fires per-unit (a "group hit" or "group takeoff" has no sensible
 -- aggregate meaning).
 --
+-- Subscriptions are independent. Calling connect (or g:connect / u:connect)
+-- twice on the same channel produces two independent Connection handles that
+-- each fire once per emit. This applies to all paths including g:connect(DEAD)
+-- — its fully-dead-once latch is per-connection, not per-group. Caller is
+-- responsible for not double-subscribing if double-firing is unwanted;
+-- conn:disconnect() is the escape hatch.
+--
 -- Loading order: framework/sms.lua -> log.lua -> utils.lua -> group.lua ->
 -- unit.lua -> area.lua -> timer.lua -> spawn.lua -> events.lua. Entity
--- sugar requires sms.unit and sms.group to already exist.
+-- sugar requires sms.unit and sms.group to exist; the g:connect(DEAD)
+-- deferred check requires sms.timer.
 --
 -- See docs/superpowers/specs/2026-04-26-framework-events-design.md.
 
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 assert(type(sms.unit) == "table", "framework/unit.lua must be loaded first")
 assert(type(sms.group) == "table", "framework/group.lua must be loaded first")
+assert(type(sms.timer) == "table", "framework/timer.lua must be loaded first")
 local log = sms.log.module("sms.events")
 sms.events = sms.events or {}
 
@@ -290,16 +299,18 @@ sms.group.connect = function(self, name, fn)
   if name == sms.events.DEAD then
     -- DCS does NOT synchronously update Group:getSize() after Unit:destroy()
     -- — the field stays stale until the next frame. The fully-dead check is
-    -- therefore deferred one sim frame via timer.scheduleFunction. The
-    -- fired_once latch dedupes simultaneous deaths (e.g. one explosion that
-    -- kills every unit in the group fires N DEAD events in the same frame
-    -- and would otherwise schedule N timers that all see size==0).
+    -- therefore deferred via sms.timer.after with a small positive delay.
+    -- (sms.timer.after(0, ...) can fire same-frame in DCS's scheduler; the
+    -- 0.01s offset guarantees next-frame.) The fired_once latch dedupes
+    -- simultaneous deaths (e.g. one explosion that kills every unit in the
+    -- group fires N DEAD events in the same frame and would otherwise
+    -- schedule N timers that all see size==0).
     local fired_once = false
     return sms.events.connect(name, function(evt)
       if fired_once then return end
       if evt.initiator_group_name ~= target_name then return end
-      timer.scheduleFunction(function()
-        if fired_once then return nil end
+      sms.timer.after(0.01, function()
+        if fired_once then return end
         local g = Group.getByName(target_name)
         if not g or g:getSize() == 0 then
           fired_once = true
@@ -308,8 +319,7 @@ sms.group.connect = function(self, name, fn)
             log.error("group:connect dispatch '" .. target_name .. "': " .. tostring(err))
           end
         end
-        return nil
-      end, nil, timer.getTime() + 0.01)
+      end)
     end)
   end
   return sms.events.connect(name, function(evt)

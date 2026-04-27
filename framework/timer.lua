@@ -154,3 +154,10 @@ sms.timer.get_remaining = function(h)
   end
   return h.next_fire_time - timer.getTime()
 end
+
+-- Current simulation time (seconds since mission start). Thin wrapper so
+-- mission code that timestamps events stays inside the sms.* idiom rather
+-- than reaching for DCS's `timer.getTime` directly. Sim-time, pauses with DCS.
+sms.timer.now = function()
+  return timer.getTime()
+end
