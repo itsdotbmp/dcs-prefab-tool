@@ -33,6 +33,16 @@ expect_str() {
     || { echo "FAIL: ${label} (expected '${expected}'): ${result}"; exit 1; }
 }
 
+expect_eq() {
+  local label="$1"
+  local code="$2"
+  local expected="$3"
+  local result
+  result=$("${DCSSMS}" exec --code "${code}")
+  echo "${result}" | grep -q "\"return_value\":${expected}," \
+    || { echo "FAIL: ${label} (expected ${expected}): ${result}"; exit 1; }
+}
+
 echo "==> hook status"
 "${DCSSMS}" status
 
@@ -94,6 +104,8 @@ echo "==> live DCS SHOT round-trip — spawn artillery and fire a shell"
   if g then
     _G._sms_weapon_smoke.arty_group = g:get_name()
     _G._sms_weapon_smoke.arty_unit  = g:get_units()[1]:get_name()
+    -- Anchor target y to terrain (the M-109 lands at ground, not sea level).
+    _G._sms_weapon_smoke.target_pos.y = land.getHeight({x = _G._sms_weapon_smoke.target_pos.x, y = _G._sms_weapon_smoke.target_pos.z})
   end
 ' >/dev/null
 expect_true "artillery spawned" \
@@ -135,6 +147,21 @@ expect_true "artillery spawned" \
       _G._sms_weapon_smoke.last_pos   = weapon:get_position()
     end)
     _G._sms_weapon_smoke.start_tracking_ok = evt.weapon:start_tracking({rate = 30})
+    -- Wire on_impact AND a bus subscriber BEFORE flight time elapses
+    -- (the shell may impact at any moment within the next ~10 seconds).
+    _G._sms_weapon_smoke.impact_callback_fired = 0
+    _G._sms_weapon_smoke.bus_event_fired      = 0
+    _G._sms_weapon_smoke.bus_event_payload    = nil
+    evt.weapon:on_impact(function(weapon)
+      _G._sms_weapon_smoke.impact_callback_fired = _G._sms_weapon_smoke.impact_callback_fired + 1
+    end)
+    sms.events.connect(sms.events.WEAPON_IMPACT, function(bus_evt)
+      -- Filter to OUR weapon (defensive vs concurrent agents firing weapons).
+      if bus_evt.weapon and bus_evt.weapon:get_name() == evt.weapon:get_name() then
+        _G._sms_weapon_smoke.bus_event_fired   = _G._sms_weapon_smoke.bus_event_fired + 1
+        _G._sms_weapon_smoke.bus_event_payload = bus_evt
+      end
+    end)
   end)
 ' >/dev/null
 
@@ -186,6 +213,28 @@ expect_true "last_pos is a valid vec3" \
   'local p = _G._sms_weapon_smoke.last_pos; return p and type(p.x) == "number" and type(p.y) == "number" and type(p.z) == "number"'
 expect_true "double start_tracking returns false" \
   'return _G._sms_weapon_smoke.shot_evt.weapon:start_tracking() == false'
+
+echo "==> impact — verify callback + bus emit + impact getters"
+expect_eq "on_impact callback fired exactly once" \
+  'return _G._sms_weapon_smoke.impact_callback_fired' 1
+expect_eq "WEAPON_IMPACT bus event fired exactly once" \
+  'return _G._sms_weapon_smoke.bus_event_fired' 1
+expect_str "weapon state is impacted" \
+  'return _G._sms_weapon_smoke.shot_evt.weapon:get_state()' 'impacted'
+expect_true "is_tracking returns false after impact" \
+  'return _G._sms_weapon_smoke.shot_evt.weapon:is_tracking() == false'
+expect_true "is_alive returns false after impact" \
+  'return _G._sms_weapon_smoke.shot_evt.weapon:is_alive() == false'
+expect_true "get_impact_position returns a vec3" \
+  'local p = _G._sms_weapon_smoke.shot_evt.weapon:get_impact_position(); return p and type(p.x) == "number" and type(p.y) == "number" and type(p.z) == "number"'
+expect_true "get_last_known_position returns a vec3" \
+  'local p = _G._sms_weapon_smoke.shot_evt.weapon:get_last_known_position(); return p and type(p.x) == "number"'
+expect_true "get_impact_distance_from(vec3) returns a non-negative number" \
+  'local d = _G._sms_weapon_smoke.shot_evt.weapon:get_impact_distance_from(_G._sms_weapon_smoke.target_pos); return type(d) == "number" and d >= 0'
+expect_true "bus event payload has weapon, impact_position, time" \
+  'local e = _G._sms_weapon_smoke.bus_event_payload; return e and e.weapon and e.impact_position and type(e.time) == "number"'
+expect_true "impact landed within reasonable distance of target (within 200m)" \
+  'local d = _G._sms_weapon_smoke.shot_evt.weapon:get_impact_distance_from(_G._sms_weapon_smoke.target_pos); return d < 200'
 
 # Cleanup. Best-effort.
 "${DCSSMS}" exec --code '

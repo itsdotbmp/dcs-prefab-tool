@@ -279,18 +279,44 @@ local function _tick(w)
   return nil  -- nil = continue at next interval (sms.timer contract)
 end
 
--- Placeholder impact-detection hook. Task 5 replaces this with the real
--- extrapolation-and-emit path. Defined as sms.weapon._on_impact_detected
--- so the tick loop can reference it through the module table (allowing
--- Task 5's append to override).
+-- Impact-detection hook. Called by the polling _tick when the DCS
+-- weapon object stops existing. Transitions state, computes extrapolated
+-- impact position (with last-known fallback), fires the on_impact
+-- callback, and emits sms.events.WEAPON_IMPACT for cross-cutting subscribers.
 sms.weapon._on_impact_detected = function(w)
-  -- Stub for Task 4: just transition to impacted, clear raw.
+  if w.state ~= "tracking" then return end  -- defensive
+  -- Extrapolate impact via land.getIP. Falls back to last-known position
+  -- if no terrain intersection within ip_distance (off-map, mid-air
+  -- detonation, or weapon disappeared without a ground-bound trajectory).
+  local impact = nil
+  if w._last_pos3 and w._last_pos3.p and w._last_pos3.x then
+    local ok_ip, ip = pcall(land.getIP, w._last_pos3.p, w._last_pos3.x, w._ip_distance or 50)
+    if ok_ip and ip then impact = ip end
+  end
+  if not impact and w._last_pos3 and w._last_pos3.p then
+    impact = {x = w._last_pos3.p.x, y = w._last_pos3.p.y, z = w._last_pos3.p.z}
+  end
+  w._impact_position = impact
+  w._impact_time = sms.timer.now()
   w.state = "impacted"
   w._raw = nil
   if w._timer_handle then
     sms.timer.stop(w._timer_handle)
     w._timer_handle = nil
   end
+  -- Per-handle callback first (locally scoped, expected to dominate use cases).
+  if w._on_impact_fn then
+    local ok_cb, err = pcall(w._on_impact_fn, w)
+    if not ok_cb then
+      log.error("on_impact: user fn raised: " .. tostring(err))
+    end
+  end
+  -- Then bus emit for cross-cutting subscribers.
+  sms.events.emit(sms.events.WEAPON_IMPACT, {
+    weapon          = w,
+    impact_position = impact,
+    time            = w._impact_time,
+  })
 end
 
 sms.weapon.is_tracking = function(w)
@@ -437,4 +463,66 @@ sms.weapon.get_target = function(w)
     return sms.static and sms.static(target_name) or nil
   end
   return nil
+end
+
+-- ============================================================
+-- Impact getters (require state == "impacted")
+-- ============================================================
+
+sms.weapon.get_impact_position = function(w)
+  if not _is_handle(w) then
+    log.error("get_impact_position: argument must be an sms.weapon handle")
+    return nil
+  end
+  if w.state ~= "impacted" then
+    log.error("get_impact_position: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no impact yet")
+    return nil
+  end
+  if not w._impact_position then return nil end
+  local p = w._impact_position
+  return {x = p.x, y = p.y, z = p.z}
+end
+
+sms.weapon.get_last_known_position = function(w)
+  if not _is_handle(w) then
+    log.error("get_last_known_position: argument must be an sms.weapon handle")
+    return nil
+  end
+  if w.state ~= "impacted" then
+    log.error("get_last_known_position: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no impact yet")
+    return nil
+  end
+  if not w._last_pos3 or not w._last_pos3.p then return nil end
+  local p = w._last_pos3.p
+  return {x = p.x, y = p.y, z = p.z}
+end
+
+-- Distance from impact to a vec3 OR to any handle that exposes :get_position().
+-- Duck-typed: works for sms.unit, sms.static, sms.weapon, or any future
+-- positionable handle.
+sms.weapon.get_impact_distance_from = function(w, target)
+  if not _is_handle(w) then
+    log.error("get_impact_distance_from: argument must be an sms.weapon handle")
+    return nil
+  end
+  if w.state ~= "impacted" or not w._impact_position then
+    log.error("get_impact_distance_from: weapon '" .. tostring(w.name) .. "' has no impact yet")
+    return nil
+  end
+  local target_pos
+  if type(target) == "table" and type(target.x) == "number"
+     and type(target.y) == "number" and type(target.z) == "number" then
+    target_pos = target
+  elseif type(target) == "table" and type(target.get_position) == "function" then
+    target_pos = target:get_position()
+  end
+  if not target_pos then
+    log.error("get_impact_distance_from: target must be a vec3 or a handle with :get_position()")
+    return nil
+  end
+  local ip = w._impact_position
+  local dx = ip.x - target_pos.x
+  local dy = ip.y - target_pos.y
+  local dz = ip.z - target_pos.z
+  return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
