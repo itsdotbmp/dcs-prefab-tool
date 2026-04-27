@@ -19,6 +19,23 @@ FRAMEWORK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${FRAMEWORK_DIR}/.." && pwd)"
 DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 
+# Fixture cleanup: nukes anything this smoke spawns, even on mid-run
+# abort (set -e). Idempotent — destroys only what currently exists.
+# Keep this list in sync with the names this smoke creates.
+SMOKE_FIXTURES="birth dead smoke_destroy_target smoke_evt_sugar_grp smoke_evt_target smoke_grp_dead smoke_silent_destroy some_other_group"
+
+cleanup_smoke_fixtures() {
+  [ -z "${SMOKE_FIXTURES}" ] && return 0
+  local lua_list=""
+  for n in ${SMOKE_FIXTURES}; do lua_list="${lua_list}'${n}',"; done
+  "${DCSSMS}" exec --code "
+    for _, n in ipairs({${lua_list%,}}) do
+      local g = Group.getByName(n); if g then g:destroy() end
+      local s = StaticObject.getByName(n); if s then s:destroy() end
+    end" >/dev/null 2>&1 || true
+}
+trap cleanup_smoke_fixtures EXIT
+
 cd "${FRAMEWORK_DIR}"
 
 # Helpers: assert that a bridge exec returned a true / specific value.

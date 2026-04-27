@@ -12,6 +12,26 @@ FRAMEWORK_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 REPO_ROOT="$(cd "${FRAMEWORK_DIR}/.." && pwd)"
 DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 
+# Fixture cleanup: nukes anything this smoke spawns, even on mid-run
+# abort (set -e). Idempotent — destroys only what currently exists.
+# Keep this list in sync with the names this smoke creates. Includes
+# auto-suffix variants (tank-1, tank-2, ...) from the auto-suffix
+# section, since those are real groups in DCS even though the smoke
+# only writes the base name.
+SMOKE_FIXTURES="_smoke_spawn_air _smoke_spawn_air_default_speed _smoke_spawn_clone _smoke_spawn_clone_dup _smoke_spawn_heading _smoke_spawn_multi _smoke_spawn_single tank tank-1 tank-2 tank-3 tank-4"
+
+cleanup_smoke_fixtures() {
+  [ -z "${SMOKE_FIXTURES}" ] && return 0
+  local lua_list=""
+  for n in ${SMOKE_FIXTURES}; do lua_list="${lua_list}'${n}',"; done
+  "${DCSSMS}" exec --code "
+    for _, n in ipairs({${lua_list%,}}) do
+      local g = Group.getByName(n); if g then g:destroy() end
+      local s = StaticObject.getByName(n); if s then s:destroy() end
+    end" >/dev/null 2>&1 || true
+}
+trap cleanup_smoke_fixtures EXIT
+
 cd "${FRAMEWORK_DIR}"
 
 # Helpers
