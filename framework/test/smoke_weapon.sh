@@ -236,6 +236,14 @@ expect_true "bus event payload has weapon, impact_position, time" \
 expect_true "impact landed within reasonable distance of target (within 200m)" \
   'local d = _G._sms_weapon_smoke.shot_evt.weapon:get_impact_distance_from(_G._sms_weapon_smoke.target_pos); return d < 200'
 
+# destroy() on an impacted weapon is rejected (Option A from issue #18):
+# "impacted" and "destroyed" describe genuinely different outcomes, so
+# destroy()-after-impact returns false and leaves state as "impacted".
+expect_true "destroy() on impacted weapon returns false" \
+  'return _G._sms_weapon_smoke.shot_evt.weapon:destroy() == false'
+expect_str "state remains \"impacted\" after rejected destroy()" \
+  'return _G._sms_weapon_smoke.shot_evt.weapon:get_state()' 'impacted'
+
 echo "==> destroy() — silent abort (no impact event)"
 "${DCSSMS}" exec --code '
   _G._sms_weapon_smoke.destroy_test = {

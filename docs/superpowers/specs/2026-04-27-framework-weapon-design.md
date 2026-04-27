@@ -84,7 +84,7 @@ If the launcher is absent (rare — happens for some triggered weapons), all `re
 - `w:start_tracking(opts?) -> bool` — opts: `{rate = 60, ip_distance = 50}`. Both numbers, both optional. Idempotent: second call on a tracking handle logs + returns `false`. Returns `true` on success.
 - `w:stop_tracking() -> bool` — stops the timer, transitions to `"created"`, no impact event fired (this is an explicit abort). Idempotent: returns `true` once, `false` thereafter.
 - `w:is_tracking() -> bool` — silent probe.
-- `w:destroy() -> bool` — stops tracking if active, calls raw `weapon:destroy()`. Silent. No impact event. Transitions to `"destroyed"`. Idempotent: returns `true` once, `false` thereafter.
+- `w:destroy() -> bool` — stops tracking if active, calls raw `weapon:destroy()`. Silent. No impact event. Transitions to `"destroyed"`. Only valid from `"created"` or `"tracking"` — returns `false` from `"impacted"` (natural impact already happened; the two outcomes describe genuinely different events) or `"destroyed"` (already done).
 
 **Per-tick mechanics** (internal, runs under `sms.timer.every(1/rate, ...)`):
 
@@ -103,13 +103,13 @@ If the launcher is absent (rare — happens for some triggered weapons), all `re
 - `w:on_tick(fn) -> nil` — `fn` receives `(weapon)`. Fires per poll while tracking. pcall-wrapped, errors logged.
 - `w:on_impact(fn) -> nil` — `fn` receives `(weapon)`. Fires once on natural impact (not on `stop_tracking()` or `destroy()`). pcall-wrapped, errors logged.
 
-**Live methods (state must be `"tracking"` and DCS object must exist; otherwise log + nil):**
+**Live methods (state must be `"tracking"` and DCS object must exist; otherwise log + nil — except `w:get_target()`, which is silent-nil; see below):**
 
 - `w:is_alive()` — silent: returns `true` only when state is `"tracking"` AND raw weapon `:isExist()` returns true. After impact this returns `false` (the weapon object is gone).
 - `w:get_position()` — returns the `_last_pos3.p` snapshot updated by the most recent tick. Note: this is the *last polled* position; immediately after a tick fires this is fresh, between ticks it can be up to `1/rate` seconds stale. nil before tracking starts (no `_last_pos3` yet).
 - `w:get_velocity()` — vec3 from last tick. nil if no tick has fired yet.
 - `w:get_speed()` — `sms.utils.vec3_length(get_velocity())`. nil if no velocity.
-- `w:get_target()` — re-resolves each call via `raw:getTarget()`. Returns `sms.unit` or `sms.static` handle, or nil. Targets can change/disappear mid-flight.
+- `w:get_target()` — re-resolves each call via `raw:getTarget()`. Returns `sms.unit` or `sms.static` handle, or **silently** nil. Unlike the other live getters this does *not* log on missing state or missing target: targets routinely change/disappear mid-flight (re-acquired, killed, lost lock, none ever acquired) and treating each as an API misuse would spam the log on a 60 Hz poll. Argument-validation failures (non-handle input) still log.
 
 **Always-available methods (snapshotted, work in any state):**
 

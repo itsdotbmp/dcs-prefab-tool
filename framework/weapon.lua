@@ -532,15 +532,18 @@ end
 -- ============================================================
 
 -- Stops tracking (silently, no impact event), removes the weapon from
--- the DCS world, transitions state to "destroyed". Idempotent: returns
--- true once, false thereafter. To get an impact-style event from a
+-- the DCS world, transitions state to "destroyed". Only valid from
+-- "created" or "tracking" — returns false from "impacted" (natural
+-- impact already happened — the two outcomes describe genuinely
+-- different events and conflating them loses information) or
+-- "destroyed" (already done). To get an impact-style event from a
 -- programmatic abort, read get_position() before calling destroy().
 sms.weapon.destroy = function(w)
   if not _is_handle(w) then
     log.error("destroy: argument must be an sms.weapon handle")
     return false
   end
-  if w.state == "destroyed" then return false end
+  if w.state ~= "created" and w.state ~= "tracking" then return false end
   if w.state == "tracking" and w._timer_handle then
     sms.timer.stop(w._timer_handle)
     w._timer_handle = nil
