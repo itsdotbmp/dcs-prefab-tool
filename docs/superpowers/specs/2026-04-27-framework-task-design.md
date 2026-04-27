@@ -75,10 +75,10 @@ The `_sms_*` fields are read by the apply layer for the air-only check and for l
 
 | Verb | Targets | DCS task | Categories | Notes |
 |---|---|---|---|---|
-| `move_to(target)` | vec3 / sms.unit / sms.group / sms.static / sms.area (centroid) | `Mission` task, single-waypoint route at snapshot pos | all | snapshot once; for continuous tracking use `follow` |
+| `move_to(target, opts?)` | vec3 / sms.unit / sms.group / sms.static / sms.area (centroid); opts: `{speed = number}` (m/s; locked when given; otherwise DCS uses the group's default cruise) | `Mission` task, single-waypoint route at snapshot pos | all | snapshot once; for continuous tracking use `follow` |
 | `follow(target, opts?)` | sms.unit / sms.group; opts: `{offset = {x,y,z}}` (default `{x=-50,y=0,z=-50}`) | `Follow` with `groupId` + `pos` offset | air (v1) | `_sms_air_only = true` |
 | `orbit(pos, opts?)` | vec3; opts: `{altitude=5000, speed=200, pattern="Circle"\|"RaceTrack"}` | `Orbit` | air | `_sms_air_only = true` |
-| `attack(target, opts?)` | sms.group / sms.unit; opts: `{weapon_type="Auto", expend="Auto", attack_qty}` | `AttackGroup` (sms.group) / `AttackUnit` (sms.unit) | air (v1) | `_sms_air_only = true`; sms.static rejected with log + nil — use `bomb(static:get_position())` |
+| `attack(target, opts?)` | sms.group / sms.unit / sms.static; opts: `{weapon_type="Auto", expend="Auto", attack_qty}` | `AttackGroup` (sms.group) / `AttackUnit` (sms.unit and sms.static — DCS shares unit/static ID space for targeting) | air (v1) | `_sms_air_only = true`; if a static is a poor fit for the AI's weapon profile, fall back to `bomb(static:get_position())` |
 | `attack_in_area(area, opts?)` | sms.area (circular for v1); opts: `{altitude_min, altitude_max, weapon_type}` | `EngageTargetsInZone` from area center+radius | air (v1) | `_sms_air_only = true`; rejects non-circular areas with log + nil |
 | `bomb(target, opts?)` | vec3 / sms.area (centroid) / sms.unit / sms.static; opts: `{altitude, weapon_type, expend, group_attack, direction}` | `Bombing` | air | `_sms_air_only = true` |
 | `land(target, opts?)` | vec3 / sms.static / sms.unit / DCS `Airbase`; opts: `{duration=300}` | `Land` | air (incl. helo) | `_sms_air_only = true` |

@@ -15,7 +15,7 @@ DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 # Fixture cleanup: nukes anything this smoke spawns, even on mid-run
 # abort (set -e). Idempotent — destroys only what currently exists.
 # Keep this list in sync with the names this smoke creates.
-SMOKE_FIXTURES="_smoke_task_ground _smoke_task_air _smoke_task_target_grp"
+SMOKE_FIXTURES="_smoke_task_ground _smoke_task_air _smoke_task_target_grp _smoke_task_target_static"
 
 cleanup_smoke_fixtures() {
   [ -z "${SMOKE_FIXTURES}" ] && return 0
@@ -74,6 +74,23 @@ echo "==> [build] move_to(vec3) returns Mission task with one waypoint"
 expect_str "move_to id" 'return sms.task.move_to({x=100,y=0,z=200}).id' 'Mission'
 expect_str "move_to verb tag" 'return sms.task.move_to({x=100,y=0,z=200})._sms_verb' 'move_to'
 expect_true "move_to not air-only" 'return sms.task.move_to({x=100,y=0,z=200})._sms_air_only == nil'
+
+echo "==> [build] move_to without speed leaves DCS cruise default (no speed/speed_locked field)"
+expect_true "move_to no speed" '
+  local t = sms.task.move_to({x=100,y=0,z=200})
+  local p = t.params.route.points[1]
+  return p.speed == nil and p.speed_locked == nil
+'
+
+echo "==> [build] move_to with opts.speed sets speed + speed_locked"
+expect_true "move_to with speed" '
+  local t = sms.task.move_to({x=100,y=0,z=200}, {speed = 50})
+  local p = t.params.route.points[1]
+  return p.speed == 50 and p.speed_locked == true
+'
+
+echo "==> [build] move_to with bad opts.speed -> nil"
+expect_true "move_to bad speed" 'return sms.task.move_to({x=100,y=0,z=200}, {speed="fast"}) == nil'
 
 echo "==> [build] hold() returns Nothing task"
 expect_str "hold id" 'return sms.task.hold().id' 'Nothing'
@@ -186,6 +203,21 @@ expect_true "attack air-only" "return sms.task.attack(sms.group('_smoke_task_tar
 
 echo "==> [build] attack with non-handle target -> nil"
 expect_true "attack bad target" 'return sms.task.attack("nope") == nil'
+
+echo "==> [build] spawn target fixture _smoke_task_target_static (Hangar B)"
+expect_true "static target spawned" "
+  local s = sms.static.create({
+    name     = '_smoke_task_target_static',
+    type     = 'Hangar B',
+    position = {x = ${SPAWN_X} - 400, y = 0, z = ${SPAWN_Z} - 400},
+    country  = 'USA',
+  })
+  return s ~= nil
+"
+
+echo "==> [build] attack(static_handle) returns air-only AttackUnit task"
+expect_str "attack static id" "return sms.task.attack(sms.static('_smoke_task_target_static')).id" 'AttackUnit'
+expect_true "attack static air-only" "return sms.task.attack(sms.static('_smoke_task_target_static'))._sms_air_only == true"
 
 echo "==> [build] attack_in_area(circular area) returns air-only EngageTargetsInZone"
 expect_str "attack_in_area id" "

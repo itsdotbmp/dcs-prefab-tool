@@ -87,25 +87,43 @@ end
 -- per group category. Snapshot is at build time — if target moves, the
 -- task still drives to the original spot. Use sms.task.follow for live
 -- tracking.
-sms.task.move_to = function(target)
+--
+-- opts: { speed = number? }  (m/s; locked when given)
+-- When opts.speed is omitted, the speed field is not set on the waypoint
+-- and DCS uses the group's default cruise speed — the closest thing DCS
+-- offers to "keep what you were doing." Pass opts.speed explicitly when
+-- you need a specific transit speed.
+sms.task.move_to = function(target, opts)
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.error("move_to: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
   local pos = _position_of(target, "move_to")
   if not pos then return nil end
+
+  local point = {
+    x      = pos.x,
+    y      = pos.z,  -- DCS 2D y maps to vec3 z
+    alt    = pos.y,
+    type   = "Turning Point",
+    action = "Off Road",
+    task   = { id = "ComboTask", params = { tasks = {} } },
+  }
+  if opts.speed ~= nil then
+    if type(opts.speed) ~= "number" then
+      log.error("move_to: opts.speed must be a number, got " .. type(opts.speed))
+      return nil
+    end
+    point.speed        = opts.speed
+    point.speed_locked = true
+  end
+
   return _stamp({
     id = "Mission",
     params = {
       route = {
-        points = {
-          {
-            x            = pos.x,
-            y            = pos.z,  -- DCS 2D y maps to vec3 z
-            alt          = pos.y,
-            type         = "Turning Point",
-            action       = "Off Road",
-            speed        = 200,
-            speed_locked = true,
-            task         = { id = "ComboTask", params = { tasks = {} } },
-          },
-        },
+        points = { point },
       },
     },
   }, "move_to", false)
@@ -205,8 +223,11 @@ sms.task.orbit = function(pos, opts)
   }, "orbit", true)
 end
 
--- Attack a unit or group. Air only in v1. Statics are explicitly rejected
--- (use sms.task.bomb on the static's position instead).
+-- Attack a unit, group, or static. Air only in v1. Statics route through
+-- AttackUnit using the static object's ID — DCS shares the unit/static
+-- ID space for targeting purposes. If a static target turns out to be a
+-- poor fit for the AI's weapon profile, fall back to sms.task.bomb on
+-- the static's position.
 sms.task.attack = function(target, opts)
   opts = opts or {}
   if type(opts) ~= "table" then
@@ -253,11 +274,24 @@ sms.task.attack = function(target, opts)
   end
 
   if sms._is_handle_of(target, sms.static) then
-    log.error("attack: static targets not supported in v1; use bomb(static:get_position()) instead")
-    return nil
+    local raw = StaticObject.getByName(target.name)
+    if not raw then
+      log.error("attack: static '" .. tostring(target.name) .. "' not in mission")
+      return nil
+    end
+    return _stamp({
+      id = "AttackUnit",
+      params = {
+        unitId         = raw:getID(),
+        weaponType     = weapon_type,
+        expend         = expend,
+        attackQty      = opts.attack_qty,
+        attackQtyLimit = opts.attack_qty ~= nil,
+      },
+    }, "attack", true)
   end
 
-  log.error("attack: target must be sms.group or sms.unit handle")
+  log.error("attack: target must be sms.group, sms.unit, or sms.static handle")
   return nil
 end
 
