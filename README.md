@@ -2,12 +2,13 @@
 
 **Digital Combat Simulator Simple Mission Scripting** — a focused Lua scripting framework for DCS missions, plus host-side tools for driving DCS programmatically.
 
-See [`MISSION.md`](MISSION.md) for the project's vision and rationale.
+- [`MISSION.md`](MISSION.md) — project vision and rationale.
+- [`AGENTS.md`](AGENTS.md) — dense framework reference for AI agents and human contributors writing framework code.
 
 ## Repo layout
 
 - `tools/` — host-side Go tooling. Currently: a CLI (`dcs-sms.exe`) that executes Lua snippets in a running DCS mission and reads back structured results. Hook for DCS lives at `tools/lua/dcs-sms-hook.lua` and is embedded into the binary.
-- `framework/` — in-DCS Lua framework (the MOOSE-rework). Empty for now; this is the next sub-project.
+- `framework/` — in-DCS Lua framework. Modules: `sms`, `sms.log`, `sms.utils`, `sms.group`, `sms.unit`, `sms.area`, `sms.timer`, `sms.spawn` (factories on `sms.group`), `sms.static`, `sms.events`. See [`AGENTS.md`](AGENTS.md) for the surface and conventions.
 - `docs/superpowers/specs/` — design documents for each sub-project.
 - `docs/superpowers/plans/` — implementation plans.
 
