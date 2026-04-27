@@ -271,34 +271,132 @@ echo "==> entity sugar — initiator filter (synthetic via emit)"
 expect_eq "u:connect fires only for matching initiator" \
   'return _G._sms_events_smoke.matched' 1
 
-echo "==> entity sugar — group filter (synthetic via emit, requires get_group)"
-# Note: this test exercises g:connect's filter via real DCS .get_group()
-# call, which requires the unit to still be alive. We use the live group
-# spawned above (still alive — only the previous round-trip target was
-# destroyed).
+echo "==> entity sugar — group filter for non-DEAD event (per-unit, synthetic via emit)"
+# Non-DEAD entity events on g:connect fire per-unit. The filter checks
+# evt.initiator_group_name == target_name. We use BIRTH because it's
+# entity-scoped and easy to fake synthetically without DCS side effects.
 "${DCSSMS}" exec --code '
   _G._sms_events_smoke.gmatched = 0
-  _G._sms_events_smoke.g:connect(sms.events.DEAD, function(evt) _G._sms_events_smoke.gmatched = _G._sms_events_smoke.gmatched + 1 end)
+  _G._sms_events_smoke.g:connect(sms.events.BIRTH, function(evt) _G._sms_events_smoke.gmatched = _G._sms_events_smoke.gmatched + 1 end)
   local our_unit = _G._sms_events_smoke.g:get_units()[1]
-  -- Synthetic dispatch with a real (alive) initiator from our group.
-  sms.events.emit("dead", {
-    name = "dead",
+  -- Synthetic dispatch with initiator_group_name matching our group.
+  sms.events.emit("birth", {
+    name = "birth",
     initiator = sms._make_handle(sms.unit, our_unit.name),
+    initiator_group_name = _G._sms_events_smoke.sugar_group_name,
   })
-  -- Synthetic dispatch with an initiator that is NOT in our group.
-  -- "definitely_not_our_unit_xyz" does not exist; get_group() will
-  -- log + return nil for it, which the filter must treat as "no match".
-  sms.events.emit("dead", {
-    name = "dead",
-    initiator = sms._make_handle(sms.unit, "definitely_not_our_unit_xyz"),
+  -- Synthetic dispatch with initiator_group_name from a different group.
+  sms.events.emit("birth", {
+    name = "birth",
+    initiator = sms._make_handle(sms.unit, "any_other_unit"),
+    initiator_group_name = "some_other_group",
   })
 ' >/dev/null
-expect_eq "g:connect fires only for unit in our group (not for non-group unit)" \
+expect_eq "g:connect fires only for events in our group (not other groups)" \
   'return _G._sms_events_smoke.gmatched' 1
 
 # Cleanup — best-effort. Group is alive; this should succeed cleanly.
 "${DCSSMS}" exec --code '
   local g = Group.getByName(_G._sms_events_smoke.sugar_group_name)
+  if g then pcall(g.destroy, g) end
+' >/dev/null
+
+echo "==> sms.unit.destroy(u, {emit_event=true}) fires DEAD via the bus"
+"${DCSSMS}" exec --code '
+  _G._sms_destroy_smoke = {fired = 0, target = nil, group_name = nil}
+  local g = sms.group.create({
+    name = "smoke_destroy_target",
+    position = {x = -48500, y = 0, z = -48500},
+    country = "USA",
+    category = "ground",
+    units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
+  })
+  if g then
+    _G._sms_destroy_smoke.target     = g:get_units()[1]:get_name()
+    _G._sms_destroy_smoke.group_name = g:get_name()
+  end
+  sms.events.connect(sms.events.DEAD, function(evt)
+    if evt.initiator and evt.initiator.name == _G._sms_destroy_smoke.target then
+      _G._sms_destroy_smoke.fired = _G._sms_destroy_smoke.fired + 1
+    end
+  end)
+  sms.unit.destroy(sms.unit(_G._sms_destroy_smoke.target), {emit_event = true})
+' >/dev/null
+expect_eq "destroy(emit_event=true) fired DEAD subscriber once" \
+  'return _G._sms_destroy_smoke.fired' 1
+"${DCSSMS}" exec --code '
+  local g = Group.getByName(_G._sms_destroy_smoke.group_name)
+  if g then pcall(g.destroy, g) end
+' >/dev/null
+
+echo "==> sms.unit.destroy(u) without opts does NOT fire DEAD"
+"${DCSSMS}" exec --code '
+  _G._sms_destroy_silent = {fired = 0, target = nil, group_name = nil}
+  local g = sms.group.create({
+    name = "smoke_silent_destroy",
+    position = {x = -47500, y = 0, z = -47500},
+    country = "USA",
+    category = "ground",
+    units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
+  })
+  if g then
+    _G._sms_destroy_silent.target     = g:get_units()[1]:get_name()
+    _G._sms_destroy_silent.group_name = g:get_name()
+  end
+  sms.events.connect(sms.events.DEAD, function(evt)
+    if evt.initiator and evt.initiator.name == _G._sms_destroy_silent.target then
+      _G._sms_destroy_silent.fired = _G._sms_destroy_silent.fired + 1
+    end
+  end)
+  sms.unit.destroy(sms.unit(_G._sms_destroy_silent.target))  -- no opts
+' >/dev/null
+expect_eq "destroy() without opts did NOT fire DEAD" \
+  'return _G._sms_destroy_silent.fired' 0
+"${DCSSMS}" exec --code '
+  local g = Group.getByName(_G._sms_destroy_silent.group_name)
+  if g then pcall(g.destroy, g) end
+' >/dev/null
+
+echo "==> g:connect(DEAD) fires only when group is fully dead"
+"${DCSSMS}" exec --code '
+  _G._sms_grp_dead = {fired = 0, group_name = nil, units = {}}
+  local g = sms.group.create({
+    name = "smoke_grp_dead",
+    position = {x = -46500, y = 0, z = -46500},
+    country = "USA",
+    category = "ground",
+    units = {
+      { type = "M-1 Abrams", offset = {x = 0, y = 0, z =  0} },
+      { type = "M-1 Abrams", offset = {x = 0, y = 0, z = 20} },
+    },
+  })
+  if g then
+    _G._sms_grp_dead.group_name = g:get_name()
+    for i, u in ipairs(g:get_units()) do
+      _G._sms_grp_dead.units[i] = u:get_name()
+    end
+    g:connect(sms.events.DEAD, function(evt)
+      _G._sms_grp_dead.fired = _G._sms_grp_dead.fired + 1
+    end)
+  end
+  -- Kill the first unit. Group still has one alive — callback should NOT fire.
+  sms.unit.destroy(sms.unit(_G._sms_grp_dead.units[1]), {emit_event = true})
+' >/dev/null
+# The fully-dead check is deferred one sim frame, so wait briefly for the
+# timer to fire before asserting state.
+sleep 1
+expect_eq "g:connect(DEAD) does NOT fire while group has live units" \
+  'return _G._sms_grp_dead.fired' 0
+"${DCSSMS}" exec --code '
+  -- Kill the second (last) unit. Group is now fully dead — callback should fire once.
+  sms.unit.destroy(sms.unit(_G._sms_grp_dead.units[2]), {emit_event = true})
+' >/dev/null
+sleep 1
+expect_eq "g:connect(DEAD) fires exactly once when last unit dies" \
+  'return _G._sms_grp_dead.fired' 1
+# Cleanup — group is fully dead; best-effort.
+"${DCSSMS}" exec --code '
+  local g = Group.getByName(_G._sms_grp_dead.group_name)
   if g then pcall(g.destroy, g) end
 ' >/dev/null
 

@@ -1,8 +1,16 @@
 # dcs-sms Framework — `sms.events` v1
 
-**Date:** 2026-04-26
+**Date:** 2026-04-26 (amended 2026-04-27)
 **Status:** Approved (brainstorm phase)
-**Scope:** Sixth framework module. Second behavioral primitive (after `sms.timer`). A pub/sub signal bus where DCS world events are pre-registered emitters and users can also emit custom signals. Adds entity-scoped subscription sugar to existing `sms.unit` and `sms.group` modules.
+**Scope:** Sixth framework module. Second behavioral primitive (after `sms.timer`). A pub/sub signal bus where DCS world events are pre-registered emitters and users can also emit custom signals. Adds entity-scoped subscription sugar to existing `sms.unit` and `sms.group` modules. Extends `sms.unit.destroy()` with an opt-in event-emission mode.
+
+## Amendments (post-implementation, 2026-04-27)
+
+After hands-on testing, two refinements landed before merge — the original v1 was kept in its branch but never tagged. The amendments are:
+
+1. **`evt.initiator_group_name` added to the normalized payload.** Captured from the raw DCS object at event time (not via `sms.unit:get_group()` which refuses dead units). Enables `g:connect` filters to work for dead initiators without log spam.
+2. **`g:connect(DEAD, fn)` semantic changed from per-unit to "group fully dead."** Fires once when the last unit in the group dies, deferred one sim frame so DCS state has settled. All other entity-scoped events on `g:connect` keep per-unit semantics. Per-unit-death is still available via `sms.events.connect(DEAD, fn)` with manual filtering.
+3. **`sms.unit.destroy(u, opts)` opt-in event mode.** Pass `{emit_event = true}` to synthesize a DEAD event onto the bus after the unit is removed. Default is silent (matching DCS native behavior).
 
 ## Goal
 
@@ -100,7 +108,7 @@ sms.events.connect("foo", function(a, b, c) ... end)  -- receives exactly those 
 - **Bulk `disconnect_all(name)` / `disconnect_all()`.** Trivial to add later.
 - **Filter predicates baked into `connect`** (`connect(DEAD, fn, predicate)`). User can `if ... then` inside the callback. Entity sugar already covers the 90% case.
 - **Wildcard subscriptions** (`connect("*", fn)`). Niche; easy add later.
-- **Synthetic "group fully dead" event.** Per-unit dispatch is the v1 contract; users compose this manually with `evt.initiator:get_group():is_alive()`.
+- **~~Synthetic "group fully dead" event.~~** *(landed in 2026-04-27 amendment — `g:connect(DEAD, fn)` now has this semantic.)*
 - **`return false` from a callback to self-cancel.** Magical; user should call `conn:disconnect()` explicitly from inside the callback (closure is in scope).
 - **`sms.events.once(name, fn)` helper.** Three lines for the user to roll themselves; not worth the API surface.
 - **Cross-mission persistence.** Framework re-loads fresh per mission.
@@ -293,7 +301,9 @@ Identity-checked via `getmetatable(conn) == _conn_mt` in `disconnect` and `is_ac
 - **No `return false` self-cancel.** User explicitly rejected this as too magical. Caller closes the closure over `conn` and calls `conn:disconnect()` explicitly.
 - **No `sms.events.once(name, fn)` helper.** User explicitly rejected. Three lines to roll your own.
 - **No filter predicates on `connect`.** Entity sugar covers the common case; everything else fits inside the callback.
-- **Entity sugar fires per-unit-death** for groups (`g:connect(DEAD, fn)` fires N times for an N-unit group losing all units). YAGNI on a synthetic "group fully dead" event.
+- **Entity sugar `g:connect(DEAD, fn)` fires once when the group is fully dead** (amendment 2026-04-27). All other entity-scoped events on `g:connect` (HIT, KILL, TAKEOFF, LAND, etc.) still fire per-unit — those have no sensible aggregate meaning. The DEAD case uses an internal `fired_once` latch and a one-frame deferred `Group:getSize()` check to handle DCS's stale-state-after-Unit:destroy() behavior. Per-unit-death is still available via `sms.events.connect(DEAD, fn)` with manual filtering on `evt.initiator_group_name`.
+- **`sms.unit.destroy(u, opts)` opt-in event emission** (amendment 2026-04-27). `opts.emit_event = true` synthesizes a DEAD event onto the bus after Unit:destroy() returns. Captures the unit's group name BEFORE destroy (raw DCS object can no longer answer `:getGroup()` afterward). Default is silent — matches DCS's native behavior for programmatic destroys.
+- **`evt.initiator_group_name` in the normalized payload** (amendment 2026-04-27). Captured from `raw.initiator:getGroup():getName()` while the raw DCS object is still responsive (one frame after death is usually enough). Replaces the broken v1 approach of calling `sms.unit:get_group()` on a dead handle (logs error + returns nil).
 - **Entity sugar rejects non-entity events** at connect time with log + nil. (`g:connect(MISSION_START, fn)` is invalid.)
 - **Lazy install of the world handler** on first `connect()` call. No upfront cost if the user never subscribes.
 - **Verbatim multi-arg dispatch for user emits.** `emit("foo", a, b)` → `fn(a, b)`. DCS events stay single-arg-`evt` because the DCS handler only ever produces one normalized table.

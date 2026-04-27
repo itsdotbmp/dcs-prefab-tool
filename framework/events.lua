@@ -16,10 +16,18 @@
 --   u:connect(name, fn)                        -> Connection | nil + log
 --   g:connect(name, fn)                        -> Connection | nil + log
 --
--- DCS event payload is normalized into {name, id, time, initiator, target,
--- weapon_type, place_name}. initiator/target are sms.unit handles (returned
--- even for dead units; :is_alive() returns false). User-emitted signals
--- pass args verbatim.
+-- DCS event payload is normalized into {name, id, time, initiator,
+-- initiator_group_name, target, weapon_type, place_name}. initiator/target
+-- are sms.unit handles (returned even for dead units; :is_alive() returns
+-- false). initiator_group_name is captured from the raw DCS object at event
+-- time so g:connect filters work even when the initiator is already dead
+-- (sms.unit.get_group refuses dead units). User-emitted signals pass args
+-- verbatim.
+--
+-- g:connect semantic: for DEAD specifically, fires once when the group is
+-- fully dead (last unit just died). For all other entity-scoped events,
+-- fires per-unit (a "group hit" or "group takeoff" has no sensible
+-- aggregate meaning).
 --
 -- Loading order: framework/sms.lua -> log.lua -> utils.lua -> group.lua ->
 -- unit.lua -> area.lua -> timer.lua -> spawn.lua -> events.lua. Entity
@@ -73,7 +81,19 @@ local function _normalize_event(raw)
   }
   if raw.initiator then
     local ok, n = pcall(raw.initiator.getName, raw.initiator)
-    if ok and n then evt.initiator = sms._make_handle(sms.unit, n) end
+    if ok and n then
+      evt.initiator = sms._make_handle(sms.unit, n)
+      -- Capture the group name while raw.initiator is still responsive.
+      -- For death-shaped events the unit is already gone from is_alive's
+      -- perspective, so sms.unit.get_group on the wrapped handle would
+      -- log + return nil. The raw DCS object usually still works for one
+      -- frame after death, which is enough to extract the group name.
+      local ok2, g = pcall(raw.initiator.getGroup, raw.initiator)
+      if ok2 and g then
+        local ok3, gn = pcall(g.getName, g)
+        if ok3 and gn then evt.initiator_group_name = gn end
+      end
+    end
   end
   if raw.target then
     local ok, n = pcall(raw.target.getName, raw.target)
@@ -242,10 +262,11 @@ sms.unit.connect = function(self, name, fn)
   end)
 end
 
--- g:connect(name, fn) — fires per-unit-death (etc.) for any unit whose
--- group is this group. A 4-vehicle group losing all units fires the
--- callback 4 times. Users compose "fully dead" via
--- evt.initiator:get_group():is_alive() inside the callback.
+-- g:connect(name, fn). Filter uses evt.initiator_group_name (captured at
+-- event time from the raw DCS object) so dead initiators still resolve to
+-- a group. For DEAD specifically, fires once when the group is fully dead
+-- (last unit just died). For all other entity-scoped events, fires per-unit
+-- — a "group hit" or "group takeoff" has no sensible aggregate meaning.
 sms.group.connect = function(self, name, fn)
   if not sms._is_handle_of(self, sms.group) then
     log.error("group:connect: self must be an sms.group handle")
@@ -266,12 +287,34 @@ sms.group.connect = function(self, name, fn)
   -- Capture name into a local so the closure doesn't keep a reference to
   -- the caller's self table (defensive; lets the caller drop the handle).
   local target_name = self.name
+  if name == sms.events.DEAD then
+    -- DCS does NOT synchronously update Group:getSize() after Unit:destroy()
+    -- — the field stays stale until the next frame. The fully-dead check is
+    -- therefore deferred one sim frame via timer.scheduleFunction. The
+    -- fired_once latch dedupes simultaneous deaths (e.g. one explosion that
+    -- kills every unit in the group fires N DEAD events in the same frame
+    -- and would otherwise schedule N timers that all see size==0).
+    local fired_once = false
+    return sms.events.connect(name, function(evt)
+      if fired_once then return end
+      if evt.initiator_group_name ~= target_name then return end
+      timer.scheduleFunction(function()
+        if fired_once then return nil end
+        local g = Group.getByName(target_name)
+        if not g or g:getSize() == 0 then
+          fired_once = true
+          local ok, err = pcall(fn, evt)
+          if not ok then
+            log.error("group:connect dispatch '" .. target_name .. "': " .. tostring(err))
+          end
+        end
+        return nil
+      end, nil, timer.getTime() + 0.01)
+    end)
+  end
   return sms.events.connect(name, function(evt)
-    if evt.initiator then
-      local g = evt.initiator:get_group()
-      if g and g.name == target_name then
-        fn(evt)
-      end
+    if evt.initiator_group_name == target_name then
+      fn(evt)
     end
   end)
 end
