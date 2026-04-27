@@ -485,6 +485,20 @@ sms.static.create({
 })
 ```
 
+Required fields: `name` (non-empty string), `type` (non-empty string), `position` (vec3), `country` (string).
+
+Optional fields and their expected types — bad types are rejected at the framework boundary (`log.error` + `nil`, no DCS call):
+
+| Field | Type | Notes |
+|---|---|---|
+| `heading` | number | degrees |
+| `category` | string | e.g. `"Cargos"` |
+| `dead` | boolean | spawn as wreckage |
+| `mass` | number | kg, only meaningful with `canCargo = true` |
+| `canCargo` | boolean | makes the static slingable |
+| `shape_name` | string | DCS shape override |
+| `livery_id` | string | DCS livery override |
+
 DCS silently ignores `pitch` and `bank` on `coalition.addStaticObject`. The framework warns and drops them. Only `heading` is applied.
 
 ---

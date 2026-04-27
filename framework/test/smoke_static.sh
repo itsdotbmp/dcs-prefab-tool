@@ -439,6 +439,63 @@ expect_true "non-num heading" "
   }) == nil
 "
 
+echo "==> [create] non-boolean dead -> nil"
+expect_true "non-bool dead" "
+  return sms.static.create({
+    name = 'bad_dead',
+    type = 'Hangar B',
+    position = {x = 0, y = 0, z = 0},
+    country = 'USA',
+    dead = 'yes',
+  }) == nil
+"
+
+echo "==> [create] non-number mass -> nil"
+expect_true "non-num mass" "
+  return sms.static.create({
+    name = 'bad_mass',
+    type = 'iso_container',
+    position = {x = 0, y = 0, z = 0},
+    country = 'USA',
+    category = 'Cargos',
+    mass = 'heavy',
+  }) == nil
+"
+
+echo "==> [create] non-boolean canCargo -> nil"
+expect_true "non-bool canCargo" "
+  return sms.static.create({
+    name = 'bad_cancargo',
+    type = 'iso_container',
+    position = {x = 0, y = 0, z = 0},
+    country = 'USA',
+    category = 'Cargos',
+    canCargo = 'yes',
+  }) == nil
+"
+
+echo "==> [create] non-string shape_name -> nil"
+expect_true "non-string shape_name" "
+  return sms.static.create({
+    name = 'bad_shape',
+    type = 'Hangar B',
+    position = {x = 0, y = 0, z = 0},
+    country = 'USA',
+    shape_name = 12345,
+  }) == nil
+"
+
+echo "==> [create] non-string livery_id -> nil"
+expect_true "non-string livery_id" "
+  return sms.static.create({
+    name = 'bad_livery',
+    type = 'Hangar B',
+    position = {x = 0, y = 0, z = 0},
+    country = 'USA',
+    livery_id = 12345,
+  }) == nil
+"
+
 # ----------------------------------------------------------------
 # Section 12: clone — discover ME-defined static template (skip if none)
 # ----------------------------------------------------------------
