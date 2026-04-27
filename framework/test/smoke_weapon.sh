@@ -99,15 +99,42 @@ echo "==> live DCS SHOT round-trip — spawn artillery and fire a shell"
 expect_true "artillery spawned" \
   'return type(_G._sms_weapon_smoke.arty_unit) == "string" and _G._sms_weapon_smoke.arty_unit ~= ""'
 
-# Subscribe to SHOT and capture the first shell whose launcher is our arty.
+# Subscribe to SHOT and, for the first shell whose launcher is our arty:
+#   - capture the event,
+#   - snapshot the pre-tracking state (Task 3 assertion checks this),
+#   - wire on_tick and start_tracking immediately (Task 4 setup).
+# Real users will do the same — they decide whether to track in the SHOT
+# handler, not after a delay — so this also matches the canonical use case.
+#
+# Note on the closure-local `fired` latch: the lua state persists across
+# `dcs-sms exec` calls, and reloading events.lua leaves orphaned world
+# handlers (their closures capture the previous `_subscribers` table)
+# still wired into world.addEventHandler. Stale subscribers from earlier
+# smoke runs therefore still fire on every SHOT and may race with this
+# run's handler, mutating the shared `_G._sms_weapon_smoke` table. By
+# gating on a fresh closure-local `fired` flag instead of the shared
+# `shot_count`, this run's handler is guaranteed to do its own setup
+# work exactly once even when stale handlers also fire.
 "${DCSSMS}" exec --code '
+  _G._sms_weapon_smoke.tick_count = 0
+  _G._sms_weapon_smoke.last_pos = nil
+  local fired = false
   sms.events.connect(sms.events.SHOT, function(evt)
-    if _G._sms_weapon_smoke.shot_count > 0 then return end
+    if fired then return end
     if not evt.weapon then return end
     local launcher = evt.weapon:get_launcher()
     if not launcher or launcher.name ~= _G._sms_weapon_smoke.arty_unit then return end
+    fired = true
     _G._sms_weapon_smoke.shot_count = _G._sms_weapon_smoke.shot_count + 1
     _G._sms_weapon_smoke.shot_evt = evt
+    -- Capture state at SHOT time (Task 3 assertion checks this).
+    _G._sms_weapon_smoke.captured_state_at_shot = evt.weapon:get_state()
+    -- Wire on_tick and start tracking immediately (Task 4).
+    evt.weapon:on_tick(function(weapon)
+      _G._sms_weapon_smoke.tick_count = _G._sms_weapon_smoke.tick_count + 1
+      _G._sms_weapon_smoke.last_pos   = weapon:get_position()
+    end)
+    _G._sms_weapon_smoke.start_tracking_ok = evt.weapon:start_tracking({rate = 30})
   end)
 ' >/dev/null
 
@@ -143,12 +170,22 @@ expect_true "evt.weapon:is_bomb() is false" \
   'return _G._sms_weapon_smoke.shot_evt.weapon:is_bomb() == false'
 expect_true "evt.weapon:get_launcher() returns a unit handle" \
   'local l = _G._sms_weapon_smoke.shot_evt.weapon:get_launcher(); return type(l) == "table" and l.name == _G._sms_weapon_smoke.arty_unit'
-expect_true "evt.weapon:get_state() is created" \
-  'return _G._sms_weapon_smoke.shot_evt.weapon:get_state() == "created"'
+expect_str "evt.weapon state captured at SHOT time" \
+  'return _G._sms_weapon_smoke.captured_state_at_shot' 'created'
 expect_true "evt.weapon:get_release_position() returns a vec3" \
   'local p = _G._sms_weapon_smoke.shot_evt.weapon:get_release_position(); return p ~= nil and type(p.x) == "number" and type(p.y) == "number" and type(p.z) == "number"'
 expect_true "evt.weapon_type back-compat string still present" \
   'return type(_G._sms_weapon_smoke.shot_evt.weapon_type) == "string"'
+
+echo "==> tracking — start_tracking ran in SHOT handler; verify tick path"
+expect_true "start_tracking (called in SHOT handler) returned true" \
+  'return _G._sms_weapon_smoke.start_tracking_ok == true'
+expect_true "on_tick fired multiple times during flight" \
+  'return _G._sms_weapon_smoke.tick_count >= 5'
+expect_true "last_pos is a valid vec3" \
+  'local p = _G._sms_weapon_smoke.last_pos; return p and type(p.x) == "number" and type(p.y) == "number" and type(p.z) == "number"'
+expect_true "double start_tracking returns false" \
+  'return _G._sms_weapon_smoke.shot_evt.weapon:start_tracking() == false'
 
 # Cleanup. Best-effort.
 "${DCSSMS}" exec --code '

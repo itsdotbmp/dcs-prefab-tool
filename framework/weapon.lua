@@ -242,3 +242,199 @@ sms.weapon.is_missile = function(w) return _is_handle(w) and w.category == "miss
 sms.weapon.is_rocket  = function(w) return _is_handle(w) and w.category == "rocket"  or false end
 sms.weapon.is_shell   = function(w) return _is_handle(w) and w.category == "shell"   or false end
 sms.weapon.is_torpedo = function(w) return _is_handle(w) and w.category == "torpedo" or false end
+
+-- ============================================================
+-- Tracking
+-- ============================================================
+
+-- Internal: handle a single poll. Stops the timer (returns false) when
+-- the DCS weapon object is gone. Updates _last_pos3 and _last_velocity
+-- otherwise. Triggers on_tick callback (pcall-wrapped) if set.
+local function _tick(w)
+  if w.state ~= "tracking" then
+    return false  -- safety: timer somehow outlived the state machine
+  end
+  local raw = w._raw
+  if not raw then
+    -- Defensive: should not happen while tracking, but bail cleanly.
+    return false
+  end
+  local ok_pos, pos3 = pcall(raw.getPosition, raw)
+  local ok_exist, exists = pcall(raw.isExist, raw)
+  if not ok_pos or not pos3 or not ok_exist or not exists then
+    -- Weapon is gone: enter the impact path. (Task 5 fleshes this out;
+    -- for now, just transition state and stop the timer cleanly.)
+    sms.weapon._on_impact_detected(w)
+    return false
+  end
+  w._last_pos3 = pos3
+  local ok_vel, vel = pcall(raw.getVelocity, raw)
+  if ok_vel and vel then w._last_velocity = vel end
+  if w._on_tick_fn then
+    local ok_cb, err = pcall(w._on_tick_fn, w)
+    if not ok_cb then
+      log.error("on_tick: user fn raised: " .. tostring(err))
+    end
+  end
+  return nil  -- nil = continue at next interval (sms.timer contract)
+end
+
+-- Placeholder impact-detection hook. Task 5 replaces this with the real
+-- extrapolation-and-emit path. Defined as sms.weapon._on_impact_detected
+-- so the tick loop can reference it through the module table (allowing
+-- Task 5's append to override).
+sms.weapon._on_impact_detected = function(w)
+  -- Stub for Task 4: just transition to impacted, clear raw.
+  w.state = "impacted"
+  w._raw = nil
+  if w._timer_handle then
+    sms.timer.stop(w._timer_handle)
+    w._timer_handle = nil
+  end
+end
+
+sms.weapon.is_tracking = function(w)
+  if not _is_handle(w) then return false end
+  return w.state == "tracking"
+end
+
+sms.weapon.start_tracking = function(w, opts)
+  if not _is_handle(w) then
+    log.error("start_tracking: argument must be an sms.weapon handle")
+    return false
+  end
+  if w.state ~= "created" then
+    log.error("start_tracking: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', cannot start")
+    return false
+  end
+  opts = opts or {}
+  local rate = opts.rate or 60
+  if type(rate) ~= "number" or rate <= 0 then
+    log.error("start_tracking: rate must be a positive number, got " .. tostring(rate))
+    return false
+  end
+  local ip_distance = opts.ip_distance or 50
+  if type(ip_distance) ~= "number" or ip_distance < 0 then
+    log.error("start_tracking: ip_distance must be a non-negative number, got " .. tostring(ip_distance))
+    return false
+  end
+  w._ip_distance = ip_distance
+  w.state = "tracking"
+  w._timer_handle = sms.timer.every(1 / rate, function() return _tick(w) end)
+  if not w._timer_handle then
+    -- sms.timer.every already logged; revert state.
+    w.state = "created"
+    return false
+  end
+  return true
+end
+
+sms.weapon.stop_tracking = function(w)
+  if not _is_handle(w) then
+    log.error("stop_tracking: argument must be an sms.weapon handle")
+    return false
+  end
+  if w.state ~= "tracking" then
+    return false
+  end
+  if w._timer_handle then
+    sms.timer.stop(w._timer_handle)
+    w._timer_handle = nil
+  end
+  w.state = "created"
+  return true
+end
+
+-- ============================================================
+-- Callback slots (single-slot, last-write-wins)
+-- ============================================================
+
+sms.weapon.on_tick = function(w, fn)
+  if not _is_handle(w) then
+    log.error("on_tick: argument must be an sms.weapon handle")
+    return
+  end
+  if type(fn) ~= "function" then
+    log.error("on_tick: fn must be a function, got " .. type(fn))
+    return
+  end
+  w._on_tick_fn = fn
+end
+
+sms.weapon.on_impact = function(w, fn)
+  if not _is_handle(w) then
+    log.error("on_impact: argument must be an sms.weapon handle")
+    return
+  end
+  if type(fn) ~= "function" then
+    log.error("on_impact: fn must be a function, got " .. type(fn))
+    return
+  end
+  w._on_impact_fn = fn
+end
+
+-- ============================================================
+-- Live getters (require state == "tracking")
+-- ============================================================
+
+sms.weapon.is_alive = function(w)
+  if not _is_handle(w) then return false end
+  if w.state ~= "tracking" then return false end
+  if not w._raw then return false end
+  local ok, exists = pcall(w._raw.isExist, w._raw)
+  return ok and exists == true
+end
+
+sms.weapon.get_position = function(w)
+  if not _is_handle(w) then
+    log.error("get_position: argument must be an sms.weapon handle")
+    return nil
+  end
+  if w.state ~= "tracking" then
+    log.error("get_position: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no live position")
+    return nil
+  end
+  if not w._last_pos3 then return nil end
+  local p = w._last_pos3.p
+  return {x = p.x, y = p.y, z = p.z}
+end
+
+sms.weapon.get_velocity = function(w)
+  if not _is_handle(w) then
+    log.error("get_velocity: argument must be an sms.weapon handle")
+    return nil
+  end
+  if w.state ~= "tracking" then
+    log.error("get_velocity: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no live velocity")
+    return nil
+  end
+  if not w._last_velocity then return nil end
+  local v = w._last_velocity
+  return {x = v.x, y = v.y, z = v.z}
+end
+
+sms.weapon.get_speed = function(w)
+  local v = sms.weapon.get_velocity(w)
+  if not v then return nil end
+  return math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+end
+
+sms.weapon.get_target = function(w)
+  if not _is_handle(w) then
+    log.error("get_target: argument must be an sms.weapon handle")
+    return nil
+  end
+  if w.state ~= "tracking" or not w._raw then return nil end
+  local ok_t, target_obj = pcall(w._raw.getTarget, w._raw)
+  if not ok_t or not target_obj then return nil end
+  local ok_n, target_name = pcall(target_obj.getName, target_obj)
+  if not ok_n or not target_name then return nil end
+  -- Try unit first; fall back to static.
+  if Unit.getByName(target_name) then
+    return sms.unit(target_name)
+  end
+  if StaticObject.getByName(target_name) then
+    return sms.static and sms.static(target_name) or nil
+  end
+  return nil
+end
