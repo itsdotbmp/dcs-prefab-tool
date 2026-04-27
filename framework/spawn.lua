@@ -63,18 +63,10 @@ local _mission_cat_to_string = {
 -- Validation helpers
 -- ============================================================
 
-local function _is_vec3(v)
-  return type(v) == "table"
-     and type(v.x) == "number"
-     and type(v.y) == "number"
-     and type(v.z) == "number"
-end
-
-local function _resolve_country(s)
-  if type(s) ~= "string" then return nil end
-  local key = s:upper():gsub(" ", "_")
-  return country.id[key]
-end
+-- _is_vec3 / _resolve_country lifted to sms.utils (issue #14). Local
+-- aliases below keep the rest of this file's call-sites compact.
+local _is_vec3 = sms.utils.is_vec3
+local _resolve_country = sms.utils.resolve_country
 
 local function _resolve_category(s)
   if type(s) ~= "string" then return nil end
@@ -360,15 +352,8 @@ local function _find_template_in_mission(template_name)
   return nil
 end
 
--- Deep-copy a table (recursive, handles nested tables).
-local function _deep_copy(t)
-  if type(t) ~= "table" then return t end
-  local copy = {}
-  for k, v in pairs(t) do
-    copy[k] = _deep_copy(v)
-  end
-  return copy
-end
+-- _deep_copy lifted to sms.utils.deep_copy (issue #14).
+local _deep_copy = sms.utils.deep_copy
 
 sms.group.clone = function(template_name, overrides)
   if type(template_name) ~= "string" or template_name == "" then

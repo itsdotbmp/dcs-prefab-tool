@@ -20,11 +20,12 @@
 -- See docs/superpowers/specs/2026-04-26-framework-unit-design.md.
 
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
+assert(type(sms.utils) == "table", "framework/utils.lua must be loaded first")
 local log = sms.log.module("sms.unit")
 sms.unit = sms.unit or {}
 
--- DCS coalition int -> normalized lowercase string.
-local _coalition_str = {[0] = "neutral", [1] = "red", [2] = "blue"}
+-- DCS coalition int -> normalized lowercase string. Lookup now lives in
+-- sms.utils.coalition_str_from_int (issue #14).
 
 -- Accept either a handle ({name=...}) or a raw name string; return the name.
 -- Returns nil for any other input (nil, number, boolean, table-without-name).
@@ -53,7 +54,7 @@ sms.unit.get_coalition = function(u)
     return nil
   end
   local c = Unit.getByName(name):getCoalition()
-  local s = _coalition_str[c]
+  local s = sms.utils.coalition_str_from_int(c)
   if not s then
     log.error("get_coalition: '" .. tostring(name) .. "' returned unknown coalition " .. tostring(c))
     return nil

@@ -23,6 +23,7 @@
 -- See docs/superpowers/specs/2026-04-27-framework-weapon-design.md.
 
 assert(type(sms) == "table",         "framework/sms.lua must be loaded first")
+assert(type(sms.utils) == "table",   "framework/utils.lua must be loaded first")
 assert(type(sms.unit) == "table",    "framework/unit.lua must be loaded first")
 assert(type(sms.timer) == "table",   "framework/timer.lua must be loaded first")
 assert(type(sms.events) == "table",  "framework/events.lua must be loaded first")
@@ -51,8 +52,8 @@ local _category_str = {
   [4] = "torpedo",
 }
 
--- DCS coalition int -> normalized lowercase string.
-local _coalition_str = {[0] = "neutral", [1] = "red", [2] = "blue"}
+-- DCS coalition int -> normalized lowercase string. Lookup now lives in
+-- sms.utils.coalition_str_from_int (issue #14).
 
 -- int country id -> string country name. Built lazily.
 local _country_reverse = nil
@@ -103,7 +104,7 @@ sms.weapon.wrap = function(raw)
   end
 
   local ok_coa, coa = pcall(raw.getCoalition, raw)
-  if ok_coa and coa then handle.coalition = _coalition_str[coa] end
+  if ok_coa and coa then handle.coalition = sms.utils.coalition_str_from_int(coa) end
 
   local ok_country, country_int = pcall(raw.getCountry, raw)
   if ok_country and country_int then
@@ -442,7 +443,7 @@ end
 sms.weapon.get_speed = function(w)
   local v = sms.weapon.get_velocity(w)
   if not v then return nil end
-  return math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+  return sms.utils.vec3_length(v)
 end
 
 sms.weapon.get_target = function(w)
@@ -520,11 +521,7 @@ sms.weapon.get_impact_distance_from = function(w, target)
     log.error("get_impact_distance_from: target must be a vec3 or a handle with :get_position()")
     return nil
   end
-  local ip = w._impact_position
-  local dx = ip.x - target_pos.x
-  local dy = ip.y - target_pos.y
-  local dz = ip.z - target_pos.z
-  return math.sqrt(dx * dx + dy * dy + dz * dz)
+  return sms.utils.vec3_distance(w._impact_position, target_pos)
 end
 
 -- ============================================================
