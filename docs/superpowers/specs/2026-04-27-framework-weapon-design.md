@@ -84,7 +84,7 @@ If the launcher is absent (rare — happens for some triggered weapons), all `re
 - `w:start_tracking(opts?) -> bool` — opts: `{rate = 60, ip_distance = 50}`. Both numbers, both optional. Idempotent: second call on a tracking handle logs + returns `false`. Returns `true` on success.
 - `w:stop_tracking() -> bool` — stops the timer, transitions to `"created"`, no impact event fired (this is an explicit abort). Idempotent: returns `true` once, `false` thereafter.
 - `w:is_tracking() -> bool` — silent probe.
-- `w:destroy() -> bool` — stops tracking if active, calls raw `weapon:destroy()`. Silent. No impact event. Transitions to `"destroyed"`. Idempotent: returns `true` once, `false` thereafter.
+- `w:destroy() -> bool` — stops tracking if active, calls raw `weapon:destroy()`. Silent. No impact event. Transitions to `"destroyed"`. Only valid from `"created"` or `"tracking"` — returns `false` from `"impacted"` (natural impact already happened; the two outcomes describe genuinely different events) or `"destroyed"` (already done).
 
 **Per-tick mechanics** (internal, runs under `sms.timer.every(1/rate, ...)`):
 

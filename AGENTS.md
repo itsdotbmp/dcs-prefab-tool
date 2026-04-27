@@ -401,7 +401,7 @@ State machine (forward-only): `created → tracking → impacted` (or `created/t
 
 | Method | Returns |
 |---|---|
-| `:destroy()` | `bool`. Stops tracking silently (no impact event), removes weapon from world. Idempotent. |
+| `:destroy()` | `bool`. Stops tracking silently (no impact event), removes weapon from world. Only valid from `"created"`/`"tracking"`; returns `false` from `"impacted"` or `"destroyed"`. |
 
 **Bus integration:** `sms.events.WEAPON_IMPACT = "weapon_impact"` is fired when a tracked weapon impacts. Payload: `{weapon = handle, impact_position = vec3, time = sim_seconds}`.
 
