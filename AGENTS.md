@@ -379,7 +379,7 @@ State machine (forward-only): `created → tracking → impacted` (or `created/t
 | `:on_tick(fn)` | Sets per-tick callback. Single-slot, last-write-wins. `fn(weapon)`. |
 | `:on_impact(fn)` | Sets impact callback. Single-slot. Fires once on natural impact (not on `stop_tracking()` or `destroy()`). `fn(weapon)`. |
 
-**Live getters** (state must be `"tracking"`; otherwise log + nil):
+**Live getters** (state must be `"tracking"`; otherwise log + nil — except `:get_target()`, which is silent-nil):
 
 | Method | Returns |
 |---|---|
@@ -387,7 +387,7 @@ State machine (forward-only): `created → tracking → impacted` (or `created/t
 | `:get_position()` | `vec3` from last poll (up to `1/rate` seconds stale). |
 | `:get_velocity()` | `vec3`. |
 | `:get_speed()` | `number`. |
-| `:get_target()` | `sms.unit` or `sms.static` handle, re-resolved each call (targets change mid-flight). |
+| `:get_target()` | `sms.unit` or `sms.static` handle, re-resolved each call. **Silent-nil** when no target / target disappeared / wrong state — these are normal mid-flight outcomes, not API misuse. |
 
 **Impact getters** (state must be `"impacted"`; otherwise log + nil):
 
