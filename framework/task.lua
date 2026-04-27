@@ -383,3 +383,84 @@ sms.task.combo = function(tasks)
     params = { tasks = tasks },
   }, "combo", any_air_only)
 end
+
+-- ============================================================
+-- Apply API (installed on sms.group metatable)
+-- ============================================================
+
+-- Validate task table shape: must be a table with id and params fields.
+-- Manually-built tables (no _sms_* tags) are accepted; only the basic DCS
+-- shape is required.
+local function _is_task_table(t)
+  return type(t) == "table" and type(t.id) == "string" and type(t.params) == "table"
+end
+
+-- Categories DCS will honor an air-only task on.
+local _air_categories = { airplane = true, helicopter = true }
+
+-- Shared validation for set_task and push_task. Returns the live DCS group
+-- object on success, or nil after logging.
+local function _validate_apply(method, group_handle, task)
+  if not sms._is_handle_of(group_handle, sms.group) then
+    log.error(method .. ": first argument must be an sms.group handle")
+    return nil
+  end
+  if not group_handle:is_alive() then
+    log.error(method .. ": group '" .. tostring(group_handle.name) .. "' is not alive")
+    return nil
+  end
+  if not _is_task_table(task) then
+    log.error(method .. ": task must be a table with 'id' (string) and 'params' (table) fields")
+    return nil
+  end
+  if task._sms_air_only then
+    local cat = group_handle:get_category()
+    if not _air_categories[cat] then
+      local verb = task._sms_verb or "task"
+      log.error(method .. ": '" .. verb .. "' is air-only; group '" .. tostring(group_handle.name) .. "' is " .. tostring(cat) .. " — not applied")
+      return nil
+    end
+  end
+  local raw = Group.getByName(group_handle.name)
+  if not raw then
+    log.error(method .. ": group '" .. tostring(group_handle.name) .. "' disappeared between is_alive and apply")
+    return nil
+  end
+  return raw
+end
+
+-- Replace the group's current task. Wraps Controller:setTask.
+sms.group.set_task = function(g, task)
+  local raw = _validate_apply("set_task", g, task)
+  if not raw then return false end
+  local controller = raw:getController()
+  if not controller then
+    log.error("set_task: group '" .. tostring(g.name) .. "' has no controller")
+    return false
+  end
+  local ok, err = pcall(controller.setTask, controller, task)
+  if not ok then
+    log.error("set_task: DCS rejected task for '" .. tostring(g.name) .. "': " .. tostring(err))
+    return false
+  end
+  return true
+end
+
+-- Push a task onto the group's task stack. Wraps Controller:pushTask.
+-- DCS pushTask is LIFO: the new task interrupts the current one and
+-- runs to completion, then the previous task resumes.
+sms.group.push_task = function(g, task)
+  local raw = _validate_apply("push_task", g, task)
+  if not raw then return false end
+  local controller = raw:getController()
+  if not controller then
+    log.error("push_task: group '" .. tostring(g.name) .. "' has no controller")
+    return false
+  end
+  local ok, err = pcall(controller.pushTask, controller, task)
+  if not ok then
+    log.error("push_task: DCS rejected task for '" .. tostring(g.name) .. "': " .. tostring(err))
+    return false
+  end
+  return true
+end
