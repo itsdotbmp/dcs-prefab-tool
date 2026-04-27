@@ -53,7 +53,7 @@ local _category_str = {
 }
 
 -- DCS coalition int -> normalized lowercase string. Lookup now lives in
--- sms.utils.coalition_str_from_int (issue #14).
+-- sms.utils.coalition_int_to_str (issue #14).
 
 -- int country id -> string country name. Built lazily.
 local _country_reverse = nil
@@ -104,7 +104,7 @@ sms.weapon.wrap = function(raw)
   end
 
   local ok_coa, coa = pcall(raw.getCoalition, raw)
-  if ok_coa and coa then handle.coalition = sms.utils.coalition_str_from_int(coa) end
+  if ok_coa and coa then handle.coalition = sms.utils.coalition_int_to_str(coa) end
 
   local ok_country, country_int = pcall(raw.getCountry, raw)
   if ok_country and country_int then

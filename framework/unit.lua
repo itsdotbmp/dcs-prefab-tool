@@ -25,7 +25,7 @@ local log = sms.log.module("sms.unit")
 sms.unit = sms.unit or {}
 
 -- DCS coalition int -> normalized lowercase string. Lookup now lives in
--- sms.utils.coalition_str_from_int (issue #14).
+-- sms.utils.coalition_int_to_str (issue #14).
 
 -- Accept either a handle ({name=...}) or a raw name string; return the name.
 -- Returns nil for any other input (nil, number, boolean, table-without-name).
@@ -54,7 +54,7 @@ sms.unit.get_coalition = function(u)
     return nil
   end
   local c = Unit.getByName(name):getCoalition()
-  local s = sms.utils.coalition_str_from_int(c)
+  local s = sms.utils.coalition_int_to_str(c)
   if not s then
     log.error("get_coalition: '" .. tostring(name) .. "' returned unknown coalition " .. tostring(c))
     return nil
@@ -149,9 +149,7 @@ sms.unit.get_heading = function(u)
   -- DCS world coords: x = east, y = altitude, z = north. Forward is pos.x.
   -- atan2(east, north) = heading from north, clockwise (DCS convention).
   local heading_rad = math.atan2(pos.x.x, pos.x.z)
-  local heading_deg = heading_rad * 180 / math.pi
-  if heading_deg < 0 then heading_deg = heading_deg + 360 end
-  return heading_deg
+  return sms.utils.normalize_heading(heading_rad * 180 / math.pi)
 end
 
 -- Pitch in degrees, positive = nose up. Computed from the y-component

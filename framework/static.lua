@@ -43,7 +43,7 @@ local log = sms.log.module("sms.static")
 sms.static = sms.static or {}
 
 -- DCS coalition int -> normalized lowercase string. Lookup now lives in
--- sms.utils.coalition_str_from_int (issue #14).
+-- sms.utils.coalition_int_to_str (issue #14).
 
 -- base_name -> next-index hint for auto-suffix. Lost on reload (probe recovers).
 local _name_counters = {}
@@ -137,7 +137,7 @@ sms.static.get_coalition = function(s)
     return nil
   end
   local c = StaticObject.getByName(name):getCoalition()
-  local s_str = sms.utils.coalition_str_from_int(c)
+  local s_str = sms.utils.coalition_int_to_str(c)
   if not s_str then
     log.error("get_coalition: '" .. tostring(name) .. "' returned unknown coalition " .. tostring(c))
     return nil

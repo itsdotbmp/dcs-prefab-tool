@@ -7,7 +7,7 @@
 --   - unit conversions (deg/rad, ft/m)
 --   - vec3 maths (length, distance)
 --   - shared validation/lookup helpers lifted here once 2+ modules needed
---     them (is_vec3, resolve_country, deep_copy, coalition_str_from_int)
+--     them (is_vec3, resolve_country, deep_copy, coalition_int_to_str)
 --
 -- New helpers should land here only when (a) there are real in-tree callers
 -- and (b) they are DCS-shaped enough to be worth a public name. We do not
@@ -113,6 +113,40 @@ sms.utils.vec3_distance = function(a, b)
 end
 
 -- ============================================================
+-- Heading helpers
+-- ============================================================
+
+-- Wrap a heading in degrees to the canonical [0, 360) range. Lua 5.1's
+-- modulo is mathematical (not C-style remainder), so a single `% 360`
+-- handles negative inputs correctly: -90 % 360 == 270.
+sms.utils.normalize_heading = function(deg)
+  if type(deg) ~= "number" then
+    log.error("normalize_heading: argument must be a number, got " .. type(deg))
+    return nil
+  end
+  return deg % 360
+end
+
+-- Compass bearing from one vec3 to another, in degrees, 0 = north,
+-- 90 = east (clockwise — DCS convention). Computed on the horizontal
+-- plane (xz), ignoring altitude. atan2(east, north) gives heading
+-- measured clockwise from north; we then convert and normalize.
+sms.utils.bearing_to = function(from, to)
+  if not sms.utils.is_vec3(from) then
+    log.error("bearing_to: 'from' must be a vec3 with x/y/z numbers")
+    return nil
+  end
+  if not sms.utils.is_vec3(to) then
+    log.error("bearing_to: 'to' must be a vec3 with x/y/z numbers")
+    return nil
+  end
+  local dx = to.x - from.x  -- east component
+  local dz = to.z - from.z  -- north component
+  local heading_rad = math.atan2(dx, dz)
+  return sms.utils.normalize_heading(heading_rad * 180 / math.pi)
+end
+
+-- ============================================================
 -- DCS country / coalition lookup helpers
 -- ============================================================
 
@@ -132,8 +166,9 @@ end
 -- Lifted from unit/group/static/weapon, all of which kept the same
 -- {[0]="neutral", [1]="red", [2]="blue"} table privately. Returns nil
 -- silently on unknown int — callers do their own log message with context.
+-- Naming follows the X_to_Y convention used by deg_to_rad / feet_to_meters.
 local _coalition_str = {[0] = "neutral", [1] = "red", [2] = "blue"}
-sms.utils.coalition_str_from_int = function(c)
+sms.utils.coalition_int_to_str = function(c)
   return _coalition_str[c]
 end
 
