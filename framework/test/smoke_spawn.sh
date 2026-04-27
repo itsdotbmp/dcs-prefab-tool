@@ -343,6 +343,72 @@ echo "==> [auto-suffix] cleanup"
 " >/dev/null
 
 # ----------------------------------------------------------------
+# Section 7b: auto-suffix reload-recovery (regression for issue #8)
+# ----------------------------------------------------------------
+# spawn.lua's module-private _name_counters table is a hint, not the
+# source of truth — reloading the module wipes it, but probing
+# Group/Unit.getByName must still discover already-taken slots and
+# return the next free suffix. If a future refactor turns the counter
+# authoritative (skipping the probe), the bug only surfaces across
+# mission reloads. This section forces that scenario by re-execing
+# spawn.lua mid-test.
+echo "==> [auto-suffix reload] first 'reload_tank' resolves to 'reload_tank'"
+expect_eq_string "reload_tank first" "
+  local g = sms.group.create({
+    name      = 'reload_tank',
+    position  = {x = ${SPAWN_X}, y = 0, z = ${SPAWN_Z}},
+    country   = 'USA',
+    category  = 'ground',
+    units     = {{ type = 'AAV7' }},
+  })
+  return g and g:get_name() or 'NIL'
+" "reload_tank"
+
+echo "==> [auto-suffix reload] second 'reload_tank' resolves to 'reload_tank-1'"
+expect_eq_string "reload_tank second" "
+  local g = sms.group.create({
+    name      = 'reload_tank',
+    position  = {x = ${SPAWN_X}, y = 0, z = ${SPAWN_Z}},
+    country   = 'USA',
+    category  = 'ground',
+    units     = {{ type = 'AAV7' }},
+  })
+  return g and g:get_name() or 'NIL'
+" "reload_tank-1"
+
+echo "==> [auto-suffix reload] reload spawn.lua to wipe _name_counters"
+"${DCSSMS}" exec --file spawn.lua >/dev/null
+
+echo "==> [auto-suffix reload] post-reload 'reload_tank' must probe and resolve to 'reload_tank-2'"
+# After the reload _name_counters is empty, so the counter would naively
+# pick suffix 1 — but 'reload_tank' and 'reload_tank-1' still exist as
+# live groups, so probing must skip past them. Asserting 'reload_tank-2'
+# (not 'reload_tank' or 'reload_tank-1') proves the probe is still the
+# source of truth.
+#
+# Uses 'reload_tank' (not 'tank') so the test is independent of section
+# 7's _name_counters['tank'] state — the counter is module-private and
+# persists across cleanup of the live groups.
+expect_eq_string "reload_tank post-reload" "
+  local g = sms.group.create({
+    name      = 'reload_tank',
+    position  = {x = ${SPAWN_X}, y = 0, z = ${SPAWN_Z}},
+    country   = 'USA',
+    category  = 'ground',
+    units     = {{ type = 'AAV7' }},
+  })
+  return g and g:get_name() or 'NIL'
+" "reload_tank-2"
+
+echo "==> [auto-suffix reload] cleanup"
+"${DCSSMS}" exec --code "
+  for _, name in ipairs({'reload_tank', 'reload_tank-1', 'reload_tank-2'}) do
+    local g = sms.group(name)
+    if g then g:destroy() end
+  end
+" >/dev/null
+
+# ----------------------------------------------------------------
 # Section 8: sms.group.create — negative paths
 # ----------------------------------------------------------------
 echo "==> [create] missing config -> nil"
