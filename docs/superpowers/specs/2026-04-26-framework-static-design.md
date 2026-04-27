@@ -67,7 +67,7 @@ Entity-wrapper methods (mirror of `sms.unit` with `get_country` added):
 |---|---|
 | `is_alive(s)` | `StaticObject.getByName(name) ~= nil`; `false` for garbage input. **Diverges from `sms.unit`** which uses `isExist()`. Reason: dead-spawned statics (`cfg.dead = true`) are findable via `getByName` but return `false` from `isExist()`; gating methods on `isExist()` would make them unusable. Across frames, `getByName` clears for actually-destroyed statics, so the gate still fires correctly. |
 | `get_name(s)` | accessor; nil-safe via `_name_of` normalizer |
-| `get_position(s)` | `getPoint()` → vec3 `{x = east-west, y = altitude, z = north-south}` |
+| `get_position(s)` | `getPoint()` → vec3 `{x = north-south, y = altitude, z = east-west}` |
 | `get_coalition(s)` | int → `"red"`/`"blue"`/`"neutral"` |
 | `get_country(s)` | int from `getCountry()` → string (e.g. `"USA"`); reverse-lookup via cached `country.id` map |
 | `get_type(s)` | `getTypeName()` |
@@ -281,7 +281,7 @@ end
 
 ### Coordinate translation
 
-DCS's `coalition.addStaticObject` uses 2D coords: `def.x` = east-west, `def.y` = north-south (DCS-2D-y == vec3-z). Framework vec3 convention is `{x = east-west, y = altitude, z = north-south}`. The builder maps `def.x = cfg.position.x` and `def.y = cfg.position.z`. `cfg.position.y` (altitude) is ignored — statics are terrain-snapped.
+DCS's `coalition.addStaticObject` uses 2D coords: `def.x` = north-south, `def.y` = east-west (DCS-2D-y == vec3-z, both east-west). Framework vec3 convention is `{x = north-south, y = altitude, z = east-west}`. The builder maps `def.x = cfg.position.x` and `def.y = cfg.position.z`. `cfg.position.y` (altitude) is ignored — statics are terrain-snapped.
 
 ### Spawn execution
 

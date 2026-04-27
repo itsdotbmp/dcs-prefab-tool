@@ -228,7 +228,7 @@ The counter is a hint. We always probe via the DCS getter for actual freeness. C
 
 ### Coordinate translation
 
-DCS's `coalition.addGroup` schema uses a 2D coordinate system where `x` is east-west and `y` is north-south (i.e., DCS-2D-y == vec3-z). The framework's vec3 convention is `{x = east-west, y = altitude, z = north-south}`.
+DCS's `coalition.addGroup` schema uses a 2D coordinate system where `x` is north-south and `y` is east-west (i.e., DCS-2D-y == vec3-z, both representing the east-west axis). The framework's vec3 convention is `{x = north-south, y = altitude, z = east-west}`.
 
 Translation in `_build_dcs_unit`:
 

@@ -103,7 +103,7 @@ When you write new framework code, mimic this contract. Do not `error()`. Do not
 
 | Concept | Convention |
 |---|---|
-| **Coordinates** | `vec3 = {x = east, y = altitude, z = north}`. DCS-2D uses `{x = east, y = north}` (no altitude). Conversion: 2D `y` ↔ 3D `z`. |
+| **Coordinates** | `vec3 = {x = north, y = altitude, z = east}` (DCS-native). DCS-2D uses `{x = north, y = east}` (no altitude). Conversion: 2D `y` ↔ 3D `z` (both are east). Verified by spawning a unit and observing F10 movement. |
 | **Headings** | **Public API: degrees**, 0=north, 90=east, clockwise. Internal: radians (DCS native). Use `sms.utils.deg_to_rad` / `rad_to_deg` to cross the boundary. |
 | **Altitudes** | **Public API: meters** (DCS native). Pilot-facing helpers: `sms.utils.feet_to_meters` / `meters_to_feet`. |
 | **Coalition strings** | Lowercase: `"red"`, `"blue"`, `"neutral"`. (DCS internally uses `0/1/2` — never expose these.) |
@@ -470,7 +470,7 @@ The fields are otherwise transparent to DCS. Manually-built task tables (no `_sm
 | Method | Returns |
 |---|---|
 | `:set_task(task)` | `true` on dispatch; `false` + log on bad input or air-only mismatch. Wraps `Group:getController():setTask`. |
-| `:push_task(task)` | `true` on dispatch; same failure modes. Wraps `Group:getController():pushTask`. LIFO — new task interrupts current; current resumes when new task ends. |
+| `:push_task(task)` | `true` on dispatch; same failure modes. Wraps `Group:getController():pushTask`. **Partially LIFO:** short-lived tasks (`attack`, `bomb`, `land`) interrupt and the previous task resumes when they finish. But Mission tasks (`move_to`, `orbit`) do **not** stack — pushing one over another replaces the previous route. For "via B then to A" semantics use a multi-waypoint route (v1.1) or chain via `sms.timer.after` / events. |
 
 **Out of v1:** `sequence` verb (use `push_task` LIFO ordering or event-driven retasking), ground-specific engage verbs (DCS ground engagement is ROE-driven, separate design problem), polygon-area `attack_in_area`, `pop_task`, current-task introspection (DCS doesn't expose it cleanly), per-waypoint task mutation.
 

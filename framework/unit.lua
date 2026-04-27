@@ -69,7 +69,7 @@ sms.unit.get_position = function(u)
     return nil
   end
   local p = Unit.getByName(name):getPoint()
-  -- DCS world coords: x = east, y = altitude, z = north.
+  -- DCS world coords: x = north, y = altitude, z = east.
   return {x = p.x, y = p.y, z = p.z}
 end
 
@@ -146,7 +146,7 @@ sms.unit.get_heading = function(u)
     return nil
   end
   local pos = Unit.getByName(name):getPosition()
-  -- DCS world coords: x = east, y = altitude, z = north. Forward is pos.x.
+  -- DCS world coords: x = north, y = altitude, z = east. Forward is pos.x.
   -- atan2(east, north) = heading from north, clockwise (DCS convention).
   local heading_rad = math.atan2(pos.x.x, pos.x.z)
   return sms.utils.normalize_heading(heading_rad * 180 / math.pi)

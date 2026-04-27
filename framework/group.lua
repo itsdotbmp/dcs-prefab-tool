@@ -99,7 +99,7 @@ sms.group.get_position = function(g)
     return nil
   end
   local p = units[1]:getPoint()
-  -- DCS world coords: x = east, y = altitude, z = north.
+  -- DCS world coords: x = north, y = altitude, z = east.
   return {x = p.x, y = p.y, z = p.z}
 end
 
