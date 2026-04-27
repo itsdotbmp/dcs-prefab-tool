@@ -312,8 +312,18 @@ sms.group.create = function(cfg)
     return nil
   end
 
-  -- Air-specific validation: every unit must have alt
+  -- Air-specific validation: every unit must have alt, and group must
+  -- not exceed the DCS 4-unit cap. DCS silently truncates aircraft
+  -- groups above 4 units (units 5+ vanish without any error from
+  -- coalition.addGroup), so we reject up-front per the framework's
+  -- log+nil convention. The cap applies to both airplane and
+  -- helicopter categories. Users wanting more should split into
+  -- multiple groups.
   if category_str == "airplane" or category_str == "helicopter" then
+    if #cfg.units > 4 then
+      log.error("create: " .. category_str .. " group '" .. cfg.name .. "' has " .. #cfg.units .. " units, max 4 (DCS silently truncates above the cap); split into multiple groups")
+      return nil
+    end
     for i, u in ipairs(cfg.units) do
       if type(u.alt) ~= "number" then
         log.error("create: air unit " .. i .. " missing alt (meters)")

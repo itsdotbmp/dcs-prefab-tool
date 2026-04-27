@@ -465,6 +465,8 @@ Public field names (the framework normalizes these to DCS's quirky underlying ke
 - `category`: `"ground" | "airplane" | "helicopter" | "ship" | "train"` (default `"ground"`).
 - `country`: any value from `country.id` as a string (case-insensitive, spaces → underscores).
 
+**Aircraft cap.** DCS silently truncates `airplane` and `helicopter` groups above 4 units (units 5+ vanish without any error from `coalition.addGroup`). `sms.group.create` rejects such configs up-front with `log.error + return nil` rather than auto-truncating — fix the config (split into multiple groups). The cap does **not** apply to `ground` / `ship` / `train`.
+
 Always trust the returned handle's `:get_name()` for follow-up operations — auto-suffix can change it.
 
 ---
