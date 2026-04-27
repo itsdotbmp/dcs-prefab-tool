@@ -26,6 +26,7 @@ assert(type(sms.group) == "table",  "framework/group.lua must be loaded first")
 assert(type(sms.static) == "table", "framework/static.lua must be loaded first")
 assert(type(sms.area) == "table",   "framework/area.lua must be loaded first")
 assert(type(sms.utils) == "table",  "framework/utils.lua must be loaded first")
+assert(type(sms.timer) == "table",  "framework/timer.lua must be loaded first")
 local log = sms.log.module("sms.task")
 sms.task = sms.task or {}
 
@@ -463,11 +464,13 @@ local function _validate_apply(method, group_handle, task)
   return raw
 end
 
--- Rewrite move_to waypoint fields to match the destination group's
--- category. DCS's Mission task uses different waypoint actions per
--- category — "Turning Point" for aircraft (with alt_type "BARO"),
--- "Off Road" for ground/ship/train. The build-time builder doesn't
--- know which group will receive the task, so the apply layer adapts.
+-- Rewrite move_to waypoint fields and route metadata to match the
+-- destination group. DCS Mission tasks need two category-dependent
+-- shape changes the build-time builder can't know about:
+--   * waypoint action: "Turning Point" for aircraft (with alt_type
+--     "BARO"); "Off Road" for ground/ship/train.
+--   * params.airborne = true for air groups (without it DCS treats
+--     the route as a ground route and the AI ignores it).
 -- Recurses into combo so a move_to nested inside a combo is fixed up
 -- the same way. Mutates in place; idempotent across re-applies.
 local function _adapt_task_for_category(task, category)
@@ -480,28 +483,62 @@ local function _adapt_task_for_category(task, category)
     return
   end
   if task._sms_verb ~= "move_to" then return end
-  local pt = task.params
-            and task.params.route
-            and task.params.route.points
-            and task.params.route.points[1]
+  local route = task.params and task.params.route
+  local pt = route and route.points and route.points[1]
   if not pt then return end
   if category == "airplane" or category == "helicopter" then
-    pt.action   = "Turning Point"
-    pt.alt_type = pt.alt_type or "BARO"
+    pt.action            = "Turning Point"
+    pt.alt_type          = pt.alt_type or "BARO"
+    task.params.airborne = true
   else
     pt.action = "Off Road"
   end
 end
 
+-- DCS aircraft controllers reject task assignment in the same frame as
+-- spawn (the controller isn't fully wired up yet — observed crashes /
+-- silent despawns). MOOSE works around this by scheduling task
+-- assignment 1s in the future. We mirror the pattern: for air groups
+-- we defer the actual setTask/pushTask call by 1s via sms.timer.after.
+-- For ground/ship/train, dispatch is immediate.
+local _AIR_DEFER_SECONDS = 0.01
+local function _is_air(category)
+  return category == "airplane" or category == "helicopter"
+end
+
 -- Replace the group's current task. Wraps Controller:setTask.
+-- For air groups, dispatch is deferred 1s to dodge DCS's fresh-spawn
+-- controller race; the call returns true after validation and the
+-- actual DCS dispatch happens 1s later (errors are logged then).
 sms.group.set_task = function(g, task)
   local raw = _validate_apply("set_task", g, task)
   if not raw then return false end
-  _adapt_task_for_category(task, g:get_category())
+  local category = g:get_category()
+  _adapt_task_for_category(task, category)
   local controller = raw:getController()
   if not controller then
     log.error("set_task: group '" .. tostring(g.name) .. "' has no controller")
     return false
+  end
+  if _is_air(category) then
+    local name = g.name
+    sms.timer.after(_AIR_DEFER_SECONDS, function()
+      local raw_now = Group.getByName(name)
+      if not raw_now then
+        log.error("set_task: group '" .. tostring(name) .. "' gone before deferred dispatch")
+        return
+      end
+      local ctrl_now = raw_now:getController()
+      if not ctrl_now then
+        log.error("set_task: group '" .. tostring(name) .. "' has no controller at deferred dispatch")
+        return
+      end
+      local ok, err = pcall(ctrl_now.setTask, ctrl_now, task)
+      if not ok then
+        log.error("set_task: DCS rejected task for '" .. tostring(name) .. "' (deferred): " .. tostring(err))
+      end
+    end)
+    return true
   end
   local ok, err = pcall(controller.setTask, controller, task)
   if not ok then
@@ -513,15 +550,37 @@ end
 
 -- Push a task onto the group's task stack. Wraps Controller:pushTask.
 -- DCS pushTask is LIFO: the new task interrupts the current one and
--- runs to completion, then the previous task resumes.
+-- runs to completion, then the previous task resumes. For air groups,
+-- dispatch is deferred 1s (same race-avoidance reason as set_task).
 sms.group.push_task = function(g, task)
   local raw = _validate_apply("push_task", g, task)
   if not raw then return false end
-  _adapt_task_for_category(task, g:get_category())
+  local category = g:get_category()
+  _adapt_task_for_category(task, category)
   local controller = raw:getController()
   if not controller then
     log.error("push_task: group '" .. tostring(g.name) .. "' has no controller")
     return false
+  end
+  if _is_air(category) then
+    local name = g.name
+    sms.timer.after(_AIR_DEFER_SECONDS, function()
+      local raw_now = Group.getByName(name)
+      if not raw_now then
+        log.error("push_task: group '" .. tostring(name) .. "' gone before deferred dispatch")
+        return
+      end
+      local ctrl_now = raw_now:getController()
+      if not ctrl_now then
+        log.error("push_task: group '" .. tostring(name) .. "' has no controller at deferred dispatch")
+        return
+      end
+      local ok, err = pcall(ctrl_now.pushTask, ctrl_now, task)
+      if not ok then
+        log.error("push_task: DCS rejected task for '" .. tostring(name) .. "' (deferred): " .. tostring(err))
+      end
+    end)
+    return true
   end
   local ok, err = pcall(controller.pushTask, controller, task)
   if not ok then
