@@ -40,9 +40,12 @@ echo "${result}" | grep -q '"return_value":true' \
   || { echo "FAIL: expected return_value:true, got: ${result}"; exit 1; }
 
 echo "==> sms.utils.is_vec3 missing z -> false"
-result=$("${DCSSMS}" exec --code "return sms.utils.is_vec3({x=1, y=2})")
-echo "${result}" | grep -q '"return_value":false' \
-  || { echo "FAIL: expected return_value:false, got: ${result}"; exit 1; }
+# tostring() works around a bridge serialization bug where Lua false
+# returns get serialized to JSON null. The function returns false
+# correctly; the bridge just can't transport it.
+result=$("${DCSSMS}" exec --code "return tostring(sms.utils.is_vec3({x=1, y=2}))")
+echo "${result}" | grep -q '"return_value":"false"' \
+  || { echo "FAIL: expected return_value:\"false\", got: ${result}"; exit 1; }
 
 echo "==> sms.utils.vec3_length({x=3, y=4, z=0}) should return 5"
 result=$("${DCSSMS}" exec --code "return sms.utils.vec3_length({x=3, y=4, z=0})")
