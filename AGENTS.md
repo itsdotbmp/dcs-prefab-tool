@@ -103,7 +103,7 @@ When you write new framework code, mimic this contract. Do not `error()`. Do not
 
 | Concept | Convention |
 |---|---|
-| **Coordinates** | `vec3 = {x = east, y = altitude, z = north}`. DCS-2D uses `{x = east, y = north}` (no altitude). Conversion: 2D `y` ↔ 3D `z`. |
+| **Coordinates** | `vec3 = {x = north, y = altitude, z = east}` (DCS-native). DCS-2D uses `{x = north, y = east}` (no altitude). Conversion: 2D `y` ↔ 3D `z` (both are east). Verified by spawning a unit and observing F10 movement. |
 | **Headings** | **Public API: degrees**, 0=north, 90=east, clockwise. Internal: radians (DCS native). Use `sms.utils.deg_to_rad` / `rad_to_deg` to cross the boundary. |
 | **Altitudes** | **Public API: meters** (DCS native). Pilot-facing helpers: `sms.utils.feet_to_meters` / `meters_to_feet`. |
 | **Coalition strings** | Lowercase: `"red"`, `"blue"`, `"neutral"`. (DCS internally uses `0/1/2` — never expose these.) |

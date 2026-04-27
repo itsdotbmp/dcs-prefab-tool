@@ -126,7 +126,7 @@ sms.static.get_position = function(s)
     return nil
   end
   local p = StaticObject.getByName(name):getPoint()
-  -- DCS world coords: x = east, y = altitude, z = north.
+  -- DCS world coords: x = north, y = altitude, z = east.
   return {x = p.x, y = p.y, z = p.z}
 end
 

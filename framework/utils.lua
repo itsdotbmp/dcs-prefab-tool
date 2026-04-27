@@ -83,7 +83,7 @@ sms.utils.is_vec3 = function(v)
      and type(v.z) == "number"
 end
 
--- Euclidean length of a DCS vec3 (x = east, y = altitude, z = north).
+-- Euclidean length of a DCS vec3 (x = north, y = altitude, z = east).
 -- Uses 3D length, not horizontal-plane length — vec3 is a full 3D vector
 -- and pilots care about vertical speed components too.
 sms.utils.vec3_length = function(v)
