@@ -91,6 +91,44 @@ result=$("${DCSSMS}" exec --code "return sms.unit(\"_sms_test_unit\"):get_type()
 echo "${result}" | grep -q '"return_value":"Soldier M4"' \
   || { echo "FAIL: get_type: ${result}"; exit 1; }
 
+echo "==> get_heading should be a number in [0, 360)"
+result=$("${DCSSMS}" exec --code '
+  local h = sms.unit("_sms_test_unit"):get_heading()
+  return type(h) == "number" and h >= 0 and h < 360
+')
+echo "${result}" | grep -q '"return_value":true' \
+  || { echo "FAIL: get_heading: ${result}"; exit 1; }
+
+echo "==> get_pitch should be a number near 0 for a ground unit"
+result=$("${DCSSMS}" exec --code '
+  local p = sms.unit("_sms_test_unit"):get_pitch()
+  return type(p) == "number" and math.abs(p) < 5
+')
+echo "${result}" | grep -q '"return_value":true' \
+  || { echo "FAIL: get_pitch: ${result}"; exit 1; }
+
+echo "==> get_altitude (ASL) should be a number"
+result=$("${DCSSMS}" exec --code '
+  local a = sms.unit("_sms_test_unit"):get_altitude()
+  return type(a) == "number"
+')
+echo "${result}" | grep -q '"return_value":true' \
+  || { echo "FAIL: get_altitude ASL: ${result}"; exit 1; }
+
+echo "==> get_altitude (AGL) should equal ASL minus terrain height at unit position"
+result=$("${DCSSMS}" exec --code '
+  local u = sms.unit("_sms_test_unit")
+  local asl = u:get_altitude()
+  local agl = u:get_altitude(true)
+  if type(asl) ~= "number" or type(agl) ~= "number" then return false end
+  local p = Unit.getByName("_sms_test_unit"):getPoint()
+  local terrain = land.getHeight({x = p.x, y = p.z})
+  -- (asl - agl) should equal terrain height (within small floating-point margin)
+  return math.abs((asl - agl) - terrain) < 0.1
+')
+echo "${result}" | grep -q '"return_value":true' \
+  || { echo "FAIL: get_altitude AGL: ${result}"; exit 1; }
+
 echo "==> get_group():get_name() should be _sms_test_unit_group (unit -> group round-trip)"
 result=$("${DCSSMS}" exec --code "return sms.unit(\"_sms_test_unit\"):get_group():get_name()")
 echo "${result}" | grep -q '"return_value":"_sms_test_unit_group"' \
