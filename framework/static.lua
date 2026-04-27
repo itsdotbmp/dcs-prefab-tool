@@ -294,6 +294,26 @@ local function _validate_create_config(cfg)
     log.error("create: category must be a string if provided")
     return false
   end
+  if cfg.dead ~= nil and type(cfg.dead) ~= "boolean" then
+    log.error("create: dead must be a boolean if provided")
+    return false
+  end
+  if cfg.mass ~= nil and type(cfg.mass) ~= "number" then
+    log.error("create: mass must be a number (kg) if provided")
+    return false
+  end
+  if cfg.canCargo ~= nil and type(cfg.canCargo) ~= "boolean" then
+    log.error("create: canCargo must be a boolean if provided")
+    return false
+  end
+  if cfg.shape_name ~= nil and type(cfg.shape_name) ~= "string" then
+    log.error("create: shape_name must be a string if provided")
+    return false
+  end
+  if cfg.livery_id ~= nil and type(cfg.livery_id) ~= "string" then
+    log.error("create: livery_id must be a string if provided")
+    return false
+  end
   return true
 end
 
