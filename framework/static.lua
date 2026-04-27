@@ -55,7 +55,7 @@ local function _build_country_reverse()
   if _country_reverse then return end
   _country_reverse = {}
   for k, v in pairs(country.id) do
-    _country_reverse[v] = k
+    _country_reverse[v] = k:lower()
   end
 end
 

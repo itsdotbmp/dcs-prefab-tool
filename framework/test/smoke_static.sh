@@ -131,7 +131,7 @@ expect_true "entity getters" "
   return type(name) == 'string'
     and type(pos) == 'table' and type(pos.x) == 'number' and type(pos.y) == 'number' and type(pos.z) == 'number'
     and (coal == 'red' or coal == 'blue' or coal == 'neutral')
-    and cnty == 'USA'
+    and cnty == 'usa'
     and typ == 'Hangar B'
 "
 
