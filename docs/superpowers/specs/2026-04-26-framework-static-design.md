@@ -65,7 +65,7 @@ Entity-wrapper methods (mirror of `sms.unit` with `get_country` added):
 
 | Method | Behavior |
 |---|---|
-| `is_alive(s)` | `StaticObject.getByName(name):isExist()`; `false` for any garbage input |
+| `is_alive(s)` | `StaticObject.getByName(name) ~= nil`; `false` for garbage input. **Diverges from `sms.unit`** which uses `isExist()`. Reason: dead-spawned statics (`cfg.dead = true`) are findable via `getByName` but return `false` from `isExist()`; gating methods on `isExist()` would make them unusable. Across frames, `getByName` clears for actually-destroyed statics, so the gate still fires correctly. |
 | `get_name(s)` | accessor; nil-safe via `_name_of` normalizer |
 | `get_position(s)` | `getPoint()` → vec3 `{x = east-west, y = altitude, z = north-south}` |
 | `get_coalition(s)` | int → `"red"`/`"blue"`/`"neutral"` |

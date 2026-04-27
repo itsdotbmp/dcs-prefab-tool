@@ -17,6 +17,13 @@
 -- garbage input (nil, numbers, ...) and returns nil, which then makes is_alive
 -- return false and the standard log+nil path triggers.
 --
+-- Static-specific is_alive semantics: unlike sms.unit (which checks isExist()),
+-- sms.static.is_alive uses only StaticObject.getByName(). Statics spawned with
+-- dead = true are addressable via getByName but return false from isExist();
+-- gating methods on isExist() would make dead-spawned statics unusable through
+-- the framework even though they're in the scene as wreckage. See is_alive
+-- definition for the empirical rationale.
+--
 -- Auto-suffix probes ONLY StaticObject.getByName (statics live in their own
 -- name namespace, separate from groups and units — verified empirically).
 --
@@ -112,8 +119,15 @@ end
 sms.static.is_alive = function(s)
   local name = _name_of(s)
   if not name then return false end
-  local obj = StaticObject.getByName(name)
-  return obj ~= nil and obj:isExist()
+  -- Use getByName-presence as the addressable gate, NOT isExist().
+  -- Empirically, statics spawned with dead = true are findable via getByName
+  -- (they're in the scene as wreckage) but isExist() returns false. If we
+  -- gated on isExist(), every method on the resulting handle (get_position,
+  -- destroy, ...) would log+nil even though the static is in the world. Using
+  -- getByName lets dead-spawned statics remain usable through the framework.
+  -- DCS clears getByName lookups across frames after destroy, so the gate
+  -- still correctly fires for actually-destroyed statics in subsequent frames.
+  return StaticObject.getByName(name) ~= nil
 end
 
 sms.static.get_name = function(s)

@@ -29,7 +29,10 @@ expect_false() {
   local code="$2"
   local result
   result=$("${DCSSMS}" exec --code "${code}")
-  echo "${result}" | grep -q '"return_value":false' \
+  # Bridge serializes Lua `false` as JSON `null` (and Lua `nil` also as `null`),
+  # so accept either. Tests using this helper care that the predicate is falsy,
+  # not the specific Lua type.
+  echo "${result}" | grep -qE '"return_value":(false|null)' \
     || { echo "FAIL: ${label}: ${result}"; exit 1; }
 }
 
@@ -443,6 +446,9 @@ expect_true "non-num heading" "
 # Section 12: clone — discover ME-defined static template (skip if none)
 # ----------------------------------------------------------------
 echo "==> [clone] discover ME-defined static name (if any)"
+# `|| true` suppresses non-zero exit when the grep pipeline finds no match
+# (i.e. the mission has no ME-defined statics). pipefail would otherwise kill
+# the script before the empty-name skip branch below.
 TEMPLATE_NAME=$("${DCSSMS}" exec --code '
   if not env.mission or not env.mission.coalition then return nil end
   local side_keys = {"red", "blue", "neutrals"}
@@ -459,7 +465,7 @@ TEMPLATE_NAME=$("${DCSSMS}" exec --code '
     end
   end
   return nil
-' | grep -oE '"return_value":"[^"]+"' | grep -oE '"[^"]+"$' | tr -d '"')
+' | { grep -oE '"return_value":"[^"]+"' | grep -oE '"[^"]+"$' | tr -d '"'; true; })
 
 if [ -z "${TEMPLATE_NAME}" ]; then
   echo "==> [clone] no ME-defined static found in mission, skipping clone tests (Sections 12-13)"
@@ -611,31 +617,41 @@ expect_false "non-area self" "
 "
 
 # ----------------------------------------------------------------
-# Section 15: handle methods on dead static -> nil + log
+# Section 15: handle methods on a no-longer-existing static -> nil + log
+#
+# Note: DCS doesn't reflect destroy() within the same frame — getByName still
+# returns the object in the same exec call. So we spawn+destroy in one exec
+# and verify the destroyed state in a SEPARATE exec call (separate frame),
+# where DCS has cleared the lookup. The sms.static() callable returning nil
+# is the canonical "no longer in the world" signal.
 # ----------------------------------------------------------------
-echo "==> [entity] get_position on destroyed static -> nil"
-expect_true "destroyed get_position nil" "
+echo "==> [entity] spawn + destroy a static (frame 1)"
+"${DCSSMS}" exec --code "
   local s = sms.static.create({
-    name     = '_smoke_static_dead_test',
+    name     = '_smoke_static_postdestroy',
     type     = 'Hangar B',
     position = {x = ${SPAWN_X} + 5000, y = 0, z = ${SPAWN_Z} + 5000},
     country  = 'USA',
   })
-  if not s then return false end
-  s:destroy()
-  return s:get_position() == nil
+  if s then s:destroy() end
+  return 'destroyed'
+" >/dev/null
+
+echo "==> [entity] sms.static lookup of destroyed name -> nil (frame 2)"
+expect_true "destroyed lookup nil" "
+  return sms.static('_smoke_static_postdestroy') == nil
 "
 
 # ----------------------------------------------------------------
 # Section 16: tail-log assertion
 # ----------------------------------------------------------------
-echo "==> [log] dcs.log should contain [sms.static] line for unknown country"
-log_window=$("${DCSSMS}" tail-log --grep '\[sms.static\]' -n 200)
+echo "==> [log] dcs.log should contain [sms.static] lines for unknown country AND pitch/bank"
+# Use -since 60s to bypass the cursor advance: we want both assertions checked
+# against the same recent window, since calling tail-log twice would consume
+# the cursor between calls and miss lines.
+log_window=$("${DCSSMS}" tail-log --grep '\[sms.static\]' -n 200 -since 60s)
 echo "${log_window}" | grep -q "unknown country" \
   || { echo "FAIL: missing log line for unknown country"; echo "${log_window}"; exit 1; }
-
-echo "==> [log] dcs.log should contain [sms.static] pitch/bank warning"
-log_window=$("${DCSSMS}" tail-log --grep '\[sms.static\]' -n 200)
 echo "${log_window}" | grep -q "pitch/bank" \
   || { echo "FAIL: missing log line for pitch/bank warning"; echo "${log_window}"; exit 1; }
 
