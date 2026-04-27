@@ -526,3 +526,29 @@ sms.weapon.get_impact_distance_from = function(w, target)
   local dz = ip.z - target_pos.z
   return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
+
+-- ============================================================
+-- destroy
+-- ============================================================
+
+-- Stops tracking (silently, no impact event), removes the weapon from
+-- the DCS world, transitions state to "destroyed". Idempotent: returns
+-- true once, false thereafter. To get an impact-style event from a
+-- programmatic abort, read get_position() before calling destroy().
+sms.weapon.destroy = function(w)
+  if not _is_handle(w) then
+    log.error("destroy: argument must be an sms.weapon handle")
+    return false
+  end
+  if w.state == "destroyed" then return false end
+  if w.state == "tracking" and w._timer_handle then
+    sms.timer.stop(w._timer_handle)
+    w._timer_handle = nil
+  end
+  if w._raw then
+    pcall(w._raw.destroy, w._raw)
+    w._raw = nil
+  end
+  w.state = "destroyed"
+  return true
+end

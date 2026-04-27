@@ -236,6 +236,119 @@ expect_true "bus event payload has weapon, impact_position, time" \
 expect_true "impact landed within reasonable distance of target (within 200m)" \
   'local d = _G._sms_weapon_smoke.shot_evt.weapon:get_impact_distance_from(_G._sms_weapon_smoke.target_pos); return d < 200'
 
+echo "==> destroy() — silent abort (no impact event)"
+"${DCSSMS}" exec --code '
+  _G._sms_weapon_smoke.destroy_test = {
+    arty_group     = nil,
+    arty_unit      = nil,
+    target_pos     = {x = -39500, y = 0, z = -40000},  -- different region, 500m east
+    weapon         = nil,
+    callback_fired = 0,
+    bus_fired      = 0,
+  }
+  local g = sms.group.create({
+    name = "smoke_weapon_arty_destroy",
+    position = {x = -40000, y = 0, z = -40000},
+    country = "USA",
+    category = "ground",
+    units = {{ type = "M-109", offset = {x = 0, y = 0, z = 0}, heading = 90 }},
+  })
+  if g then
+    _G._sms_weapon_smoke.destroy_test.arty_group = g:get_name()
+    _G._sms_weapon_smoke.destroy_test.arty_unit  = g:get_units()[1]:get_name()
+    -- Anchor target y to terrain (consistency with the first arty section).
+    _G._sms_weapon_smoke.destroy_test.target_pos.y = land.getHeight({
+      x = _G._sms_weapon_smoke.destroy_test.target_pos.x,
+      y = _G._sms_weapon_smoke.destroy_test.target_pos.z,
+    })
+  end
+
+  -- Closure-local latch — defends against orphaned SHOT handlers from
+  -- earlier smoke runs. Same pattern as the first arty SHOT handler.
+  local fired = false
+  sms.events.connect(sms.events.SHOT, function(evt)
+    if fired then return end
+    if not evt.weapon then return end
+    local launcher = evt.weapon:get_launcher()
+    if not launcher or launcher.name ~= _G._sms_weapon_smoke.destroy_test.arty_unit then return end
+    fired = true
+    _G._sms_weapon_smoke.destroy_test.weapon = evt.weapon
+    evt.weapon:on_impact(function(_)
+      _G._sms_weapon_smoke.destroy_test.callback_fired = _G._sms_weapon_smoke.destroy_test.callback_fired + 1
+    end)
+    evt.weapon:start_tracking({rate = 30})
+  end)
+
+  -- Bus subscriber filtered to OUR weapon (defensive vs concurrent agents).
+  sms.events.connect(sms.events.WEAPON_IMPACT, function(bus_evt)
+    if bus_evt.weapon and _G._sms_weapon_smoke.destroy_test.weapon
+       and bus_evt.weapon:get_name() == _G._sms_weapon_smoke.destroy_test.weapon:get_name() then
+      _G._sms_weapon_smoke.destroy_test.bus_fired = _G._sms_weapon_smoke.destroy_test.bus_fired + 1
+    end
+  end)
+
+  local u = Unit.getByName(_G._sms_weapon_smoke.destroy_test.arty_unit)
+  if u then
+    u:getController():pushTask({
+      id = "FireAtPoint",
+      params = {
+        point     = { x = _G._sms_weapon_smoke.destroy_test.target_pos.x,
+                      y = _G._sms_weapon_smoke.destroy_test.target_pos.z },
+        radius    = 5,
+        expendQty = 1,
+        expendQtyEnabled = true,
+      },
+    })
+  end
+' >/dev/null
+
+# Poll-and-destroy in a single exec call: as soon as the shell is tracking,
+# call destroy() in the SAME Lua frame to avoid a race where the shell
+# impacts naturally between the poll and the destroy. The flight time at
+# 500m is short (~2-3s). M-109 prep time can be ~15-30s, so the polling
+# envelope below covers up to 60s of waiting.
+echo "    waiting for shell to fire and tracking to start..."
+for i in $(seq 1 120); do
+  # Atomic "if tracking, destroy immediately" — eliminates the race
+  # between observing tracking state and the destroy call.
+  result=$("${DCSSMS}" exec --code '
+    local s = _G._sms_weapon_smoke.destroy_test
+    if s.weapon == nil or not s.weapon:is_tracking() then return false end
+    s.destroy_first  = s.weapon:destroy()
+    s.destroy_second = s.weapon:destroy()
+    s.state_after    = s.weapon:get_state()
+    return true
+  ')
+  if echo "${result}" | grep -q '"return_value":true'; then
+    echo "    shell tracking + destroyed after ${i} polls (~$((i / 2))s)"
+    break
+  fi
+  sleep 0.5
+done
+
+expect_str "second weapon reached destroyed state in poll-and-destroy" \
+  'return _G._sms_weapon_smoke.destroy_test.state_after' 'destroyed'
+
+# Wait an additional moment to confirm no late impact callbacks slip in.
+sleep 3
+
+expect_true "destroy() returned true on first call" \
+  'return _G._sms_weapon_smoke.destroy_test.destroy_first == true'
+expect_true "destroy() returned false on second call (idempotent)" \
+  'return _G._sms_weapon_smoke.destroy_test.destroy_second == false'
+expect_str "state is destroyed" \
+  'return _G._sms_weapon_smoke.destroy_test.state_after' 'destroyed'
+expect_eq "on_impact did NOT fire after destroy()" \
+  'return _G._sms_weapon_smoke.destroy_test.callback_fired' 0
+expect_eq "WEAPON_IMPACT bus event did NOT fire after destroy()" \
+  'return _G._sms_weapon_smoke.destroy_test.bus_fired' 0
+
+# Cleanup destroy-test artillery group.
+"${DCSSMS}" exec --code '
+  local g = Group.getByName(_G._sms_weapon_smoke.destroy_test.arty_group)
+  if g then pcall(g.destroy, g) end
+' >/dev/null
+
 # Cleanup. Best-effort.
 "${DCSSMS}" exec --code '
   local g = Group.getByName(_G._sms_weapon_smoke.arty_group)
