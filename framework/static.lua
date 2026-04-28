@@ -72,10 +72,6 @@ local function _name_of(s)
   return nil
 end
 
--- _is_vec3 / _resolve_country lifted to sms.utils (issue #14).
-local _is_vec3 = sms.utils.is_vec3
-local _resolve_country = sms.utils.resolve_country
-
 local function _name_taken(name)
   return StaticObject.getByName(name) ~= nil
 end
@@ -93,9 +89,6 @@ local function _resolve_unique_name(base)
   _name_counters[base] = n + 1
   return base .. "-" .. n
 end
-
--- _deep_copy lifted to sms.utils.deep_copy (issue #14).
-local _deep_copy = sms.utils.deep_copy
 
 -- ============================================================
 -- Entity wrapper methods
@@ -263,7 +256,7 @@ local function _validate_create_config(cfg)
     log.error("create: type is required (non-empty string)")
     return false
   end
-  if not _is_vec3(cfg.position) then
+  if not sms.utils.is_vec3(cfg.position) then
     log.error("create: position is required (vec3 with x/y/z numbers)")
     return false
   end
@@ -305,7 +298,7 @@ end
 sms.static.create = function(cfg)
   if not _validate_create_config(cfg) then return nil end
 
-  local country_int = _resolve_country(cfg.country)
+  local country_int = sms.utils.resolve_country(cfg.country)
   if not country_int then
     log.error("create: unknown country '" .. tostring(cfg.country) .. "'")
     return nil
@@ -361,7 +354,7 @@ sms.static.clone = function(template_name, overrides)
     log.error("clone: overrides.name is required (non-empty string)")
     return nil
   end
-  if not _is_vec3(overrides.position) then
+  if not sms.utils.is_vec3(overrides.position) then
     log.error("clone: overrides.position is required (vec3)")
     return nil
   end
@@ -372,7 +365,7 @@ sms.static.clone = function(template_name, overrides)
     return nil
   end
 
-  local def = _deep_copy(found.def_unit)
+  local def = sms.utils.deep_copy(found.def_unit)
 
   -- Strip ME-assigned ids so DCS gets fresh ones for the clone.
   def.unitId = nil

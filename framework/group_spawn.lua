@@ -67,11 +67,6 @@ local _mission_cat_to_string = {
 -- Validation helpers
 -- ============================================================
 
--- _is_vec3 / _resolve_country lifted to sms.utils (issue #14). Local
--- aliases below keep the rest of this file's call-sites compact.
-local _is_vec3 = sms.utils.is_vec3
-local _resolve_country = sms.utils.resolve_country
-
 local function _resolve_category(s)
   if type(s) ~= "string" then return nil end
   return _category_map[s:lower()]
@@ -259,7 +254,7 @@ local function _validate_create_config(cfg)
     log.error("create: name is required (non-empty string)")
     return false
   end
-  if not _is_vec3(cfg.position) then
+  if not sms.utils.is_vec3(cfg.position) then
     log.error("create: position is required (vec3 with x/y/z numbers)")
     return false
   end
@@ -280,7 +275,7 @@ local function _validate_create_config(cfg)
       log.error("create: unit " .. i .. " missing type")
       return false
     end
-    if u.offset ~= nil and not _is_vec3(u.offset) then
+    if u.offset ~= nil and not sms.utils.is_vec3(u.offset) then
       log.error("create: unit " .. i .. " offset must be a vec3")
       return false
     end
@@ -295,7 +290,7 @@ end
 sms.group.create = function(cfg)
   if not _validate_create_config(cfg) then return nil end
 
-  local country_int = _resolve_country(cfg.country)
+  local country_int = sms.utils.resolve_country(cfg.country)
   if not country_int then
     log.error("create: unknown country '" .. tostring(cfg.country) .. "'")
     return nil
@@ -366,9 +361,6 @@ local function _find_template_in_mission(template_name)
   return nil
 end
 
--- _deep_copy lifted to sms.utils.deep_copy (issue #14).
-local _deep_copy = sms.utils.deep_copy
-
 sms.group.clone = function(template_name, overrides)
   if type(template_name) ~= "string" or template_name == "" then
     log.error("clone: template_name must be a non-empty string")
@@ -382,7 +374,7 @@ sms.group.clone = function(template_name, overrides)
     log.error("clone: overrides.name is required (non-empty string)")
     return nil
   end
-  if overrides.position ~= nil and not _is_vec3(overrides.position) then
+  if overrides.position ~= nil and not sms.utils.is_vec3(overrides.position) then
     log.error("clone: overrides.position must be a vec3 if provided")
     return nil
   end
@@ -399,7 +391,7 @@ sms.group.clone = function(template_name, overrides)
     return nil
   end
 
-  local def = _deep_copy(found.def)
+  local def = sms.utils.deep_copy(found.def)
   if not def.units or #def.units == 0 then
     log.error("clone: template '" .. template_name .. "' has no units")
     return nil

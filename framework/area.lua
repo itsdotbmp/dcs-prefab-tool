@@ -42,9 +42,6 @@ sms.area = sms.area or {}
 -- Local helpers (private)
 -- ============================================================
 
--- _validate_vec3 lifted to sms.utils.is_vec3 (issue #14).
-local _validate_vec3 = sms.utils.is_vec3
-
 local function _point_in_circle(data, x, z)
   local dx = x - data.center.x
   local dz = z - data.center.z
@@ -219,7 +216,7 @@ sms.area.is_vec3_in = function(a, target)
     log.error("is_vec3_in: argument must be an sms.area handle")
     return false
   end
-  if not _validate_vec3(target) then
+  if not sms.utils.is_vec3(target) then
     log.error("is_vec3_in: target must be a vec3 with x/y/z numbers")
     return false
   end
@@ -333,7 +330,7 @@ end
 -- ============================================================
 
 sms.area.create_circular = function(center, radius, name)
-  if not _validate_vec3(center) then
+  if not sms.utils.is_vec3(center) then
     log.error("create_circular: center must be a vec3 with x/y/z numbers")
     return nil
   end
@@ -358,7 +355,7 @@ sms.area.create_polygon = function(vertices, name)
     return nil
   end
   for i, v in ipairs(vertices) do
-    if not _validate_vec3(v) then
+    if not sms.utils.is_vec3(v) then
       log.error("create_polygon: vertex " .. i .. " is not a vec3 with x/y/z numbers")
       return nil
     end
