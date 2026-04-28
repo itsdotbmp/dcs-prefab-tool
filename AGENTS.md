@@ -48,6 +48,8 @@ dcs-sms/
 │   ├── sms.lua             Root namespace + shared metatable factories.
 │   ├── log.lua             sms.log — structured logging.
 │   ├── utils.lua           sms.utils — small numeric helpers (deg/rad, ft/m, etc.).
+│   ├── targets.lua         sms.targets — DCS target attribute name constants.
+│   ├── designations.lua    sms.designations — FAC designation enum constants.
 │   ├── group.lua           sms.group — group entity wrapper, g:connect, set_task / push_task.
 │   ├── unit.lua            sms.unit — unit entity wrapper, u:connect.
 │   ├── area.lua            sms.area — zones, drawings, runtime areas.
@@ -154,7 +156,7 @@ A handle is a small `{name = "..."}` table with a metatable whose `__index` poin
 The bridge currently loads framework files via `net.dostring_in` in this order:
 
 ```
-sms.lua → log.lua → utils.lua → group.lua → unit.lua → area.lua → timer.lua → group_spawn.lua → static.lua → events.lua → weapon.lua → task.lua
+sms.lua → log.lua → utils.lua → targets.lua → designations.lua → group.lua → unit.lua → area.lua → timer.lua → group_spawn.lua → static.lua → events.lua → weapon.lua → task.lua
 ```
 
 Each module asserts the dependencies it actually uses. When adding a new module, decide where it slots in based on what it needs and append the assert.

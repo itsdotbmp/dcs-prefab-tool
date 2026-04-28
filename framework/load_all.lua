@@ -27,6 +27,8 @@ local modules = {
   "sms.lua",
   "log.lua",
   "utils.lua",
+  "targets.lua",
+  "designations.lua",
   "group.lua",
   "unit.lua",
   "area.lua",
