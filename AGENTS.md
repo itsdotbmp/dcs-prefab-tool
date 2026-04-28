@@ -138,12 +138,14 @@ A handle is a small `{name = "..."}` table with a metatable whose `__index` poin
 The bridge currently loads framework files via `net.dostring_in` in this order:
 
 ```
-sms.lua → log.lua → utils.lua → group.lua → unit.lua → area.lua → timer.lua → spawn.lua → static.lua → events.lua → weapon.lua
+sms.lua → log.lua → utils.lua → group.lua → unit.lua → area.lua → timer.lua → spawn.lua → static.lua → events.lua → weapon.lua → task.lua
 ```
 
 Each module asserts the dependencies it actually uses. When adding a new module, decide where it slots in based on what it needs and append the assert.
 
-`sms.events` requires `sms.timer` (the `g:connect(DEAD)` deferred check) — adding behavior that uses both is safe.
+`sms.events` requires `sms.timer` (the `g:connect(DEAD)` deferred check) — adding behavior that uses both is safe. `sms.task` is loaded last because it installs methods on `sms.group`'s metatable and reuses helpers from `sms.unit`, `sms.static`, `sms.area`, `sms.utils`, and `sms.timer`.
+
+For one-shot (re)loading of the whole framework in a mission, use [`framework/load_all.lua`](framework/load_all.lua), which `dofile`s every module in the order above.
 
 ---
 
