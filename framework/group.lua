@@ -308,6 +308,17 @@ local function _adapt_task_for_category(task, category, g)
     pt.action = "Off Road"
   end
 
+  -- Default waypoint speed for surface categories. DCS aircraft fall back
+  -- to the group's cruise speed when speed is unset on a waypoint, but
+  -- ground/ship/train units silently sit still without an explicit value.
+  -- Picked per-category from common cruise speeds; users can override via
+  -- opts.speed on the builder.
+  if not is_air and not pt.speed then
+    local default_speed = ({ground = 8.33, ship = 5, train = 13.89})[category] or 8.33
+    pt.speed        = default_speed
+    pt.speed_locked = true
+  end
+
   if g and not pt._sms_start_prepended and #route.points == 1 then
     local cur = g:get_position()
     if cur then
