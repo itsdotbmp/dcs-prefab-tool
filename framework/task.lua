@@ -187,7 +187,19 @@ sms.task.follow = function(target, opts)
   }, "follow", true)
 end
 
--- Orbit a point. Pattern is "Circle" (default) or "RaceTrack". Air only.
+-- Orbit a point. Pattern is "Circle" (default) or "Anchored" (DCS renamed
+-- this from "RaceTrack" in a recent update). Air only.
+--
+-- opts:
+--   altitude          number?    meters,   default 5000
+--   speed             number?    m/s,      default 200
+--   pattern           string?    "Circle" | "Anchored", default "Circle"
+--
+-- Anchored-only opts (ignored on Circle):
+--   hot_leg_bearing   number?    degrees, 0=north clockwise, default 0
+--   leg_length        number?    meters,                     default 30000 (~16 nm)
+--   width             number?    meters,                     default 10000 (~5 nm)
+--   clockwise         boolean?                               default false
 sms.task.orbit = function(pos, opts)
   if not sms.utils.is_vec3(pos) then
     log.warn("orbit: pos must be a vec3, got " .. type(pos))
@@ -201,8 +213,8 @@ sms.task.orbit = function(pos, opts)
   local altitude = opts.altitude or 5000
   local speed    = opts.speed    or 200
   local pattern  = opts.pattern  or "Circle"
-  if pattern ~= "Circle" and pattern ~= "RaceTrack" then
-    log.warn("orbit: pattern must be 'Circle' or 'RaceTrack', got '" .. tostring(pattern) .. "'")
+  if pattern ~= "Circle" and pattern ~= "Anchored" then
+    log.warn("orbit: pattern must be 'Circle' or 'Anchored', got '" .. tostring(pattern) .. "'")
     return nil
   end
   if type(altitude) ~= "number" then
@@ -214,14 +226,42 @@ sms.task.orbit = function(pos, opts)
     return nil
   end
 
+  local params = {
+    pattern  = pattern,
+    point    = {x = pos.x, y = pos.z},  -- DCS 2D
+    altitude = altitude,
+    speed    = speed,
+  }
+
+  if pattern == "Anchored" then
+    local hot_leg_bearing = opts.hot_leg_bearing or 0
+    local leg_length      = opts.leg_length      or 30000
+    local width           = opts.width           or 10000
+    if type(hot_leg_bearing) ~= "number" then
+      log.warn("orbit: opts.hot_leg_bearing must be a number (degrees), got " .. type(hot_leg_bearing))
+      return nil
+    end
+    if type(leg_length) ~= "number" then
+      log.warn("orbit: opts.leg_length must be a number (meters), got " .. type(leg_length))
+      return nil
+    end
+    if type(width) ~= "number" then
+      log.warn("orbit: opts.width must be a number (meters), got " .. type(width))
+      return nil
+    end
+    if opts.clockwise ~= nil and type(opts.clockwise) ~= "boolean" then
+      log.warn("orbit: opts.clockwise must be a boolean, got " .. type(opts.clockwise))
+      return nil
+    end
+    params.hotLegDir = sms.utils.deg_to_rad(hot_leg_bearing) or 0
+    params.legLength = leg_length
+    params.width     = width
+    params.clockWise = opts.clockwise == true
+  end
+
   return _stamp({
     id = "Orbit",
-    params = {
-      pattern  = pattern,
-      point    = {x = pos.x, y = pos.z},  -- DCS 2D
-      altitude = altitude,
-      speed    = speed,
-    },
+    params = params,
   }, "orbit", true)
 end
 

@@ -103,11 +103,39 @@ expect_str "orbit verb tag" 'return sms.task.orbit({x=0,y=0,z=0})._sms_verb' 'or
 echo "==> [build] orbit pattern defaults to Circle"
 expect_str "orbit default pattern" 'return sms.task.orbit({x=0,y=0,z=0}).params.pattern' 'Circle'
 
-echo "==> [build] orbit RaceTrack pattern accepted"
-expect_str "orbit racetrack" 'return sms.task.orbit({x=0,y=0,z=0}, {pattern="RaceTrack"}).params.pattern' 'RaceTrack'
+echo "==> [build] orbit Anchored pattern accepted"
+expect_str "orbit anchored" 'return sms.task.orbit({x=0,y=0,z=0}, {pattern="Anchored"}).params.pattern' 'Anchored'
+
+echo "==> [build] orbit Anchored populates hotLegDir/legLength/width/clockWise"
+expect_true "orbit anchored fields" "
+  local t = sms.task.orbit({x=0,y=0,z=0}, {
+    pattern         = 'Anchored',
+    hot_leg_bearing = 90,
+    leg_length      = 92500,
+    width           = 37000,
+    clockwise       = true,
+  })
+  if not t then return false end
+  local p = t.params
+  -- hot_leg_bearing 90° must map to ~pi/2 radians
+  local rad_ok = math.abs(p.hotLegDir - math.pi/2) < 1e-6
+  return rad_ok
+    and p.legLength == 92500
+    and p.width     == 37000
+    and p.clockWise == true
+"
+
+echo "==> [build] orbit Circle ignores Anchored-only opts"
+expect_true "orbit circle no anchored fields" "
+  local t = sms.task.orbit({x=0,y=0,z=0}, {leg_length = 50000})
+  return t.params.legLength == nil and t.params.width == nil
+"
 
 echo "==> [build] orbit invalid pattern -> nil"
-expect_true "orbit bad pattern" 'return sms.task.orbit({x=0,y=0,z=0}, {pattern="Spiral"}) == nil'
+expect_true "orbit bad pattern" 'return sms.task.orbit({x=0,y=0,z=0}, {pattern="RaceTrack"}) == nil'
+
+echo "==> [build] orbit Anchored bad clockwise -> nil"
+expect_true "orbit bad clockwise" 'return sms.task.orbit({x=0,y=0,z=0}, {pattern="Anchored", clockwise="yes"}) == nil'
 
 echo "==> [build] orbit non-vec3 pos -> nil"
 expect_true "orbit bad pos" 'return sms.task.orbit("nope") == nil'

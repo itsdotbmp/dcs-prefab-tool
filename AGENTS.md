@@ -474,7 +474,7 @@ The fields are otherwise transparent to DCS. Manually-built task tables (no `_sm
 | `sms.task.move_to(target, opts?)` | vec3 / sms.unit / sms.group / sms.static / sms.area; opts: `{speed = number}` (m/s; locked when given; default keeps DCS cruise) | `Mission` (single waypoint at snapshot pos) | all |
 | `sms.task.hold()` | — | `Nothing` (DCS interprets per category: air loiters; ground stops) | all |
 | `sms.task.follow(target, opts?)` | sms.unit / sms.group; opts: `{offset = {x,y,z}}` | `Follow` | air (v1) |
-| `sms.task.orbit(pos, opts?)` | vec3; opts: `{altitude=5000, speed=200, pattern="Circle"\|"RaceTrack"}` | `Orbit` | air |
+| `sms.task.orbit(pos, opts?)` | vec3; opts: `{altitude=5000, speed=200, pattern="Circle"\|"Anchored"}`. Anchored adds `{hot_leg_bearing=0 (deg), leg_length=30000 (m), width=10000 (m), clockwise=false}`. DCS renamed "RaceTrack" → "Anchored" in a recent update. | `Orbit` | air |
 | `sms.task.attack(target, opts?)` | sms.group / sms.unit / sms.static; opts: `{weapon_type="Auto", expend="Auto", attack_qty}` | `AttackGroup` (group) / `AttackUnit` (unit, static) | air (v1) |
 | `sms.task.attack_in_area(area, opts?)` | circular sms.area; opts: `{altitude_min, altitude_max, weapon_type}` | `EngageTargetsInZone` | air (v1) |
 | `sms.task.bomb(target, opts?)` | vec3 / sms.area / sms.unit / sms.static; opts: `{altitude, weapon_type, expend, group_attack, direction}` | `Bombing` | air |
@@ -486,7 +486,7 @@ The fields are otherwise transparent to DCS. Manually-built task tables (no `_sm
 **Air-only enforcement.** Six builders set `_sms_air_only = true`: `follow`, `orbit`, `attack`, `attack_in_area`, `bomb`, `land`. At apply time, `set_task`/`push_task` reads the flag and rejects-with-log if the group's category is not `airplane` or `helicopter`:
 
 ```
-[sms.task] set_task: 'orbit' is air-only; group 'tank-1' is ground — not applied
+[sms.group] set_task: 'orbit' is air-only; group 'tank-1' is ground — not applied
 ```
 
 **Weapon type strings** (accepted by builders that take `opts.weapon_type`): `"Auto"` (default), `"Guns"`, `"Rockets"`, `"Missiles"`, `"Bombs"`. Numeric DCS bitmasks are also accepted.
