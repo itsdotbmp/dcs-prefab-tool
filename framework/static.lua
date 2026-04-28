@@ -27,10 +27,6 @@
 -- Auto-suffix probes ONLY StaticObject.getByName (statics live in their own
 -- name namespace, separate from groups and units — verified empirically).
 --
--- DCS silently ignores pitch/bank on coalition.addStaticObject; cfg.pitch and
--- cfg.bank (if present) are warned (via log.info with explicit "warning:" text,
--- since v1 logger has no warning level) and dropped — only heading is applied.
---
 -- Loading order: sms.lua -> log.lua -> utils.lua -> group.lua -> unit.lua
 --                -> area.lua -> timer.lua -> group_spawn.lua -> static.lua.
 -- area.lua's is_static_in resolves sms.static lazily at call time.
@@ -115,7 +111,7 @@ end
 sms.static.get_position = function(s)
   local name = _name_of(s)
   if not sms.static.is_alive(name) then
-    log.error("get_position: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_position: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local p = StaticObject.getByName(name):getPoint()
@@ -126,7 +122,7 @@ end
 sms.static.get_coalition = function(s)
   local name = _name_of(s)
   if not sms.static.is_alive(name) then
-    log.error("get_coalition: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_coalition: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local c = StaticObject.getByName(name):getCoalition()
@@ -141,7 +137,7 @@ end
 sms.static.get_country = function(s)
   local name = _name_of(s)
   if not sms.static.is_alive(name) then
-    log.error("get_country: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_country: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local int = StaticObject.getByName(name):getCountry()
@@ -157,7 +153,7 @@ end
 sms.static.get_type = function(s)
   local name = _name_of(s)
   if not sms.static.is_alive(name) then
-    log.error("get_type: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_type: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   return StaticObject.getByName(name):getTypeName()
@@ -166,7 +162,7 @@ end
 sms.static.destroy = function(s)
   local name = _name_of(s)
   if not sms.static.is_alive(name) then
-    log.error("destroy: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("destroy: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   StaticObject.getByName(name):destroy()
@@ -198,22 +194,11 @@ local function _build_def(cfg, resolved_name)
   if cfg.shape_name ~= nil then def.shape_name = cfg.shape_name end
   if cfg.livery_id  ~= nil then def.livery_id  = cfg.livery_id  end
 
-  -- Pitch/bank: warn-and-drop. DCS silently ignores these on
-  -- coalition.addStaticObject (verified empirically across hangars, cargo,
-  -- planes, and dead-state planes). v1 logger has no warning level; using
-  -- log.info with explicit "warning:" text so it's both searchable and
-  -- the call still succeeds.
-  if cfg.pitch ~= nil or cfg.bank ~= nil then
-    log.info("create: warning: pitch/bank are ignored by DCS on statics; dropping (only heading is applied)")
-  end
-
-  -- Pass-through unknown fields verbatim (forward-compat). pitch/bank are
-  -- explicitly excluded since DCS silently drops them anyway.
+  -- Pass-through unknown fields verbatim (forward-compat).
   local known = {
     name = true, type = true, position = true, country = true, heading = true,
     category = true, dead = true, mass = true, canCargo = true,
     shape_name = true, livery_id = true,
-    pitch = true, bank = true,  -- explicitly filtered (warned above)
   }
   for k, v in pairs(cfg) do
     if not known[k] and def[k] == nil then
@@ -245,51 +230,51 @@ end
 
 local function _validate_create_config(cfg)
   if type(cfg) ~= "table" then
-    log.error("create: config must be a table")
+    log.warn("create: config must be a table")
     return false
   end
   if type(cfg.name) ~= "string" or cfg.name == "" then
-    log.error("create: name is required (non-empty string)")
+    log.warn("create: name is required (non-empty string)")
     return false
   end
   if type(cfg.type) ~= "string" or cfg.type == "" then
-    log.error("create: type is required (non-empty string)")
+    log.warn("create: type is required (non-empty string)")
     return false
   end
   if not sms.utils.is_vec3(cfg.position) then
-    log.error("create: position is required (vec3 with x/y/z numbers)")
+    log.warn("create: position is required (vec3 with x/y/z numbers)")
     return false
   end
   if type(cfg.country) ~= "string" then
-    log.error("create: country is required (string)")
+    log.warn("create: country is required (string)")
     return false
   end
   if cfg.heading ~= nil and type(cfg.heading) ~= "number" then
-    log.error("create: heading must be a number (degrees) if provided")
+    log.warn("create: heading must be a number (degrees) if provided")
     return false
   end
   if cfg.category ~= nil and type(cfg.category) ~= "string" then
-    log.error("create: category must be a string if provided")
+    log.warn("create: category must be a string if provided")
     return false
   end
   if cfg.dead ~= nil and type(cfg.dead) ~= "boolean" then
-    log.error("create: dead must be a boolean if provided")
+    log.warn("create: dead must be a boolean if provided")
     return false
   end
   if cfg.mass ~= nil and type(cfg.mass) ~= "number" then
-    log.error("create: mass must be a number (kg) if provided")
+    log.warn("create: mass must be a number (kg) if provided")
     return false
   end
   if cfg.canCargo ~= nil and type(cfg.canCargo) ~= "boolean" then
-    log.error("create: canCargo must be a boolean if provided")
+    log.warn("create: canCargo must be a boolean if provided")
     return false
   end
   if cfg.shape_name ~= nil and type(cfg.shape_name) ~= "string" then
-    log.error("create: shape_name must be a string if provided")
+    log.warn("create: shape_name must be a string if provided")
     return false
   end
   if cfg.livery_id ~= nil and type(cfg.livery_id) ~= "string" then
-    log.error("create: livery_id must be a string if provided")
+    log.warn("create: livery_id must be a string if provided")
     return false
   end
   return true
@@ -300,7 +285,7 @@ sms.static.create = function(cfg)
 
   local country_int = sms.utils.resolve_country(cfg.country)
   if not country_int then
-    log.error("create: unknown country '" .. tostring(cfg.country) .. "'")
+    log.warn("create: unknown country '" .. tostring(cfg.country) .. "'")
     return nil
   end
 
@@ -343,25 +328,25 @@ end
 
 sms.static.clone = function(template_name, overrides)
   if type(template_name) ~= "string" or template_name == "" then
-    log.error("clone: template_name must be a non-empty string")
+    log.warn("clone: template_name must be a non-empty string")
     return nil
   end
   if type(overrides) ~= "table" then
-    log.error("clone: overrides must be a table")
+    log.warn("clone: overrides must be a table")
     return nil
   end
   if type(overrides.name) ~= "string" or overrides.name == "" then
-    log.error("clone: overrides.name is required (non-empty string)")
+    log.warn("clone: overrides.name is required (non-empty string)")
     return nil
   end
   if not sms.utils.is_vec3(overrides.position) then
-    log.error("clone: overrides.position is required (vec3)")
+    log.warn("clone: overrides.position is required (vec3)")
     return nil
   end
 
   local found = _find_template_in_mission(template_name)
   if not found then
-    log.error("clone: template '" .. template_name .. "' not in mission")
+    log.warn("clone: template '" .. template_name .. "' not in mission")
     return nil
   end
 

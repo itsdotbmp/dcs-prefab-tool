@@ -50,7 +50,7 @@ end
 sms.unit.get_coalition = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
-    log.error("get_coalition: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_coalition: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local c = Unit.getByName(name):getCoalition()
@@ -65,7 +65,7 @@ end
 sms.unit.get_position = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
-    log.error("get_position: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_position: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local p = Unit.getByName(name):getPoint()
@@ -76,7 +76,7 @@ end
 sms.unit.get_type = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
-    log.error("get_type: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_type: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   return Unit.getByName(name):getTypeName()
@@ -85,7 +85,7 @@ end
 sms.unit.get_group = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
-    log.error("get_group: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_group: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local group_name = Unit.getByName(name):getGroup():getName()
@@ -101,7 +101,7 @@ end
 sms.unit.destroy = function(u, opts)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
-    log.error("destroy: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("destroy: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   -- If asked to emit a DEAD event, capture the group name BEFORE destroy.
@@ -130,7 +130,7 @@ sms.unit.destroy = function(u, opts)
         initiator_group_name = group_name,
       })
     else
-      log.error("destroy: emit_event=true requested but sms.events not loaded")
+      log.warn("destroy: emit_event=true requested but sms.events not loaded")
     end
   end
   return true
@@ -142,7 +142,7 @@ end
 sms.unit.get_heading = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
-    log.error("get_heading: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_heading: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local pos = Unit.getByName(name):getPosition()
@@ -158,7 +158,7 @@ end
 sms.unit.get_pitch = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
-    log.error("get_pitch: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_pitch: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local pos = Unit.getByName(name):getPosition()
@@ -171,7 +171,7 @@ end
 sms.unit.get_altitude = function(u, agl)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
-    log.error("get_altitude: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_altitude: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local p = Unit.getByName(name):getPoint()
@@ -193,19 +193,19 @@ end
 -- entity-meaningful event names.
 sms.unit.connect = function(self, name, fn)
   if not sms._is_handle_of(self, sms.unit) then
-    log.error("unit:connect: self must be an sms.unit handle")
+    log.warn("unit:connect: self must be an sms.unit handle")
     return nil
   end
   if type(name) ~= "string" then
-    log.error("unit:connect: event name must be a string, got " .. type(name))
+    log.warn("unit:connect: event name must be a string, got " .. type(name))
     return nil
   end
   if type(fn) ~= "function" then
-    log.error("unit:connect: fn must be a function, got " .. type(fn))
+    log.warn("unit:connect: fn must be a function, got " .. type(fn))
     return nil
   end
   if not (sms.events and sms.events._entity_scoped and sms.events._entity_scoped[name]) then
-    log.error("unit:connect: event '" .. tostring(name) .. "' has no entity scope")
+    log.warn("unit:connect: event '" .. tostring(name) .. "' has no entity scope")
     return nil
   end
   -- Capture name into a local so the closure doesn't keep a reference to

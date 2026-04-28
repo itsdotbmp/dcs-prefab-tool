@@ -32,7 +32,7 @@ sms._make_callable_handle = function(module, dcs_getter, module_log)
   setmetatable(module, {
     __call = function(_, name)
       if not dcs_getter(name) then
-        module_log.error("couldn't find " .. type_name .. " '" .. tostring(name) .. "'")
+        module_log.warn("couldn't find " .. type_name .. " '" .. tostring(name) .. "'")
         return nil
       end
       return sms._make_handle(module, name)

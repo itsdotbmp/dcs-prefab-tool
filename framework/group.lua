@@ -58,7 +58,7 @@ end
 sms.group.get_coalition = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
-    log.error("get_coalition: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_coalition: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local c = Group.getByName(name):getCoalition()
@@ -83,7 +83,7 @@ local _category_str = {
 sms.group.get_category = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
-    log.error("get_category: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_category: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local cat = Group.getByName(name):getCategory()
@@ -98,12 +98,12 @@ end
 sms.group.get_position = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
-    log.error("get_position: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_position: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local units = Group.getByName(name):getUnits()
   if not units or #units == 0 then
-    log.error("get_position: '" .. tostring(name) .. "' has no units")
+    log.warn("get_position: '" .. tostring(name) .. "' has no units")
     return nil
   end
   local p = units[1]:getPoint()
@@ -114,7 +114,7 @@ end
 sms.group.destroy = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
-    log.error("destroy: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("destroy: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   Group.getByName(name):destroy()
@@ -124,7 +124,7 @@ end
 sms.group.get_units = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
-    log.error("get_units: '" .. tostring(name) .. "' no longer exists in mission")
+    log.warn("get_units: '" .. tostring(name) .. "' no longer exists in mission")
     return nil
   end
   local raw = Group.getByName(name):getUnits()
@@ -146,19 +146,19 @@ end
 -- — a "group hit" or "group takeoff" has no sensible aggregate meaning.
 sms.group.connect = function(self, name, fn)
   if not sms._is_handle_of(self, sms.group) then
-    log.error("group:connect: self must be an sms.group handle")
+    log.warn("group:connect: self must be an sms.group handle")
     return nil
   end
   if type(name) ~= "string" then
-    log.error("group:connect: event name must be a string, got " .. type(name))
+    log.warn("group:connect: event name must be a string, got " .. type(name))
     return nil
   end
   if type(fn) ~= "function" then
-    log.error("group:connect: fn must be a function, got " .. type(fn))
+    log.warn("group:connect: fn must be a function, got " .. type(fn))
     return nil
   end
   if not (sms.events and sms.events._entity_scoped and sms.events._entity_scoped[name]) then
-    log.error("group:connect: event '" .. tostring(name) .. "' has no entity scope")
+    log.warn("group:connect: event '" .. tostring(name) .. "' has no entity scope")
     return nil
   end
   -- Capture name into a local so the closure doesn't keep a reference to
@@ -215,28 +215,28 @@ local _air_categories = { airplane = true, helicopter = true }
 -- object on success, or nil after logging.
 local function _validate_apply(method, group_handle, task)
   if not sms._is_handle_of(group_handle, sms.group) then
-    log.error(method .. ": first argument must be an sms.group handle")
+    log.warn(method .. ": first argument must be an sms.group handle")
     return nil
   end
   if not group_handle:is_alive() then
-    log.error(method .. ": group '" .. tostring(group_handle.name) .. "' is not alive")
+    log.warn(method .. ": group '" .. tostring(group_handle.name) .. "' is not alive")
     return nil
   end
   if not _is_task_table(task) then
-    log.error(method .. ": task must be a table with 'id' (string) and 'params' (table) fields")
+    log.warn(method .. ": task must be a table with 'id' (string) and 'params' (table) fields")
     return nil
   end
   if task._sms_air_only then
     local cat = group_handle:get_category()
     if not _air_categories[cat] then
       local verb = task._sms_verb or "task"
-      log.error(method .. ": '" .. verb .. "' is air-only; group '" .. tostring(group_handle.name) .. "' is " .. tostring(cat) .. " — not applied")
+      log.warn(method .. ": '" .. verb .. "' is air-only; group '" .. tostring(group_handle.name) .. "' is " .. tostring(cat) .. " — not applied")
       return nil
     end
   end
   local raw = Group.getByName(group_handle.name)
   if not raw then
-    log.error(method .. ": group '" .. tostring(group_handle.name) .. "' disappeared between is_alive and apply")
+    log.warn(method .. ": group '" .. tostring(group_handle.name) .. "' disappeared between is_alive and apply")
     return nil
   end
   return raw
@@ -349,12 +349,12 @@ sms.group.set_task = function(g, task)
   sms.timer.after(_DEFER_SECONDS, function()
     local raw_now = Group.getByName(name)
     if not raw_now then
-      log.error("set_task: group '" .. tostring(name) .. "' gone before deferred dispatch")
+      log.warn("set_task: group '" .. tostring(name) .. "' gone before deferred dispatch")
       return
     end
     local ctrl_now = raw_now:getController()
     if not ctrl_now then
-      log.error("set_task: group '" .. tostring(name) .. "' has no controller at deferred dispatch")
+      log.warn("set_task: group '" .. tostring(name) .. "' has no controller at deferred dispatch")
       return
     end
     local ok, err = pcall(ctrl_now.setTask, ctrl_now, task)
@@ -386,12 +386,12 @@ sms.group.push_task = function(g, task)
   sms.timer.after(_DEFER_SECONDS, function()
     local raw_now = Group.getByName(name)
     if not raw_now then
-      log.error("push_task: group '" .. tostring(name) .. "' gone before deferred dispatch")
+      log.warn("push_task: group '" .. tostring(name) .. "' gone before deferred dispatch")
       return
     end
     local ctrl_now = raw_now:getController()
     if not ctrl_now then
-      log.error("push_task: group '" .. tostring(name) .. "' has no controller at deferred dispatch")
+      log.warn("push_task: group '" .. tostring(name) .. "' has no controller at deferred dispatch")
       return
     end
     local ok, err = pcall(ctrl_now.pushTask, ctrl_now, task)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end smoke test for sms.static v1.
 # Exercises the entity wrapper, create happy + sad paths, auto-suffix,
-# clone (skipped if no ME static found), pitch/bank warning,
+# clone (skipped if no ME static found),
 # and sms.area:is_static_in.
 # Requires: DCS running with the dcs-sms hook installed and a mission loaded.
 
@@ -15,7 +15,7 @@ DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 # Fixture cleanup: nukes anything this smoke spawns, even on mid-run
 # abort (set -e). Idempotent — destroys only what currently exists.
 # Keep this list in sync with the names this smoke creates.
-SMOKE_FIXTURES="_smoke_static_cargo _smoke_static_clone _smoke_static_coords _smoke_static_crate _smoke_static_dead _smoke_static_dup _smoke_static_entity _smoke_static_hangar _smoke_static_heading _smoke_static_in _smoke_static_ns _smoke_static_out _smoke_static_pitch _smoke_static_postdestroy _smoke_static_typecheck"
+SMOKE_FIXTURES="_smoke_static_cargo _smoke_static_clone _smoke_static_coords _smoke_static_crate _smoke_static_dead _smoke_static_dup _smoke_static_entity _smoke_static_hangar _smoke_static_heading _smoke_static_in _smoke_static_ns _smoke_static_out _smoke_static_postdestroy _smoke_static_typecheck"
 
 cleanup_smoke_fixtures() {
   [ -z "${SMOKE_FIXTURES}" ] && return 0
@@ -335,29 +335,6 @@ echo "==> [namespace] cleanup"
   if s then s:destroy() end
   local g = sms.group('_smoke_static_ns')
   if g then g:destroy() end
-" >/dev/null
-
-# ----------------------------------------------------------------
-# Section 10: pitch/bank warn-and-drop
-# ----------------------------------------------------------------
-echo "==> [pitch/bank] spawn succeeds with pitch present (DCS ignores it)"
-expect_true "pitch warned not failed" "
-  local s = sms.static.create({
-    name     = '_smoke_static_pitch',
-    type     = 'Hangar B',
-    position = {x = ${SPAWN_X} + 900, y = 0, z = ${SPAWN_Z} + 900},
-    country  = 'USA',
-    pitch    = 0.5,
-    bank     = 0.5,
-  })
-  if not s then return false end
-  return s:is_alive()
-"
-
-echo "==> [pitch/bank] cleanup"
-"${DCSSMS}" exec --code "
-  local s = sms.static('_smoke_static_pitch')
-  if s then s:destroy() end
 " >/dev/null
 
 # ----------------------------------------------------------------
@@ -726,14 +703,9 @@ expect_true "stale handle get_position nil" "
 # ----------------------------------------------------------------
 # Section 16: tail-log assertion
 # ----------------------------------------------------------------
-echo "==> [log] dcs.log should contain [sms.static] lines for unknown country AND pitch/bank"
-# Use -since 60s to bypass the cursor advance: we want both assertions checked
-# against the same recent window, since calling tail-log twice would consume
-# the cursor between calls and miss lines.
+echo "==> [log] dcs.log should contain [sms.static] line for unknown country"
 log_window=$("${DCSSMS}" tail-log --grep '\[sms.static\]' -n 200 -since 60s)
 echo "${log_window}" | grep -q "unknown country" \
   || { echo "FAIL: missing log line for unknown country"; echo "${log_window}"; exit 1; }
-echo "${log_window}" | grep -q "pitch/bank" \
-  || { echo "FAIL: missing log line for pitch/bank warning"; echo "${log_window}"; exit 1; }
 
 echo "smoke ok"

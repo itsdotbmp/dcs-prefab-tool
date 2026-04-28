@@ -157,11 +157,11 @@ end
 
 sms.events.connect = function(name, fn)
   if type(name) ~= "string" then
-    log.error("connect: name must be a string, got " .. type(name))
+    log.warn("connect: name must be a string, got " .. type(name))
     return nil
   end
   if type(fn) ~= "function" then
-    log.error("connect: fn must be a function, got " .. type(fn))
+    log.warn("connect: fn must be a function, got " .. type(fn))
     return nil
   end
   _ensure_world_handler()
@@ -173,7 +173,7 @@ end
 
 sms.events.emit = function(name, ...)
   if type(name) ~= "string" then
-    log.error("emit: name must be a string, got " .. type(name))
+    log.warn("emit: name must be a string, got " .. type(name))
     return
   end
   local subs = _subscribers[name]
@@ -199,7 +199,7 @@ end
 
 sms.events.disconnect = function(conn)
   if not _is_connection(conn) then
-    log.error("disconnect: argument must be a Connection handle")
+    log.warn("disconnect: argument must be a Connection handle")
     return false
   end
   if not conn.active then return false end

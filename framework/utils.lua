@@ -36,7 +36,7 @@ end
 -- Heading conversion: framework public input is degrees, DCS API is radians.
 sms.utils.deg_to_rad = function(deg)
   if type(deg) ~= "number" then
-    log.error("deg_to_rad: argument must be a number, got " .. type(deg))
+    log.warn("deg_to_rad: argument must be a number, got " .. type(deg))
     return nil
   end
   return deg * math.pi / 180
@@ -44,7 +44,7 @@ end
 
 sms.utils.rad_to_deg = function(rad)
   if type(rad) ~= "number" then
-    log.error("rad_to_deg: argument must be a number, got " .. type(rad))
+    log.warn("rad_to_deg: argument must be a number, got " .. type(rad))
     return nil
   end
   return rad * 180 / math.pi
@@ -54,7 +54,7 @@ end
 -- think in feet — these helpers are for user code, not internal.
 sms.utils.feet_to_meters = function(ft)
   if type(ft) ~= "number" then
-    log.error("feet_to_meters: argument must be a number, got " .. type(ft))
+    log.warn("feet_to_meters: argument must be a number, got " .. type(ft))
     return nil
   end
   return ft * 0.3048
@@ -62,7 +62,7 @@ end
 
 sms.utils.meters_to_feet = function(m)
   if type(m) ~= "number" then
-    log.error("meters_to_feet: argument must be a number, got " .. type(m))
+    log.warn("meters_to_feet: argument must be a number, got " .. type(m))
     return nil
   end
   return m / 0.3048
@@ -88,7 +88,7 @@ end
 -- and pilots care about vertical speed components too.
 sms.utils.vec3_length = function(v)
   if not sms.utils.is_vec3(v) then
-    log.error("vec3_length: argument must be a vec3 with x/y/z numbers")
+    log.warn("vec3_length: argument must be a vec3 with x/y/z numbers")
     return nil
   end
   return math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
@@ -99,11 +99,11 @@ end
 -- handle, they call :get_position() themselves.
 sms.utils.vec3_distance = function(a, b)
   if not sms.utils.is_vec3(a) then
-    log.error("vec3_distance: first argument must be a vec3 with x/y/z numbers")
+    log.warn("vec3_distance: first argument must be a vec3 with x/y/z numbers")
     return nil
   end
   if not sms.utils.is_vec3(b) then
-    log.error("vec3_distance: second argument must be a vec3 with x/y/z numbers")
+    log.warn("vec3_distance: second argument must be a vec3 with x/y/z numbers")
     return nil
   end
   local dx = a.x - b.x
@@ -121,7 +121,7 @@ end
 -- handles negative inputs correctly: -90 % 360 == 270.
 sms.utils.normalize_heading = function(deg)
   if type(deg) ~= "number" then
-    log.error("normalize_heading: argument must be a number, got " .. type(deg))
+    log.warn("normalize_heading: argument must be a number, got " .. type(deg))
     return nil
   end
   return deg % 360
@@ -133,11 +133,11 @@ end
 -- measured clockwise from north; we then convert and normalize.
 sms.utils.bearing_to = function(from, to)
   if not sms.utils.is_vec3(from) then
-    log.error("bearing_to: 'from' must be a vec3 with x/y/z numbers")
+    log.warn("bearing_to: 'from' must be a vec3 with x/y/z numbers")
     return nil
   end
   if not sms.utils.is_vec3(to) then
-    log.error("bearing_to: 'to' must be a vec3 with x/y/z numbers")
+    log.warn("bearing_to: 'to' must be a vec3 with x/y/z numbers")
     return nil
   end
   local dx = to.x - from.x  -- east component

@@ -247,40 +247,40 @@ end
 
 local function _validate_create_config(cfg)
   if type(cfg) ~= "table" then
-    log.error("create: config must be a table")
+    log.warn("create: config must be a table")
     return false
   end
   if type(cfg.name) ~= "string" or cfg.name == "" then
-    log.error("create: name is required (non-empty string)")
+    log.warn("create: name is required (non-empty string)")
     return false
   end
   if not sms.utils.is_vec3(cfg.position) then
-    log.error("create: position is required (vec3 with x/y/z numbers)")
+    log.warn("create: position is required (vec3 with x/y/z numbers)")
     return false
   end
   if type(cfg.country) ~= "string" then
-    log.error("create: country is required (string)")
+    log.warn("create: country is required (string)")
     return false
   end
   if type(cfg.units) ~= "table" or #cfg.units == 0 then
-    log.error("create: units is required (non-empty table)")
+    log.warn("create: units is required (non-empty table)")
     return false
   end
   for i, u in ipairs(cfg.units) do
     if type(u) ~= "table" then
-      log.error("create: unit " .. i .. " must be a table")
+      log.warn("create: unit " .. i .. " must be a table")
       return false
     end
     if type(u.type) ~= "string" or u.type == "" then
-      log.error("create: unit " .. i .. " missing type")
+      log.warn("create: unit " .. i .. " missing type")
       return false
     end
     if u.offset ~= nil and not sms.utils.is_vec3(u.offset) then
-      log.error("create: unit " .. i .. " offset must be a vec3")
+      log.warn("create: unit " .. i .. " offset must be a vec3")
       return false
     end
     if u.heading ~= nil and type(u.heading) ~= "number" then
-      log.error("create: unit " .. i .. " heading must be a number (degrees)")
+      log.warn("create: unit " .. i .. " heading must be a number (degrees)")
       return false
     end
   end
@@ -292,14 +292,14 @@ sms.group.create = function(cfg)
 
   local country_int = sms.utils.resolve_country(cfg.country)
   if not country_int then
-    log.error("create: unknown country '" .. tostring(cfg.country) .. "'")
+    log.warn("create: unknown country '" .. tostring(cfg.country) .. "'")
     return nil
   end
 
   local category_str = (cfg.category or "ground"):lower()
   local category_int = _resolve_category(category_str)
   if not category_int then
-    log.error("create: unknown category '" .. tostring(cfg.category) .. "'")
+    log.warn("create: unknown category '" .. tostring(cfg.category) .. "'")
     return nil
   end
 
@@ -312,12 +312,12 @@ sms.group.create = function(cfg)
   -- multiple groups.
   if category_str == "airplane" or category_str == "helicopter" then
     if #cfg.units > 4 then
-      log.error("create: " .. category_str .. " group '" .. cfg.name .. "' has " .. #cfg.units .. " units, max 4 (DCS silently truncates above the cap); split into multiple groups")
+      log.warn("create: " .. category_str .. " group '" .. cfg.name .. "' has " .. #cfg.units .. " units, max 4 (DCS silently truncates above the cap); split into multiple groups")
       return nil
     end
     for i, u in ipairs(cfg.units) do
       if type(u.alt) ~= "number" then
-        log.error("create: air unit " .. i .. " missing alt (meters)")
+        log.warn("create: air unit " .. i .. " missing alt (meters)")
         return nil
       end
     end
@@ -363,25 +363,25 @@ end
 
 sms.group.clone = function(template_name, overrides)
   if type(template_name) ~= "string" or template_name == "" then
-    log.error("clone: template_name must be a non-empty string")
+    log.warn("clone: template_name must be a non-empty string")
     return nil
   end
   if type(overrides) ~= "table" then
-    log.error("clone: overrides must be a table")
+    log.warn("clone: overrides must be a table")
     return nil
   end
   if type(overrides.name) ~= "string" or overrides.name == "" then
-    log.error("clone: overrides.name is required (non-empty string)")
+    log.warn("clone: overrides.name is required (non-empty string)")
     return nil
   end
   if overrides.position ~= nil and not sms.utils.is_vec3(overrides.position) then
-    log.error("clone: overrides.position must be a vec3 if provided")
+    log.warn("clone: overrides.position must be a vec3 if provided")
     return nil
   end
 
   local found = _find_template_in_mission(template_name)
   if not found then
-    log.error("clone: template '" .. template_name .. "' not in mission")
+    log.warn("clone: template '" .. template_name .. "' not in mission")
     return nil
   end
 
@@ -393,7 +393,7 @@ sms.group.clone = function(template_name, overrides)
 
   local def = sms.utils.deep_copy(found.def)
   if not def.units or #def.units == 0 then
-    log.error("clone: template '" .. template_name .. "' has no units")
+    log.warn("clone: template '" .. template_name .. "' has no units")
     return nil
   end
 

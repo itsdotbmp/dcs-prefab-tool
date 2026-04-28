@@ -86,7 +86,7 @@ The framework runs in the mission environment. The bridge runs in the hook envir
 
 **Every public framework call follows this contract:**
 
-- On bad input or missing entity → log via `sms.log.error` (or the module's tagged logger) and return `nil` or `false`.
+- On bad input or missing entity → log via the module's tagged logger and return `nil` or `false`.
 - **Never `error()` out of an `sms.*` call.** Throwing aborts the entire mission script — that is the failure mode dcs-sms exists to avoid.
 - Methods accept either a handle (`{name=...}` table) or a raw name string interchangeably. They also tolerate garbage (nil, numbers, booleans) — those normalize to "not alive" and produce a logged nil.
 
@@ -97,6 +97,19 @@ sms.unit.get_position("ghost")
 sms.unit.get_position({name = "ghost"})
 sms.unit.get_position(nil)
 ```
+
+### Log levels: warn for caller misuse, error for real failures
+
+`sms.log` exposes four levels — `debug`, `info`, `warn`, `error` — each landing on the corresponding `env.*` sink (`env.info`, `env.info`, `env.warning`, `env.error`). Pick the right one when authoring framework code:
+
+- **`log.warn`** — caller misuse. The API user passed garbage, named a non-existent entity, called an air-only verb on a ground group, requested an unknown enum, called against a destroyed handle, etc. The caller can fix it by changing what they pass or what state they call against. Most framework rejection paths are warns.
+- **`log.error`** — real failure that the caller couldn't have prevented. DCS rejected something the framework expected to succeed (`coalition.addGroup` raised, `addStaticObject` accepted but not findable post-call), DCS returned a value outside our known enum, an internal invariant was violated, or `pcall` caught a user callback raising during dispatch.
+
+When in doubt: if the message could plausibly cause the user to think *"oh, I called this wrong"*, it's a `warn`. If it points at framework or DCS misbehavior, it's an `error`.
+
+The runtime threshold defaults to `info` (everything visible). Production missions can mute caller-misuse warns with `sms.log.set_level("error")`.
+
+Smoke tests deliberately exercise warn paths to verify rejection. Seeing `[sms.*]` WARNING lines in `dcs.log` during a smoke run is *evidence the test passed*, not a failure.
 
 When you write new framework code, mimic this contract. Do not `error()`. Do not `assert()` on user input. Use `pcall` around any vanilla DCS call that could throw.
 
@@ -172,11 +185,17 @@ The single global namespace. Idempotent on reload.
 
 ### `sms.log` — `framework/log.lua`
 
+Four levels: `debug` < `info` < `warn` < `error`. Sinks: debug+info → `env.info`, warn → `env.warning`, error → `env.error`. Calls below the runtime threshold are dropped without touching `env.*`. Threshold defaults to `info`. See [§3](#3-failure-model-log--nil-never-throw) for the warn-vs-error contract.
+
 | Symbol | Purpose |
 |---|---|
+| `sms.log.debug(msg)` | Untagged; logs `[sms] msg` via `env.info`. Filtered when threshold ≥ info. |
 | `sms.log.info(msg)` | Untagged; logs `[sms] msg` via `env.info`. |
+| `sms.log.warn(msg)` | Untagged; logs `[sms] msg` via `env.warning`. |
 | `sms.log.error(msg)` | Untagged; logs `[sms] msg` via `env.error`. |
-| `sms.log.module(name?)` | Returns `{tag, info, error}` tagged logger. With `name`, prefixes lines `[name]`. Without, auto-derives from caller's file basename → `sms.<basename>` (only works for `dofile`-loaded modules; bridge-loaded modules must pass an explicit tag). |
+| `sms.log.set_level(name)` | Set runtime threshold to `"debug"`/`"info"`/`"warn"`/`"error"` (case-insensitive). Bad input logs and leaves the threshold unchanged. |
+| `sms.log.get_level()` | Returns the current threshold's lowercase string name. |
+| `sms.log.module(name?)` | Returns `{tag, debug, info, warn, error}` tagged logger. With `name`, prefixes lines `[name]`. Without, auto-derives from caller's file basename → `sms.<basename>` (only works for `dofile`-loaded modules; bridge-loaded modules must pass an explicit tag). |
 
 ### `sms.utils` — `framework/utils.lua`
 
@@ -530,7 +549,7 @@ Public field names (the framework normalizes these to DCS's quirky underlying ke
 - `category`: `"ground" | "airplane" | "helicopter" | "ship" | "train"` (default `"ground"`).
 - `country`: any value from `country.id` as a string (case-insensitive, spaces → underscores).
 
-**Aircraft cap.** DCS silently truncates `airplane` and `helicopter` groups above 4 units (units 5+ vanish without any error from `coalition.addGroup`). `sms.group.create` rejects such configs up-front with `log.error + return nil` rather than auto-truncating — fix the config (split into multiple groups). The cap does **not** apply to `ground` / `ship` / `train`.
+**Aircraft cap.** DCS silently truncates `airplane` and `helicopter` groups above 4 units (units 5+ vanish without any error from `coalition.addGroup`). `sms.group.create` rejects such configs up-front with `log.warn + return nil` rather than auto-truncating — fix the config (split into multiple groups). The cap does **not** apply to `ground` / `ship` / `train`.
 
 Always trust the returned handle's `:get_name()` for follow-up operations — auto-suffix can change it.
 
@@ -554,7 +573,7 @@ sms.static.create({
 
 Required fields: `name` (non-empty string), `type` (non-empty string), `position` (vec3), `country` (string).
 
-Optional fields and their expected types — bad types are rejected at the framework boundary (`log.error` + `nil`, no DCS call):
+Optional fields and their expected types — bad types are rejected at the framework boundary (`log.warn` + `nil`, no DCS call):
 
 | Field | Type | Notes |
 |---|---|---|
@@ -565,8 +584,6 @@ Optional fields and their expected types — bad types are rejected at the frame
 | `canCargo` | boolean | makes the static slingable |
 | `shape_name` | string | DCS shape override |
 | `livery_id` | string | DCS livery override |
-
-DCS silently ignores `pitch` and `bank` on `coalition.addStaticObject`. The framework warns and drops them. Only `heading` is applied.
 
 ---
 

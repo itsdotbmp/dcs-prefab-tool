@@ -38,11 +38,11 @@ end
 
 sms.timer.after = function(seconds, fn)
   if type(seconds) ~= "number" or seconds < 0 then
-    log.error("after: seconds must be a non-negative number, got " .. tostring(seconds))
+    log.warn("after: seconds must be a non-negative number, got " .. tostring(seconds))
     return nil
   end
   if type(fn) ~= "function" then
-    log.error("after: fn must be a function, got " .. type(fn))
+    log.warn("after: fn must be a function, got " .. type(fn))
     return nil
   end
 
@@ -71,15 +71,15 @@ end
 
 sms.timer.every = function(seconds, fn, max)
   if type(seconds) ~= "number" or seconds <= 0 then
-    log.error("every: seconds must be a positive number, got " .. tostring(seconds))
+    log.warn("every: seconds must be a positive number, got " .. tostring(seconds))
     return nil
   end
   if type(fn) ~= "function" then
-    log.error("every: fn must be a function, got " .. type(fn))
+    log.warn("every: fn must be a function, got " .. type(fn))
     return nil
   end
   if max ~= nil and (type(max) ~= "number" or max <= 0) then
-    log.error("every: max must be a positive number or nil, got " .. tostring(max))
+    log.warn("every: max must be a positive number or nil, got " .. tostring(max))
     return nil
   end
 
@@ -128,7 +128,7 @@ end
 
 sms.timer.stop = function(h)
   if not _is_handle(h) then
-    log.error("stop: argument must be a timer handle")
+    log.warn("stop: argument must be a timer handle")
     return false
   end
   if not h.active then return false end
@@ -145,11 +145,11 @@ end
 
 sms.timer.get_remaining = function(h)
   if not _is_handle(h) then
-    log.error("get_remaining: argument must be a timer handle")
+    log.warn("get_remaining: argument must be a timer handle")
     return nil
   end
   if not h.active or not h.next_fire_time then
-    log.error("get_remaining: timer is not active")
+    log.warn("get_remaining: timer is not active")
     return nil
   end
   return h.next_fire_time - timer.getTime()

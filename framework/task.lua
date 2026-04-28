@@ -51,10 +51,10 @@ local function _resolve_weapon_type(v, verb)
   if type(v) == "string" then
     local n = _weapon_type_str[v]
     if n then return n end
-    log.error(verb .. ": unknown weapon_type '" .. v .. "', falling back to Auto")
+    log.warn(verb .. ": unknown weapon_type '" .. v .. "', falling back to Auto")
     return _weapon_type_str.Auto
   end
-  log.error(verb .. ": weapon_type must be a number or string, got " .. type(v))
+  log.warn(verb .. ": weapon_type must be a number or string, got " .. type(v))
   return _weapon_type_str.Auto
 end
 
@@ -68,7 +68,7 @@ local function _position_of(target, verb)
   if sms._is_handle_of(target, sms.group)  then return target:get_position() end
   if sms._is_handle_of(target, sms.static) then return target:get_position() end
   if sms._is_handle_of(target, sms.area)   then return target:get_position() end
-  log.error(verb .. ": target must be a vec3 or an sms.unit/group/static/area handle")
+  log.warn(verb .. ": target must be a vec3 or an sms.unit/group/static/area handle")
   return nil
 end
 
@@ -98,7 +98,7 @@ end
 sms.task.move_to = function(target, opts)
   opts = opts or {}
   if type(opts) ~= "table" then
-    log.error("move_to: opts must be a table or nil, got " .. type(opts))
+    log.warn("move_to: opts must be a table or nil, got " .. type(opts))
     return nil
   end
   local pos = _position_of(target, "move_to")
@@ -114,7 +114,7 @@ sms.task.move_to = function(target, opts)
   }
   if opts.speed ~= nil then
     if type(opts.speed) ~= "number" then
-      log.error("move_to: opts.speed must be a number, got " .. type(opts.speed))
+      log.warn("move_to: opts.speed must be a number, got " .. type(opts.speed))
       return nil
     end
     point.speed        = opts.speed
@@ -143,12 +143,12 @@ end
 sms.task.follow = function(target, opts)
   opts = opts or {}
   if type(opts) ~= "table" then
-    log.error("follow: opts must be a table or nil, got " .. type(opts))
+    log.warn("follow: opts must be a table or nil, got " .. type(opts))
     return nil
   end
   local offset = opts.offset or {x = -50, y = 0, z = -50}
   if not sms.utils.is_vec3(offset) then
-    log.error("follow: opts.offset must be a vec3, got " .. type(offset))
+    log.warn("follow: opts.offset must be a vec3, got " .. type(offset))
     return nil
   end
 
@@ -156,14 +156,14 @@ sms.task.follow = function(target, opts)
   if sms._is_handle_of(target, sms.group) then
     local raw = Group.getByName(target.name)
     if not raw then
-      log.error("follow: group '" .. tostring(target.name) .. "' not in mission")
+      log.warn("follow: group '" .. tostring(target.name) .. "' not in mission")
       return nil
     end
     group_id = raw:getID()
   elseif sms._is_handle_of(target, sms.unit) then
     local raw = Unit.getByName(target.name)
     if not raw then
-      log.error("follow: unit '" .. tostring(target.name) .. "' not in mission")
+      log.warn("follow: unit '" .. tostring(target.name) .. "' not in mission")
       return nil
     end
     local g = raw:getGroup()
@@ -173,7 +173,7 @@ sms.task.follow = function(target, opts)
     end
     group_id = g:getID()
   else
-    log.error("follow: target must be sms.unit or sms.group handle")
+    log.warn("follow: target must be sms.unit or sms.group handle")
     return nil
   end
 
@@ -190,27 +190,27 @@ end
 -- Orbit a point. Pattern is "Circle" (default) or "RaceTrack". Air only.
 sms.task.orbit = function(pos, opts)
   if not sms.utils.is_vec3(pos) then
-    log.error("orbit: pos must be a vec3, got " .. type(pos))
+    log.warn("orbit: pos must be a vec3, got " .. type(pos))
     return nil
   end
   opts = opts or {}
   if type(opts) ~= "table" then
-    log.error("orbit: opts must be a table or nil, got " .. type(opts))
+    log.warn("orbit: opts must be a table or nil, got " .. type(opts))
     return nil
   end
   local altitude = opts.altitude or 5000
   local speed    = opts.speed    or 200
   local pattern  = opts.pattern  or "Circle"
   if pattern ~= "Circle" and pattern ~= "RaceTrack" then
-    log.error("orbit: pattern must be 'Circle' or 'RaceTrack', got '" .. tostring(pattern) .. "'")
+    log.warn("orbit: pattern must be 'Circle' or 'RaceTrack', got '" .. tostring(pattern) .. "'")
     return nil
   end
   if type(altitude) ~= "number" then
-    log.error("orbit: opts.altitude must be a number, got " .. type(altitude))
+    log.warn("orbit: opts.altitude must be a number, got " .. type(altitude))
     return nil
   end
   if type(speed) ~= "number" then
-    log.error("orbit: opts.speed must be a number, got " .. type(speed))
+    log.warn("orbit: opts.speed must be a number, got " .. type(speed))
     return nil
   end
 
@@ -233,7 +233,7 @@ end
 sms.task.attack = function(target, opts)
   opts = opts or {}
   if type(opts) ~= "table" then
-    log.error("attack: opts must be a table or nil, got " .. type(opts))
+    log.warn("attack: opts must be a table or nil, got " .. type(opts))
     return nil
   end
   local weapon_type = _resolve_weapon_type(opts.weapon_type, "attack")
@@ -242,7 +242,7 @@ sms.task.attack = function(target, opts)
   if sms._is_handle_of(target, sms.group) then
     local raw = Group.getByName(target.name)
     if not raw then
-      log.error("attack: group '" .. tostring(target.name) .. "' not in mission")
+      log.warn("attack: group '" .. tostring(target.name) .. "' not in mission")
       return nil
     end
     return _stamp({
@@ -260,7 +260,7 @@ sms.task.attack = function(target, opts)
   if sms._is_handle_of(target, sms.unit) then
     local raw = Unit.getByName(target.name)
     if not raw then
-      log.error("attack: unit '" .. tostring(target.name) .. "' not in mission")
+      log.warn("attack: unit '" .. tostring(target.name) .. "' not in mission")
       return nil
     end
     return _stamp({
@@ -278,7 +278,7 @@ sms.task.attack = function(target, opts)
   if sms._is_handle_of(target, sms.static) then
     local raw = StaticObject.getByName(target.name)
     if not raw then
-      log.error("attack: static '" .. tostring(target.name) .. "' not in mission")
+      log.warn("attack: static '" .. tostring(target.name) .. "' not in mission")
       return nil
     end
     return _stamp({
@@ -293,7 +293,7 @@ sms.task.attack = function(target, opts)
     }, "attack", true)
   end
 
-  log.error("attack: target must be sms.group, sms.unit, or sms.static handle")
+  log.warn("attack: target must be sms.group, sms.unit, or sms.static handle")
   return nil
 end
 
@@ -301,16 +301,16 @@ end
 -- rejected with log + nil.
 sms.task.attack_in_area = function(area, opts)
   if not sms._is_handle_of(area, sms.area) then
-    log.error("attack_in_area: area must be an sms.area handle")
+    log.warn("attack_in_area: area must be an sms.area handle")
     return nil
   end
   if area:get_kind() ~= "circle" then
-    log.error("attack_in_area: area '" .. tostring(area.name) .. "' is " .. tostring(area:get_kind()) .. "; only circular areas supported in v1")
+    log.warn("attack_in_area: area '" .. tostring(area.name) .. "' is " .. tostring(area:get_kind()) .. "; only circular areas supported in v1")
     return nil
   end
   opts = opts or {}
   if type(opts) ~= "table" then
-    log.error("attack_in_area: opts must be a table or nil, got " .. type(opts))
+    log.warn("attack_in_area: opts must be a table or nil, got " .. type(opts))
     return nil
   end
   local center = area:get_position()
@@ -343,13 +343,13 @@ sms.task.bomb = function(target, opts)
   if not pos then return nil end
   opts = opts or {}
   if type(opts) ~= "table" then
-    log.error("bomb: opts must be a table or nil, got " .. type(opts))
+    log.warn("bomb: opts must be a table or nil, got " .. type(opts))
     return nil
   end
   local weapon_type = _resolve_weapon_type(opts.weapon_type, "bomb")
   local altitude    = opts.altitude or 6000
   if type(altitude) ~= "number" then
-    log.error("bomb: opts.altitude must be a number, got " .. type(altitude))
+    log.warn("bomb: opts.altitude must be a number, got " .. type(altitude))
     return nil
   end
 
@@ -375,12 +375,12 @@ sms.task.land = function(target, opts)
   if not pos then return nil end
   opts = opts or {}
   if type(opts) ~= "table" then
-    log.error("land: opts must be a table or nil, got " .. type(opts))
+    log.warn("land: opts must be a table or nil, got " .. type(opts))
     return nil
   end
   local duration = opts.duration or 300
   if type(duration) ~= "number" then
-    log.error("land: opts.duration must be a number, got " .. type(duration))
+    log.warn("land: opts.duration must be a number, got " .. type(duration))
     return nil
   end
 
@@ -399,17 +399,17 @@ end
 -- constituent is nil (caught a builder error upstream) or non-table.
 sms.task.combo = function(tasks)
   if type(tasks) ~= "table" then
-    log.error("combo: tasks must be an array of task tables, got " .. type(tasks))
+    log.warn("combo: tasks must be an array of task tables, got " .. type(tasks))
     return nil
   end
   if #tasks == 0 then
-    log.error("combo: tasks list is empty")
+    log.warn("combo: tasks list is empty")
     return nil
   end
   local any_air_only = false
   for i, t in ipairs(tasks) do
     if type(t) ~= "table" then
-      log.error("combo: tasks[" .. i .. "] must be a task table, got " .. type(t))
+      log.warn("combo: tasks[" .. i .. "] must be a task table, got " .. type(t))
       return nil
     end
     if t._sms_air_only then any_air_only = true end

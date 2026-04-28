@@ -12,7 +12,7 @@ Build a small static-object surface that:
 - Adds `sms.static.create(cfg)` for from-scratch spawning via `coalition.addStaticObject`.
 - Adds `sms.static.clone(template_name, overrides)` for ME-template-derived spawning.
 - Adds `sms.area:is_static_in(static_handle)` next to `is_unit_in`.
-- Hides DCS's static-spawn footguns: 2D-y-means-z translation, name uniqueness, radians/degrees mismatch on heading, and the empirically-confirmed surprise that `pitch`/`bank` are silently dropped on statics.
+- Hides DCS's static-spawn footguns: 2D-y-means-z translation, name uniqueness, radians/degrees mismatch on heading.
 - Establishes auto-suffix on name collision so `create({name = "crate"})` always succeeds (yielding `crate`, `crate-1`, `crate-2`, …) rather than failing on uniqueness.
 
 ## User value
@@ -88,7 +88,7 @@ Sugar constructor: `sms.static("name") -> sms.static handle | nil + log`. Wired 
 | `type` | string | ✓ | — | DCS model key (e.g. `"Hangar B"`, `"iso_container"`, `"FARP"`). Empirically required by `coalition.addStaticObject`. |
 | `position` | vec3 | ✓ | — | Group anchor in world coords |
 | `country` | string | ✓ | — | e.g. `"USA"`, mapped to `country.id.*` via lookup |
-| `heading` | number (degrees) | ✗ | `0` | Converted to radians internally. **Only applied orientation field** (DCS ignores `pitch`/`bank`). |
+| `heading` | number (degrees) | ✗ | `0` | Converted to radians internally. |
 | `category` | string | ✗ | nil (DCS infers from type) | Pass-through string (e.g. `"Fortifications"`, `"Cargos"`, `"Heliports"`, `"Warehouses"`); not validated against an enum. |
 | `dead` | bool | ✗ | DCS default | Spawn as wreckage |
 | `mass` | number (kg) | ✗ | DCS default | Cargo weight |
@@ -96,7 +96,7 @@ Sugar constructor: `sms.static("name") -> sms.static handle | nil + log`. Wired 
 | `shape_name` | string | ✗ | none | Auxiliary model hint; **does not substitute for `type`** (verified empirically) |
 | `livery_id` | string | ✗ | DCS default | Cosmetic |
 
-**Pass-through:** any unknown field on `cfg` is forwarded to DCS verbatim, **except** `pitch` / `bank` which are explicitly filtered (see Decisions).
+**Pass-through:** any unknown field on `cfg` is forwarded to DCS verbatim.
 
 **Overrides table for `clone`:**
 
@@ -109,7 +109,6 @@ v1 only `name` + `position` are overridable. `type`/`heading`/`dead` swaps defer
 
 ### Out of scope (v1)
 
-- **`pitch` and `bank` orientation fields.** Empirically verified across 6 type/category/dead combinations (Hangar B, iso_container, F-5E-3 plane, dead-flagged plane, alternate `rotation = {x,y,z}` shape) to be silently dropped by `coalition.addStaticObject`. Surfaced via warning rather than supported.
 - **Per-field overrides on `clone` beyond `name` + `position`.** No `type` / `heading` / `dead` swap.
 - **Live-API fallback for `clone`.** ME-defined templates only via `env.mission` walk. Runtime-spawned statics not cloneable.
 - **Static-specific events** (`on_dead`, `on_cargo_lifted`, …). Defer to `sms.events` sub-project.
@@ -172,7 +171,6 @@ local _name_taken(name)                    -- StaticObject.getByName(name) ~= ni
 
 -- Internal builder
 local _build_def(cfg, resolved_name)       -- vec3 -> DCS-2D, deg -> rad, blessed + pass-through
-                                            -- warns + drops pitch/bank if present
 local _spawn(def, country_int, name)       -- pcall coalition.addStaticObject + post-call verification
 
 -- Validation
@@ -253,19 +251,11 @@ local function _build_def(cfg, resolved_name)
   if cfg.shape_name ~= nil then def.shape_name = cfg.shape_name end
   if cfg.livery_id  ~= nil then def.livery_id  = cfg.livery_id  end
 
-  -- Pitch/bank handling: warn-and-drop (DCS silently ignores them).
-  -- sms.log v1 has no `warning` level; log.info is used with explicit
-  -- "warning:" text so the log entry is searchable and self-explanatory.
-  if cfg.pitch ~= nil or cfg.bank ~= nil then
-    log.info("create: warning: pitch/bank are ignored by DCS on statics; dropping (only heading is applied)")
-  end
-
-  -- Pass-through unknown fields, EXCEPT pitch/bank (filtered above)
+  -- Pass-through unknown fields verbatim (forward-compat).
   local known = {
     name = true, type = true, position = true, country = true, heading = true,
     category = true, dead = true, mass = true, canCargo = true,
     shape_name = true, livery_id = true,
-    pitch = true, bank = true,  -- explicitly filtered (warned above)
   }
   for k, v in pairs(cfg) do
     if not known[k] and def[k] == nil then
@@ -418,7 +408,6 @@ end
 | `create()` `country` not a string, or unknown | log + nil |
 | `create()` `type` not a non-empty string | log + nil |
 | `create()` `heading` present but not a number | log + nil |
-| `create()` `pitch` or `bank` present | `log.info` with explicit `warning:` prefix text, drop the field, **continue spawning** |
 | `coalition.addStaticObject` errors | log `create: DCS rejected the spawn: <err>`, return `nil` |
 | `coalition.addStaticObject` succeeds but post-call verify fails | log `DCS accepted addStaticObject but static '<name>' not found post-call (check type/category validity)`, return `nil` |
 | `clone()` template_name not a non-empty string | log + nil |
@@ -443,8 +432,7 @@ end
 6. **`dead = true`** — spawn a wreckage variant; `is_alive()` is true (the static object exists), but the visual state is dead per DCS.
 7. **Auto-suffix** — three calls with `name = "crate"`. Verify resolved names via the returned handles' `:get_name()` are `"crate"`, `"crate-1"`, `"crate-2"`.
 8. **Namespace separation** — spawn `sms.static.create({name = "ns_test", ...})` and `sms.group.create({name = "ns_test", ...})`. Both must succeed; static `:get_name() == "ns_test"` (no suffix); group's resolved name handling is its own. Proves we're not over-probing.
-9. **Pitch/bank warning** — spawn with `pitch = 0.5`, assert spawn succeeds (handle returned, `is_alive() == true`), assert log file contains a line tagged `[sms.static]` containing the substring `pitch/bank` (the call uses `log.info` with explicit `warning:` text since v1 logger has no `warning` level).
-10. **`create` negative paths** (each independent):
+9. **`create` negative paths** (each independent):
     - Missing `name` → nil
     - Missing `type` → nil
     - Missing `position` → nil
@@ -454,14 +442,14 @@ end
     - Non-string `type` → nil
     - Non-table cfg → nil
     - Garbage cfg (number, bool) → nil
-11. **`clone` happy path** — discover any ME-defined static via `env.mission` walk; if none found, log `[smoke] no ME static found, skipping clone tests` and skip steps 11–12. Otherwise: clone with new name + position offset 1km east. Verify clone exists, `:get_type()` matches template's type.
-12. **`clone` auto-suffix** — clone same template twice with the same `name` arg, verify second resolved name has `-1` suffix.
-13. **`clone` negative** — `clone("not_a_template", {name="x", position=...}) == nil`. `clone("template", "not_a_table") == nil`. `clone("template", {position=...})` (missing name) == nil.
-14. **`sms.area:is_static_in`** — create an ad-hoc circular area via `sms.area.create_circular`, spawn a static at its center. Assert `:is_static_in(handle) == true`. Spawn a second static outside the radius. Assert `:is_static_in(handle2) == false`.
-15. **`is_static_in` negative** — pass non-handle args (string, nil, sms.unit handle). Assert all return `false` and produce a log entry.
-16. **Cleanup** — `:destroy()` every static spawned by this run (collected from `create` / `clone` returns). Confirm post-cleanup `:is_alive() == false` and subsequent method calls log + return nil.
-17. **Tail-log assertion** — log file contains at least one `[sms.static]` line for a known-failing case (e.g. `unknown country 'WAKANDA'`).
-18. `smoke ok` and exit 0.
+10. **`clone` happy path** — discover any ME-defined static via `env.mission` walk; if none found, log `[smoke] no ME static found, skipping clone tests` and skip steps 10–11. Otherwise: clone with new name + position offset 1km east. Verify clone exists, `:get_type()` matches template's type.
+11. **`clone` auto-suffix** — clone same template twice with the same `name` arg, verify second resolved name has `-1` suffix.
+12. **`clone` negative** — `clone("not_a_template", {name="x", position=...}) == nil`. `clone("template", "not_a_table") == nil`. `clone("template", {position=...})` (missing name) == nil.
+13. **`sms.area:is_static_in`** — create an ad-hoc circular area via `sms.area.create_circular`, spawn a static at its center. Assert `:is_static_in(handle) == true`. Spawn a second static outside the radius. Assert `:is_static_in(handle2) == false`.
+14. **`is_static_in` negative** — pass non-handle args (string, nil, sms.unit handle). Assert all return `false` and produce a log entry.
+15. **Cleanup** — `:destroy()` every static spawned by this run (collected from `create` / `clone` returns). Confirm post-cleanup `:is_alive() == false` and subsequent method calls log + return nil.
+16. **Tail-log assertion** — log file contains at least one `[sms.static]` line for a known-failing case (e.g. `unknown country 'WAKANDA'`).
+17. `smoke ok` and exit 0.
 
 **Total runtime:** <10 seconds. No host-side sleeps.
 
@@ -475,7 +463,6 @@ end
 - **File: single `framework/static.lua`** (~250 lines). Split isn't earned — no units array, route, or task. Mirrors `area.lua` (which holds methods + constructors).
 - **`type` is required, `category` is optional pass-through.** Empirically verified: `coalition.addStaticObject` accepts spawns without `category`. We pass it through verbatim when present, don't validate against an enum.
 - **`shape_name` is auxiliary, not a `type` substitute.** Empirically verified: spawning with `shape_name` only (no `type`) fails. Pass-through optional.
-- **`pitch`/`bank` are warned + dropped, not blessed, not pass-through.** Empirically verified across 6 type/dead/category variants (Hangar B, iso_container, F-5E-3 plane normal+dead+rotation-shape) that DCS silently ignores them. The warning surfaces the surprise so users don't waste debugging time.
 - **Auto-suffix probes ONLY `StaticObject.getByName`.** Empirically verified: statics live in their own namespace; groups/units/statics named "X" coexist. Probing more would invent constraints DCS doesn't have.
 - **Auto-suffix is universal**, no `strict_name` opt-out (mirror of spawn).
 - **Counter `_name_counters` is module-local, lost on reload.** Counter is a hint; probe is the source of truth. Same trade-off as spawn.

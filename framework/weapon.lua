@@ -73,7 +73,7 @@ end
 -- relies on the raw object after wrap returns.
 sms.weapon.wrap = function(raw)
   if type(raw) ~= "userdata" and type(raw) ~= "table" then
-    log.error("wrap: argument must be a DCS weapon object, got " .. type(raw))
+    log.warn("wrap: argument must be a DCS weapon object, got " .. type(raw))
     return nil
   end
 
@@ -139,7 +139,7 @@ end
 
 sms.weapon.get_name = function(w)
   if not _is_handle(w) then
-    log.error("get_name: argument must be an sms.weapon handle")
+    log.warn("get_name: argument must be an sms.weapon handle")
     return nil
   end
   return w.name
@@ -147,7 +147,7 @@ end
 
 sms.weapon.get_type = function(w)
   if not _is_handle(w) then
-    log.error("get_type: argument must be an sms.weapon handle")
+    log.warn("get_type: argument must be an sms.weapon handle")
     return nil
   end
   return w.type
@@ -155,7 +155,7 @@ end
 
 sms.weapon.get_category = function(w)
   if not _is_handle(w) then
-    log.error("get_category: argument must be an sms.weapon handle")
+    log.warn("get_category: argument must be an sms.weapon handle")
     return nil
   end
   return w.category
@@ -163,7 +163,7 @@ end
 
 sms.weapon.get_coalition = function(w)
   if not _is_handle(w) then
-    log.error("get_coalition: argument must be an sms.weapon handle")
+    log.warn("get_coalition: argument must be an sms.weapon handle")
     return nil
   end
   return w.coalition
@@ -171,7 +171,7 @@ end
 
 sms.weapon.get_country = function(w)
   if not _is_handle(w) then
-    log.error("get_country: argument must be an sms.weapon handle")
+    log.warn("get_country: argument must be an sms.weapon handle")
     return nil
   end
   return w.country
@@ -179,7 +179,7 @@ end
 
 sms.weapon.get_launcher = function(w)
   if not _is_handle(w) then
-    log.error("get_launcher: argument must be an sms.weapon handle")
+    log.warn("get_launcher: argument must be an sms.weapon handle")
     return nil
   end
   return w.launcher
@@ -187,7 +187,7 @@ end
 
 sms.weapon.get_state = function(w)
   if not _is_handle(w) then
-    log.error("get_state: argument must be an sms.weapon handle")
+    log.warn("get_state: argument must be an sms.weapon handle")
     return nil
   end
   return w.state
@@ -197,7 +197,7 @@ end
 
 sms.weapon.get_release_position = function(w)
   if not _is_handle(w) then
-    log.error("get_release_position: argument must be an sms.weapon handle")
+    log.warn("get_release_position: argument must be an sms.weapon handle")
     return nil
   end
   return w.release_position
@@ -205,7 +205,7 @@ end
 
 sms.weapon.get_release_heading = function(w)
   if not _is_handle(w) then
-    log.error("get_release_heading: argument must be an sms.weapon handle")
+    log.warn("get_release_heading: argument must be an sms.weapon handle")
     return nil
   end
   return w.release_heading
@@ -213,7 +213,7 @@ end
 
 sms.weapon.get_release_pitch = function(w)
   if not _is_handle(w) then
-    log.error("get_release_pitch: argument must be an sms.weapon handle")
+    log.warn("get_release_pitch: argument must be an sms.weapon handle")
     return nil
   end
   return w.release_pitch
@@ -221,7 +221,7 @@ end
 
 sms.weapon.get_release_altitude_asl = function(w)
   if not _is_handle(w) then
-    log.error("get_release_altitude_asl: argument must be an sms.weapon handle")
+    log.warn("get_release_altitude_asl: argument must be an sms.weapon handle")
     return nil
   end
   return w.release_altitude_asl
@@ -229,7 +229,7 @@ end
 
 sms.weapon.get_release_altitude_agl = function(w)
   if not _is_handle(w) then
-    log.error("get_release_altitude_agl: argument must be an sms.weapon handle")
+    log.warn("get_release_altitude_agl: argument must be an sms.weapon handle")
     return nil
   end
   return w.release_altitude_agl
@@ -326,22 +326,22 @@ end
 
 sms.weapon.start_tracking = function(w, opts)
   if not _is_handle(w) then
-    log.error("start_tracking: argument must be an sms.weapon handle")
+    log.warn("start_tracking: argument must be an sms.weapon handle")
     return false
   end
   if w.state ~= "created" then
-    log.error("start_tracking: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', cannot start")
+    log.warn("start_tracking: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', cannot start")
     return false
   end
   opts = opts or {}
   local rate = opts.rate or 60
   if type(rate) ~= "number" or rate <= 0 then
-    log.error("start_tracking: rate must be a positive number, got " .. tostring(rate))
+    log.warn("start_tracking: rate must be a positive number, got " .. tostring(rate))
     return false
   end
   local ip_distance = opts.ip_distance or 50
   if type(ip_distance) ~= "number" or ip_distance < 0 then
-    log.error("start_tracking: ip_distance must be a non-negative number, got " .. tostring(ip_distance))
+    log.warn("start_tracking: ip_distance must be a non-negative number, got " .. tostring(ip_distance))
     return false
   end
   w._ip_distance = ip_distance
@@ -357,7 +357,7 @@ end
 
 sms.weapon.stop_tracking = function(w)
   if not _is_handle(w) then
-    log.error("stop_tracking: argument must be an sms.weapon handle")
+    log.warn("stop_tracking: argument must be an sms.weapon handle")
     return false
   end
   if w.state ~= "tracking" then
@@ -377,11 +377,11 @@ end
 
 sms.weapon.on_tick = function(w, fn)
   if not _is_handle(w) then
-    log.error("on_tick: argument must be an sms.weapon handle")
+    log.warn("on_tick: argument must be an sms.weapon handle")
     return
   end
   if type(fn) ~= "function" then
-    log.error("on_tick: fn must be a function, got " .. type(fn))
+    log.warn("on_tick: fn must be a function, got " .. type(fn))
     return
   end
   w._on_tick_fn = fn
@@ -389,11 +389,11 @@ end
 
 sms.weapon.on_impact = function(w, fn)
   if not _is_handle(w) then
-    log.error("on_impact: argument must be an sms.weapon handle")
+    log.warn("on_impact: argument must be an sms.weapon handle")
     return
   end
   if type(fn) ~= "function" then
-    log.error("on_impact: fn must be a function, got " .. type(fn))
+    log.warn("on_impact: fn must be a function, got " .. type(fn))
     return
   end
   w._on_impact_fn = fn
@@ -413,11 +413,11 @@ end
 
 sms.weapon.get_position = function(w)
   if not _is_handle(w) then
-    log.error("get_position: argument must be an sms.weapon handle")
+    log.warn("get_position: argument must be an sms.weapon handle")
     return nil
   end
   if w.state ~= "tracking" then
-    log.error("get_position: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no live position")
+    log.warn("get_position: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no live position")
     return nil
   end
   if not w._last_pos3 then return nil end
@@ -427,11 +427,11 @@ end
 
 sms.weapon.get_velocity = function(w)
   if not _is_handle(w) then
-    log.error("get_velocity: argument must be an sms.weapon handle")
+    log.warn("get_velocity: argument must be an sms.weapon handle")
     return nil
   end
   if w.state ~= "tracking" then
-    log.error("get_velocity: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no live velocity")
+    log.warn("get_velocity: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no live velocity")
     return nil
   end
   if not w._last_velocity then return nil end
@@ -447,7 +447,7 @@ end
 
 sms.weapon.get_target = function(w)
   if not _is_handle(w) then
-    log.error("get_target: argument must be an sms.weapon handle")
+    log.warn("get_target: argument must be an sms.weapon handle")
     return nil
   end
   if w.state ~= "tracking" or not w._raw then return nil end
@@ -471,11 +471,11 @@ end
 
 sms.weapon.get_impact_position = function(w)
   if not _is_handle(w) then
-    log.error("get_impact_position: argument must be an sms.weapon handle")
+    log.warn("get_impact_position: argument must be an sms.weapon handle")
     return nil
   end
   if w.state ~= "impacted" then
-    log.error("get_impact_position: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no impact yet")
+    log.warn("get_impact_position: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no impact yet")
     return nil
   end
   if not w._impact_position then return nil end
@@ -485,11 +485,11 @@ end
 
 sms.weapon.get_last_known_position = function(w)
   if not _is_handle(w) then
-    log.error("get_last_known_position: argument must be an sms.weapon handle")
+    log.warn("get_last_known_position: argument must be an sms.weapon handle")
     return nil
   end
   if w.state ~= "impacted" then
-    log.error("get_last_known_position: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no impact yet")
+    log.warn("get_last_known_position: weapon '" .. tostring(w.name) .. "' is in state '" .. tostring(w.state) .. "', no impact yet")
     return nil
   end
   if not w._last_pos3 or not w._last_pos3.p then return nil end
@@ -502,11 +502,11 @@ end
 -- positionable handle.
 sms.weapon.get_impact_distance_from = function(w, target)
   if not _is_handle(w) then
-    log.error("get_impact_distance_from: argument must be an sms.weapon handle")
+    log.warn("get_impact_distance_from: argument must be an sms.weapon handle")
     return nil
   end
   if w.state ~= "impacted" or not w._impact_position then
-    log.error("get_impact_distance_from: weapon '" .. tostring(w.name) .. "' has no impact yet")
+    log.warn("get_impact_distance_from: weapon '" .. tostring(w.name) .. "' has no impact yet")
     return nil
   end
   local target_pos
@@ -517,7 +517,7 @@ sms.weapon.get_impact_distance_from = function(w, target)
     target_pos = target:get_position()
   end
   if not target_pos then
-    log.error("get_impact_distance_from: target must be a vec3 or a handle with :get_position()")
+    log.warn("get_impact_distance_from: target must be a vec3 or a handle with :get_position()")
     return nil
   end
   return sms.utils.vec3_distance(w._impact_position, target_pos)
@@ -536,7 +536,7 @@ end
 -- programmatic abort, read get_position() before calling destroy().
 sms.weapon.destroy = function(w)
   if not _is_handle(w) then
-    log.error("destroy: argument must be an sms.weapon handle")
+    log.warn("destroy: argument must be an sms.weapon handle")
     return false
   end
   if w.state ~= "created" and w.state ~= "tracking" then return false end

@@ -155,7 +155,7 @@ end
 
 sms.area.get_name = function(a)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("get_name: argument must be an sms.area handle")
+    log.warn("get_name: argument must be an sms.area handle")
     return nil
   end
   return a.name
@@ -163,7 +163,7 @@ end
 
 sms.area.get_kind = function(a)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("get_kind: argument must be an sms.area handle")
+    log.warn("get_kind: argument must be an sms.area handle")
     return nil
   end
   return a.kind
@@ -171,7 +171,7 @@ end
 
 sms.area.get_position = function(a)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("get_position: argument must be an sms.area handle")
+    log.warn("get_position: argument must be an sms.area handle")
     return nil
   end
   if a.kind == "circle" then
@@ -184,11 +184,11 @@ end
 
 sms.area.get_radius = function(a)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("get_radius: argument must be an sms.area handle")
+    log.warn("get_radius: argument must be an sms.area handle")
     return nil
   end
   if a.kind ~= "circle" then
-    log.error("get_radius: area '" .. tostring(a.name) .. "' is a " .. a.kind .. ", no radius")
+    log.warn("get_radius: area '" .. tostring(a.name) .. "' is a " .. a.kind .. ", no radius")
     return nil
   end
   return a._data.radius
@@ -196,11 +196,11 @@ end
 
 sms.area.get_vertices = function(a)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("get_vertices: argument must be an sms.area handle")
+    log.warn("get_vertices: argument must be an sms.area handle")
     return nil
   end
   if a.kind ~= "polygon" then
-    log.error("get_vertices: area '" .. tostring(a.name) .. "' is a " .. a.kind .. ", no vertices")
+    log.warn("get_vertices: area '" .. tostring(a.name) .. "' is a " .. a.kind .. ", no vertices")
     return nil
   end
   -- Return a copy so the user can't mutate internal state.
@@ -213,11 +213,11 @@ end
 
 sms.area.is_vec3_in = function(a, target)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("is_vec3_in: argument must be an sms.area handle")
+    log.warn("is_vec3_in: argument must be an sms.area handle")
     return false
   end
   if not sms.utils.is_vec3(target) then
-    log.error("is_vec3_in: target must be a vec3 with x/y/z numbers")
+    log.warn("is_vec3_in: target must be a vec3 with x/y/z numbers")
     return false
   end
   if a.kind == "circle" then
@@ -228,11 +228,11 @@ end
 
 sms.area.is_unit_in = function(a, u)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("is_unit_in: argument must be an sms.area handle")
+    log.warn("is_unit_in: argument must be an sms.area handle")
     return false
   end
   if not sms._is_handle_of(u, sms.unit) then
-    log.error("is_unit_in: target must be an sms.unit handle")
+    log.warn("is_unit_in: target must be an sms.unit handle")
     return false
   end
   local p = sms.unit.get_position(u)
@@ -245,11 +245,11 @@ end
 
 sms.area.is_static_in = function(a, s)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("is_static_in: argument must be an sms.area handle")
+    log.warn("is_static_in: argument must be an sms.area handle")
     return false
   end
   if not sms._is_handle_of(s, sms.static) then
-    log.error("is_static_in: target must be an sms.static handle")
+    log.warn("is_static_in: target must be an sms.static handle")
     return false
   end
   local p = sms.static.get_position(s)
@@ -262,11 +262,11 @@ end
 
 sms.area.is_any_of_group_in = function(a, g)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("is_any_of_group_in: argument must be an sms.area handle")
+    log.warn("is_any_of_group_in: argument must be an sms.area handle")
     return false
   end
   if not sms._is_handle_of(g, sms.group) then
-    log.error("is_any_of_group_in: target must be an sms.group handle")
+    log.warn("is_any_of_group_in: target must be an sms.group handle")
     return false
   end
   local units = sms.group.get_units(g)
@@ -290,11 +290,11 @@ end
 
 sms.area.is_all_of_group_in = function(a, g)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("is_all_of_group_in: argument must be an sms.area handle")
+    log.warn("is_all_of_group_in: argument must be an sms.area handle")
     return false
   end
   if not sms._is_handle_of(g, sms.group) then
-    log.error("is_all_of_group_in: target must be an sms.group handle")
+    log.warn("is_all_of_group_in: target must be an sms.group handle")
     return false
   end
   local units = sms.group.get_units(g)
@@ -316,7 +316,7 @@ end
 
 sms.area.get_random_point = function(a)
   if not sms._is_handle_of(a, sms.area) then
-    log.error("get_random_point: argument must be an sms.area handle")
+    log.warn("get_random_point: argument must be an sms.area handle")
     return nil
   end
   if a.kind == "circle" then
@@ -331,15 +331,15 @@ end
 
 sms.area.create_circular = function(center, radius, name)
   if not sms.utils.is_vec3(center) then
-    log.error("create_circular: center must be a vec3 with x/y/z numbers")
+    log.warn("create_circular: center must be a vec3 with x/y/z numbers")
     return nil
   end
   if type(radius) ~= "number" or radius <= 0 then
-    log.error("create_circular: radius must be a positive number, got " .. tostring(radius))
+    log.warn("create_circular: radius must be a positive number, got " .. tostring(radius))
     return nil
   end
   if name ~= nil and type(name) ~= "string" then
-    log.error("create_circular: name must be a string or nil, got " .. type(name))
+    log.warn("create_circular: name must be a string or nil, got " .. type(name))
     return nil
   end
   return _make_circle_handle(name, center, radius)
@@ -347,21 +347,21 @@ end
 
 sms.area.create_polygon = function(vertices, name)
   if type(vertices) ~= "table" then
-    log.error("create_polygon: vertices must be a table (list) of vec3 entries")
+    log.warn("create_polygon: vertices must be a table (list) of vec3 entries")
     return nil
   end
   if #vertices < 3 then
-    log.error("create_polygon: need at least 3 vertices, got " .. #vertices)
+    log.warn("create_polygon: need at least 3 vertices, got " .. #vertices)
     return nil
   end
   for i, v in ipairs(vertices) do
     if not sms.utils.is_vec3(v) then
-      log.error("create_polygon: vertex " .. i .. " is not a vec3 with x/y/z numbers")
+      log.warn("create_polygon: vertex " .. i .. " is not a vec3 with x/y/z numbers")
       return nil
     end
   end
   if name ~= nil and type(name) ~= "string" then
-    log.error("create_polygon: name must be a string or nil, got " .. type(name))
+    log.warn("create_polygon: name must be a string or nil, got " .. type(name))
     return nil
   end
   return _make_polygon_handle(name, vertices)
@@ -369,7 +369,7 @@ end
 
 sms.area.from_drawing = function(name)
   if type(name) ~= "string" then
-    log.error("from_drawing: name must be a string")
+    log.warn("from_drawing: name must be a string")
     return nil
   end
   local drawings = env.mission and env.mission.drawings
@@ -382,12 +382,12 @@ sms.area.from_drawing = function(name)
       for _, obj in ipairs(layer.objects) do
         if obj.name == name then
           if obj.primitiveType ~= "Polygon" then
-            log.error("from_drawing: '" .. name .. "' is not a polygon drawing (type: " .. tostring(obj.primitiveType) .. ")")
+            log.warn("from_drawing: '" .. name .. "' is not a polygon drawing (type: " .. tostring(obj.primitiveType) .. ")")
             return nil
           end
           local pts = obj.points
           if type(pts) ~= "table" or #pts < 3 then
-            log.error("from_drawing: '" .. name .. "' has insufficient points")
+            log.warn("from_drawing: '" .. name .. "' has insufficient points")
             return nil
           end
           -- Drawing points are 2D {x, y} where DCS-y is north-south.
@@ -404,7 +404,7 @@ sms.area.from_drawing = function(name)
       end
     end
   end
-  log.error("from_drawing: drawing '" .. name .. "' not found")
+  log.warn("from_drawing: drawing '" .. name .. "' not found")
   return nil
 end
 
@@ -416,7 +416,7 @@ setmetatable(sms.area, {
   __call = function(_, name)
     local zone = trigger.misc.getZone(name)
     if not zone then
-      log.error("couldn't find area '" .. tostring(name) .. "'")
+      log.warn("couldn't find area '" .. tostring(name) .. "'")
       return nil
     end
     if zone.radius then
