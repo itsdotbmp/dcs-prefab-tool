@@ -71,7 +71,7 @@ echo "==> load framework files"
 "${DCSSMS}" exec --file unit.lua >/dev/null
 "${DCSSMS}" exec --file area.lua >/dev/null
 "${DCSSMS}" exec --file timer.lua >/dev/null
-"${DCSSMS}" exec --file spawn.lua >/dev/null
+"${DCSSMS}" exec --file group_spawn.lua >/dev/null
 "${DCSSMS}" exec --file static.lua >/dev/null
 
 # ----------------------------------------------------------------

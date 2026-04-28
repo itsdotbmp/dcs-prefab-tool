@@ -17,7 +17,7 @@
 -- for cross-cutting subscribers.
 --
 -- Loading order: sms.lua -> log.lua -> utils.lua -> group.lua -> unit.lua
---                -> area.lua -> timer.lua -> spawn.lua -> static.lua
+--                -> area.lua -> timer.lua -> group_spawn.lua -> static.lua
 --                -> events.lua -> weapon.lua.
 --
 -- See docs/superpowers/specs/2026-04-27-framework-weapon-design.md.
@@ -30,10 +30,9 @@ assert(type(sms.events) == "table",  "framework/events.lua must be loaded first"
 local log = sms.log.module("sms.weapon")
 sms.weapon = sms.weapon or {}
 
--- Fabricated bus event constant. Auto-derivation only handles
--- world.event.S_EVENT_*; weapon impact is fabricated by this module's
--- polling loop, so the constant is added explicitly at load time.
-sms.events.WEAPON_IMPACT = "weapon_impact"
+-- The fabricated sms.events.WEAPON_IMPACT constant is defined in
+-- framework/events.lua (the module that owns sms.events.*). This file
+-- only emits it via sms.events.emit; it does not register it.
 
 -- Handle metatable. Identity-checked in module functions so callers
 -- can't slip arbitrary tables in.

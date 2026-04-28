@@ -7,14 +7,17 @@
 --
 -- API:
 --   sms.events.<NAME>                          -> string constant for every world.event.S_EVENT_<NAME>
+--   sms.events.WEAPON_IMPACT                   -> "weapon_impact" (fabricated; emitted by sms.weapon's polling tracker)
 --   sms.events.connect(name, fn)               -> Connection handle | nil + log
 --   sms.events.emit(name, ...)                 -> nil (verbatim args to subscribers)
 --   sms.events.disconnect(conn)                -> bool (idempotent)
 --   sms.events.is_active(conn)                 -> bool (silent probe)
+--   sms.events._entity_scoped                  -> private whitelist consumed by sms.unit/sms.group's connect helpers
 --
--- Entity sugar on existing modules:
---   u:connect(name, fn)                        -> Connection | nil + log
---   g:connect(name, fn)                        -> Connection | nil + log
+-- The entity sugar (u:connect / g:connect) lives in unit.lua / group.lua
+-- (each module owns the symbols it adds to its own namespace). They both
+-- read sms.events._entity_scoped to validate the event name has a
+-- meaningful .initiator field.
 --
 -- DCS event payload is normalized into {name, id, time, initiator,
 -- initiator_group_name, target, weapon_type, weapon, place_name}.
@@ -27,29 +30,20 @@
 -- sms.weapon module is loaded — see _normalize_event for the upgrade
 -- site. User-emitted signals pass args verbatim.
 --
--- g:connect semantic: for DEAD specifically, fires once when the group is
--- fully dead (last unit just died). For all other entity-scoped events,
--- fires per-unit (a "group hit" or "group takeoff" has no sensible
--- aggregate meaning).
---
--- Subscriptions are independent. Calling connect (or g:connect / u:connect)
--- twice on the same channel produces two independent Connection handles that
--- each fire once per emit. This applies to all paths including g:connect(DEAD)
--- — its fully-dead-once latch is per-connection, not per-group. Caller is
--- responsible for not double-subscribing if double-firing is unwanted;
--- conn:disconnect() is the escape hatch.
+-- Subscriptions are independent. Calling connect twice on the same
+-- channel produces two independent Connection handles that each fire
+-- once per emit. Caller is responsible for not double-subscribing if
+-- double-firing is unwanted; conn:disconnect() is the escape hatch.
 --
 -- Loading order: framework/sms.lua -> log.lua -> utils.lua -> group.lua ->
--- unit.lua -> area.lua -> timer.lua -> spawn.lua -> events.lua. Entity
--- sugar requires sms.unit and sms.group to exist; the g:connect(DEAD)
--- deferred check requires sms.timer.
+-- unit.lua -> area.lua -> timer.lua -> group_spawn.lua -> static.lua ->
+-- events.lua. _normalize_event wraps initiator/target as sms.unit
+-- handles, so sms.unit must already be loaded.
 --
 -- See docs/superpowers/specs/2026-04-26-framework-events-design.md.
 
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 assert(type(sms.unit) == "table", "framework/unit.lua must be loaded first")
-assert(type(sms.group) == "table", "framework/group.lua must be loaded first")
-assert(type(sms.timer) == "table", "framework/timer.lua must be loaded first")
 local log = sms.log.module("sms.events")
 sms.events = sms.events or {}
 
@@ -70,6 +64,11 @@ for k, v in pairs(world.event) do
     _id_to_name[v] = lname
   end
 end
+
+-- Fabricated bus event constant. Auto-derivation only handles
+-- world.event.S_EVENT_*; weapon impact is fabricated by sms.weapon's
+-- polling loop, so the constant is added explicitly.
+sms.events.WEAPON_IMPACT = "weapon_impact"
 
 -- Connection handle metatable. __index points at sms.events so
 -- conn:disconnect() dispatches to sms.events.disconnect(conn). Identity-
@@ -222,11 +221,12 @@ sms.events.is_active = function(conn)
   return conn.active == true
 end
 
--- Whitelist of event names with a meaningful .initiator field. Entity
--- sugar (u:connect / g:connect) rejects everything else at connect time
--- so users get a clear error instead of silent never-fires. Hand-
--- maintained — new DCS events default to non-entity-scoped (safe).
-local _entity_scoped = {
+-- Whitelist of event names with a meaningful .initiator field. Read by
+-- sms.unit's and sms.group's connect helpers (in unit.lua / group.lua)
+-- to reject events that have no entity scope at connect time, so users
+-- get a clear error instead of silent never-fires. Hand-maintained;
+-- new DCS events default to non-entity-scoped (safe).
+sms.events._entity_scoped = {
   birth              = true,
   dead               = true,
   hit                = true,
@@ -251,90 +251,3 @@ local _entity_scoped = {
   landing_after_ejection = true,
   emergency_landing  = true,
 }
-
--- u:connect(name, fn) — fires only when evt.initiator.name == self.name.
--- Returns the wrapped Connection (so :disconnect() works as expected).
-sms.unit.connect = function(self, name, fn)
-  if not sms._is_handle_of(self, sms.unit) then
-    log.error("unit:connect: self must be an sms.unit handle")
-    return nil
-  end
-  if type(name) ~= "string" then
-    log.error("unit:connect: event name must be a string, got " .. type(name))
-    return nil
-  end
-  if type(fn) ~= "function" then
-    log.error("unit:connect: fn must be a function, got " .. type(fn))
-    return nil
-  end
-  if not _entity_scoped[name] then
-    log.error("unit:connect: event '" .. name .. "' has no entity scope")
-    return nil
-  end
-  -- Capture name into a local so the closure doesn't keep a reference to
-  -- the caller's self table (defensive; lets the caller drop the handle).
-  local target_name = self.name
-  return sms.events.connect(name, function(evt)
-    if evt.initiator and evt.initiator.name == target_name then
-      fn(evt)
-    end
-  end)
-end
-
--- g:connect(name, fn). Filter uses evt.initiator_group_name (captured at
--- event time from the raw DCS object) so dead initiators still resolve to
--- a group. For DEAD specifically, fires once when the group is fully dead
--- (last unit just died). For all other entity-scoped events, fires per-unit
--- — a "group hit" or "group takeoff" has no sensible aggregate meaning.
-sms.group.connect = function(self, name, fn)
-  if not sms._is_handle_of(self, sms.group) then
-    log.error("group:connect: self must be an sms.group handle")
-    return nil
-  end
-  if type(name) ~= "string" then
-    log.error("group:connect: event name must be a string, got " .. type(name))
-    return nil
-  end
-  if type(fn) ~= "function" then
-    log.error("group:connect: fn must be a function, got " .. type(fn))
-    return nil
-  end
-  if not _entity_scoped[name] then
-    log.error("group:connect: event '" .. name .. "' has no entity scope")
-    return nil
-  end
-  -- Capture name into a local so the closure doesn't keep a reference to
-  -- the caller's self table (defensive; lets the caller drop the handle).
-  local target_name = self.name
-  if name == sms.events.DEAD then
-    -- DCS does NOT synchronously update Group:getSize() after Unit:destroy()
-    -- — the field stays stale until the next frame. The fully-dead check is
-    -- therefore deferred via sms.timer.after with a small positive delay.
-    -- (sms.timer.after(0, ...) can fire same-frame in DCS's scheduler; the
-    -- 0.01s offset guarantees next-frame.) The fired_once latch dedupes
-    -- simultaneous deaths (e.g. one explosion that kills every unit in the
-    -- group fires N DEAD events in the same frame and would otherwise
-    -- schedule N timers that all see size==0).
-    local fired_once = false
-    return sms.events.connect(name, function(evt)
-      if fired_once then return end
-      if evt.initiator_group_name ~= target_name then return end
-      sms.timer.after(0.01, function()
-        if fired_once then return end
-        local g = Group.getByName(target_name)
-        if not g or g:getSize() == 0 then
-          fired_once = true
-          local ok, err = pcall(fn, evt)
-          if not ok then
-            log.error("group:connect dispatch '" .. target_name .. "': " .. tostring(err))
-          end
-        end
-      end)
-    end)
-  end
-  return sms.events.connect(name, function(evt)
-    if evt.initiator_group_name == target_name then
-      fn(evt)
-    end
-  end)
-end

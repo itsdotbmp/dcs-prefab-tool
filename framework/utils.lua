@@ -151,8 +151,8 @@ end
 -- ============================================================
 
 -- Public country string -> DCS country.id integer. Lifted from
--- spawn.lua / static.lua where both modules previously had byte-identical
--- private copies. Case-insensitive; spaces become underscores so users
+-- group_spawn.lua / static.lua where both modules previously had
+-- byte-identical private copies. Case-insensitive; spaces become underscores so users
 -- can pass "United Kingdom" and have it resolve to country.id.UNITED_KINGDOM.
 -- Returns nil silently on bad input or unknown country — callers craft
 -- their own contextual error message ("create: unknown country '...'").
@@ -177,8 +177,8 @@ end
 -- ============================================================
 
 -- Recursive deep copy of a table. Non-table values pass through. Lifted
--- from spawn.lua / static.lua where both kept byte-identical private
--- copies for clone()-style mission-descriptor cloning. Does not preserve
+-- from group_spawn.lua / static.lua where both kept byte-identical
+-- private copies for clone()-style mission-descriptor cloning. Does not preserve
 -- metatables (callers building cfg tables don't use them) and does not
 -- handle cycles (mission descriptors are trees).
 sms.utils.deep_copy = function(t)

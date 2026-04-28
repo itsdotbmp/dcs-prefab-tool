@@ -48,13 +48,16 @@ dcs-sms/
 │   ├── sms.lua             Root namespace + shared metatable factories.
 │   ├── log.lua             sms.log — structured logging.
 │   ├── utils.lua           sms.utils — small numeric helpers (deg/rad, ft/m, etc.).
-│   ├── group.lua           sms.group — group entity wrapper.
-│   ├── unit.lua            sms.unit — unit entity wrapper.
+│   ├── group.lua           sms.group — group entity wrapper, g:connect, set_task / push_task.
+│   ├── unit.lua            sms.unit — unit entity wrapper, u:connect.
 │   ├── area.lua            sms.area — zones, drawings, runtime areas.
 │   ├── timer.lua           sms.timer — after / every / now.
-│   ├── spawn.lua           sms.group.create / .clone — runtime group spawning.
+│   ├── group_spawn.lua     Continuation of sms.group: create / clone factories.
 │   ├── static.lua          sms.static — static-object wrapper + create/clone.
-│   ├── events.lua          sms.events — DCS world-event bus + entity sugar.
+│   ├── events.lua          sms.events — DCS world-event bus, _entity_scoped whitelist.
+│   ├── weapon.lua          sms.weapon — weapon wrapper + impact tracking.
+│   ├── task.lua            sms.task — task-table builders (move_to, attack, ...).
+│   ├── load_all.lua        One-shot loader for the whole framework in dependency order.
 │   └── test/               Bash smoke tests driven by tools/dcs-sms.exe.
 │
 ├── tools/                  Host-side Go tooling (NOT in DCS).
@@ -138,12 +141,14 @@ A handle is a small `{name = "..."}` table with a metatable whose `__index` poin
 The bridge currently loads framework files via `net.dostring_in` in this order:
 
 ```
-sms.lua → log.lua → utils.lua → group.lua → unit.lua → area.lua → timer.lua → spawn.lua → static.lua → events.lua → weapon.lua → task.lua
+sms.lua → log.lua → utils.lua → group.lua → unit.lua → area.lua → timer.lua → group_spawn.lua → static.lua → events.lua → weapon.lua → task.lua
 ```
 
 Each module asserts the dependencies it actually uses. When adding a new module, decide where it slots in based on what it needs and append the assert.
 
-`sms.events` requires `sms.timer` (the `g:connect(DEAD)` deferred check) — adding behavior that uses both is safe. `sms.task` is loaded last because it installs methods on `sms.group`'s metatable and reuses helpers from `sms.unit`, `sms.static`, `sms.area`, `sms.utils`, and `sms.timer`.
+**One symbol, one home.** Every `sms.<module>.<symbol>` is defined in `<module>.lua` (or, for `sms.group`, also in `group_spawn.lua`, which is a clearly-named continuation file for the spawn factories). No module writes into another module's namespace. When you add behavior that semantically extends another module (e.g. an `sms.group` method that needs `sms.events` internals), the public symbol goes in the owning module's file; cross-module data needed at call time is exposed as a private `sms.X._name` field.
+
+Cross-module call-time references resolve fine even when the dependent module loads later: `sms.group.connect` references `sms.events.*`, and `sms.group.set_task` references `sms.timer.*`. Both files load before events / timer in the chain — that's safe because the references are inside function bodies and only resolve at call time. Users must finish loading the whole framework (e.g. via `load_all.lua`) before invoking those methods.
 
 For one-shot (re)loading of the whole framework in a mission, use [`framework/load_all.lua`](framework/load_all.lua), which `dofile`s every module in the order above.
 

@@ -32,7 +32,7 @@
 -- since v1 logger has no warning level) and dropped — only heading is applied.
 --
 -- Loading order: sms.lua -> log.lua -> utils.lua -> group.lua -> unit.lua
---                -> area.lua -> timer.lua -> spawn.lua -> static.lua.
+--                -> area.lua -> timer.lua -> group_spawn.lua -> static.lua.
 -- area.lua's is_static_in resolves sms.static lazily at call time.
 --
 -- See docs/superpowers/specs/2026-04-26-framework-static-design.md.

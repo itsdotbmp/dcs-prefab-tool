@@ -61,7 +61,7 @@ echo "==> load framework files"
 "${DCSSMS}" exec --file unit.lua >/dev/null
 "${DCSSMS}" exec --file area.lua >/dev/null
 "${DCSSMS}" exec --file timer.lua >/dev/null
-"${DCSSMS}" exec --file spawn.lua >/dev/null
+"${DCSSMS}" exec --file group_spawn.lua >/dev/null
 "${DCSSMS}" exec --file static.lua >/dev/null
 "${DCSSMS}" exec --file events.lua >/dev/null
 "${DCSSMS}" exec --file weapon.lua >/dev/null
@@ -264,7 +264,9 @@ expect_true "ground orbit rejected" "
 "
 
 echo "==> [apply] verify air-only rejection log line"
-log_window=$("${DCSSMS}" tail-log --grep '\[sms.task\]' -n 50)
+# set_task / push_task live in framework/group.lua (the apply API
+# extends sms.group's namespace), so they log under [sms.group].
+log_window=$("${DCSSMS}" tail-log --grep '\[sms.group\]' -n 50)
 echo "${log_window}" | grep -q "set_task: 'orbit' is air-only" \
   || { echo "FAIL: missing air-only log line"; echo "${log_window}"; exit 1; }
 echo "${log_window}" | grep -q "_smoke_task_ground" \

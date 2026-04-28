@@ -18,7 +18,7 @@ DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 # auto-suffix variants (tank-1, tank-2, ...) from the auto-suffix
 # section, since those are real groups in DCS even though the smoke
 # only writes the base name.
-SMOKE_FIXTURES="_smoke_spawn_air _smoke_spawn_air_default_speed _smoke_spawn_cap_4 _smoke_spawn_cap_5 _smoke_spawn_cap_ground _smoke_spawn_clone _smoke_spawn_clone_dup _smoke_spawn_heading _smoke_spawn_multi _smoke_spawn_single tank tank-1 tank-2 tank-3 tank-4 reload_tank reload_tank-1 reload_tank-2"
+SMOKE_FIXTURES="_smoke_spawn_air _smoke_spawn_air_default_speed _smoke_spawn_cap_4 _smoke_spawn_cap_5 _smoke_spawn_cap_ground _smoke_spawn_clone _smoke_spawn_clone_default_pos _smoke_spawn_clone_dup _smoke_spawn_heading _smoke_spawn_multi _smoke_spawn_single tank tank-1 tank-2 tank-3 tank-4 reload_tank reload_tank-1 reload_tank-2"
 
 cleanup_smoke_fixtures() {
   [ -z "${SMOKE_FIXTURES}" ] && return 0
@@ -73,7 +73,7 @@ echo "==> load framework files"
 "${DCSSMS}" exec --file group.lua >/dev/null
 "${DCSSMS}" exec --file unit.lua >/dev/null
 "${DCSSMS}" exec --file area.lua >/dev/null
-"${DCSSMS}" exec --file spawn.lua >/dev/null
+"${DCSSMS}" exec --file group_spawn.lua >/dev/null
 
 # ----------------------------------------------------------------
 # Section 1: sms.utils conversion sanity
@@ -365,13 +365,13 @@ echo "==> [auto-suffix] cleanup"
 # ----------------------------------------------------------------
 # Section 7b: auto-suffix reload-recovery (regression for issue #8)
 # ----------------------------------------------------------------
-# spawn.lua's module-private _name_counters table is a hint, not the
+# group_spawn.lua's module-private _name_counters table is a hint, not the
 # source of truth — reloading the module wipes it, but probing
 # Group/Unit.getByName must still discover already-taken slots and
 # return the next free suffix. If a future refactor turns the counter
 # authoritative (skipping the probe), the bug only surfaces across
 # mission reloads. This section forces that scenario by re-execing
-# spawn.lua mid-test.
+# group_spawn.lua mid-test.
 echo "==> [auto-suffix reload] first 'reload_tank' resolves to 'reload_tank'"
 expect_eq_string "reload_tank first" "
   local g = sms.group.create({
@@ -396,8 +396,8 @@ expect_eq_string "reload_tank second" "
   return g and g:get_name() or 'NIL'
 " "reload_tank-1"
 
-echo "==> [auto-suffix reload] reload spawn.lua to wipe _name_counters"
-"${DCSSMS}" exec --file spawn.lua >/dev/null
+echo "==> [auto-suffix reload] reload group_spawn.lua to wipe _name_counters"
+"${DCSSMS}" exec --file group_spawn.lua >/dev/null
 
 echo "==> [auto-suffix reload] post-reload 'reload_tank' must probe and resolve to 'reload_tank-2'"
 # After the reload _name_counters is empty, so the counter would naively
@@ -613,10 +613,25 @@ expect_true "no override name" "
   }) == nil
 "
 
-echo "==> [clone] missing position override -> nil"
+echo "==> [clone] missing position override -> spawns at template's ME anchor"
 expect_true "no override position" "
+  local g = sms.group.clone('${TEMPLATE_NAME}', {
+    name = '_smoke_spawn_clone_default_pos',
+  })
+  return g ~= nil
+"
+
+echo "==> [clone] cleanup default-position clone"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_spawn_clone_default_pos')
+  if g then g:destroy() end
+" >/dev/null
+
+echo "==> [clone] non-vec3 position override -> nil"
+expect_true "bad position type" "
   return sms.group.clone('${TEMPLATE_NAME}', {
-    name = 'no_pos_override',
+    name = 'bad_pos_override',
+    position = 'not a vec3',
   }) == nil
 "
 

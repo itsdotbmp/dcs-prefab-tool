@@ -1,5 +1,8 @@
--- dcs-sms framework: spawn module.
+-- dcs-sms framework: group spawn module.
 --
+-- Continuation of sms.group's namespace — defined in a separate file
+-- because the factory implementation is sizeable and self-contained.
+-- All public symbols are sms.group.* (no sms.spawn namespace exists).
 -- Adds two factory functions to sms.group:
 --   sms.group.create(config)             -> sms.group handle | nil + log
 --   sms.group.clone(template, overrides) -> sms.group handle | nil + log
@@ -13,8 +16,9 @@
 -- relative, vec3). Heading is in DEGREES; altitude is in METERS.
 --
 -- Loading order: sms.lua -> log.lua -> utils.lua -> group.lua -> unit.lua
--- -> area.lua -> spawn.lua. spawn.lua does not depend on area.lua but is
--- loaded after for consistency.
+-- -> area.lua -> timer.lua -> group_spawn.lua. group_spawn.lua does not
+-- depend on area.lua / timer.lua at load time, but is loaded after them
+-- for ordering consistency with the rest of the framework.
 --
 -- See docs/superpowers/specs/2026-04-26-framework-spawn-design.md.
 

@@ -78,6 +78,7 @@ echo "==> hook status"
 echo "==> load framework files"
 "${DCSSMS}" exec --file sms.lua >/dev/null
 "${DCSSMS}" exec --file log.lua >/dev/null
+"${DCSSMS}" exec --file utils.lua >/dev/null
 "${DCSSMS}" exec --file group.lua >/dev/null
 "${DCSSMS}" exec --file unit.lua >/dev/null
 "${DCSSMS}" exec --file area.lua >/dev/null
@@ -102,7 +103,7 @@ ZONE_NAME=$("${DCSSMS}" exec --code '
   for _, z in ipairs(env.mission.triggers.zones) do
     if z.radius and z.radius > 0 then return z.name end
   end
-' | grep -oP '"return_value":"\K[^"]+')
+' | sed -n 's/.*"return_value":"\([^"]*\)".*/\1/p')
 echo "==> using ME zone: ${ZONE_NAME}"
 
 echo "==> spawn fixture groups (one inside zone, one outside)"

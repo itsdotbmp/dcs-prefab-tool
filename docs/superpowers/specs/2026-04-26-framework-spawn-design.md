@@ -392,7 +392,7 @@ Then re-anchor: compute the original anchor as `(g.units[1].x, 0, g.units[1].y)`
 - **Default `skill` is `"Average"`** for any unit that doesn't specify.
 - **Default `category` is `"ground"`** if absent. Most v1 use cases are ground.
 - **The four `sms.utils` conversions ship together** — `deg_to_rad`, `rad_to_deg`, `feet_to_meters`, `meters_to_feet`. All four useful regardless of spawn.
-- **`framework/spawn.lua` is the file name.** No `_spawn.lua`, no `factory.lua`. Reads as "this file is about spawning."
+- **`framework/spawn.lua` was the original file name.** Renamed to `framework/group_spawn.lua` after the v1 ship (see `AGENTS.md` §6) to enforce the "one symbol, one home" rule: every file's name now starts with the namespace it owns. The file's only public surface is `sms.group.create` and `sms.group.clone`, so `group_spawn.lua` reads as "extension of `sms.group` for spawning". The log tag stays `[sms.spawn]` since it's a conceptual area, not a namespace.
 
 ## Related issues
 

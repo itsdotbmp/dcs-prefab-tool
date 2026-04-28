@@ -185,6 +185,39 @@ sms.unit.get_altitude = function(u, agl)
   return p.y - terrain
 end
 
+-- u:connect(name, fn) — fires only when evt.initiator.name == self.name.
+-- Returns the wrapped Connection (so :disconnect() works as expected).
+-- References sms.events.* lazily, so sms.events doesn't need to be
+-- loaded by the time unit.lua loads — only by the time connect is
+-- called. sms.events._entity_scoped is the canonical whitelist of
+-- entity-meaningful event names.
+sms.unit.connect = function(self, name, fn)
+  if not sms._is_handle_of(self, sms.unit) then
+    log.error("unit:connect: self must be an sms.unit handle")
+    return nil
+  end
+  if type(name) ~= "string" then
+    log.error("unit:connect: event name must be a string, got " .. type(name))
+    return nil
+  end
+  if type(fn) ~= "function" then
+    log.error("unit:connect: fn must be a function, got " .. type(fn))
+    return nil
+  end
+  if not (sms.events and sms.events._entity_scoped and sms.events._entity_scoped[name]) then
+    log.error("unit:connect: event '" .. tostring(name) .. "' has no entity scope")
+    return nil
+  end
+  -- Capture name into a local so the closure doesn't keep a reference to
+  -- the caller's self table (defensive; lets the caller drop the handle).
+  local target_name = self.name
+  return sms.events.connect(name, function(evt)
+    if evt.initiator and evt.initiator.name == target_name then
+      fn(evt)
+    end
+  end)
+end
+
 -- Sugar constructor: sms.unit("name") -> handle | nil + log.
 -- The factory lives in sms.lua; this call wires it up using Unit.getByName
 -- as the existence check.
