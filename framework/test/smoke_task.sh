@@ -260,6 +260,27 @@ expect_true "attack_in_area air-only" "
 echo "==> [build] attack_in_area with non-area target -> nil"
 expect_true "attack_in_area bad target" 'return sms.task.attack_in_area("nope") == nil'
 
+echo "==> [build] attack_in_area priority defaults to 1"
+expect_true "attack_in_area default priority" "
+  local a = sms.area.create_circular({x=0,y=0,z=0}, 5000)
+  if not a then return false end
+  return sms.task.attack_in_area(a).params.priority == 1
+"
+
+echo "==> [build] attack_in_area priority honored"
+expect_true "attack_in_area set priority" "
+  local a = sms.area.create_circular({x=0,y=0,z=0}, 5000)
+  if not a then return false end
+  return sms.task.attack_in_area(a, {priority=5}).params.priority == 5
+"
+
+echo "==> [build] attack_in_area bad priority -> nil"
+expect_true "attack_in_area bad priority" "
+  local a = sms.area.create_circular({x=0,y=0,z=0}, 5000)
+  if not a then return false end
+  return sms.task.attack_in_area(a, {priority='high'}) == nil
+"
+
 # ----------------------------------------------------------------
 # Section 3: live ground apply — move_to + air-only rejection
 # ----------------------------------------------------------------

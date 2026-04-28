@@ -362,11 +362,18 @@ sms.task.attack_in_area = function(area, opts)
   end
   local weapon_type = _resolve_weapon_type(opts.weapon_type, "attack_in_area")
 
+  local priority = opts.priority or 1
+  if type(priority) ~= "number" then
+    log.warn("attack_in_area: opts.priority must be a number, got " .. type(priority))
+    return nil
+  end
+
   local params = {
     point       = {x = center.x, y = center.z},
     zoneRadius  = radius,
     targetTypes = {"All"},
     weaponType  = weapon_type,
+    priority    = priority,
   }
   if opts.altitude_min then params.minAlt = opts.altitude_min end
   if opts.altitude_max then params.maxAlt = opts.altitude_max end
