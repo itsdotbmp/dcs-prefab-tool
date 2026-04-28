@@ -74,9 +74,10 @@ end
 
 -- Stamp the framework's private metadata on a task table. Returns t for
 -- chaining.
-local function _stamp(t, verb, air_only)
+local function _stamp(t, verb, air_only, ground_only)
   t._sms_verb = verb
-  if air_only then t._sms_air_only = true end
+  if air_only    then t._sms_air_only    = true end
+  if ground_only then t._sms_ground_only = true end
   return t
 end
 
@@ -446,16 +447,18 @@ sms.task.combo = function(tasks)
     log.warn("combo: tasks list is empty")
     return nil
   end
-  local any_air_only = false
+  local any_air_only    = false
+  local any_ground_only = false
   for i, t in ipairs(tasks) do
     if type(t) ~= "table" then
       log.warn("combo: tasks[" .. i .. "] must be a task table, got " .. type(t))
       return nil
     end
-    if t._sms_air_only then any_air_only = true end
+    if t._sms_air_only    then any_air_only    = true end
+    if t._sms_ground_only then any_ground_only = true end
   end
   return _stamp({
     id     = "ComboTask",
     params = { tasks = tasks },
-  }, "combo", any_air_only)
+  }, "combo", any_air_only, any_ground_only)
 end

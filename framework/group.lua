@@ -234,6 +234,14 @@ local function _validate_apply(method, group_handle, task)
       return nil
     end
   end
+  if task._sms_ground_only then
+    local cat = group_handle:get_category()
+    if cat ~= "ground" then
+      local verb = task._sms_verb or "task"
+      log.warn(method .. ": '" .. verb .. "' is ground-only; group '" .. tostring(group_handle.name) .. "' is " .. tostring(cat) .. " — not applied")
+      return nil
+    end
+  end
   local raw = Group.getByName(group_handle.name)
   if not raw then
     log.warn(method .. ": group '" .. tostring(group_handle.name) .. "' disappeared between is_alive and apply")
