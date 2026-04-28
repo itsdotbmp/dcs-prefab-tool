@@ -15,7 +15,7 @@ DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 # Fixture cleanup: nukes anything this smoke spawns, even on mid-run
 # abort (set -e). Idempotent — destroys only what currently exists.
 # Keep this list in sync with the names this smoke creates.
-SMOKE_FIXTURES="_smoke_task_ground _smoke_task_air _smoke_task_target_grp _smoke_task_target_static"
+SMOKE_FIXTURES="_smoke_task_ground _smoke_task_air _smoke_task_target_grp _smoke_task_target_static _smoke_task_escort_target"
 
 cleanup_smoke_fixtures() {
   [ -z "${SMOKE_FIXTURES}" ] && return 0
@@ -223,6 +223,62 @@ expect_str  "bomb_runway id"      'return sms.task.bomb_runway(7).id' 'BombingRu
 expect_true "bomb_runway air"     'return sms.task.bomb_runway(7)._sms_air_only == true'
 expect_true "bomb_runway runway"  'return sms.task.bomb_runway(7).params.runwayId == 7'
 expect_true "bomb_runway bad id"  'return sms.task.bomb_runway("seven") == nil'
+
+# ----------------------------------------------------------------
+# Section: v1.1 escort
+# ----------------------------------------------------------------
+
+# escort tests need a group in env.mission to resolve groupId; reuse
+# the discovered ME template name from the spawn smoke if available,
+# otherwise spawn one.
+echo "==> [build] escort needs a sms.unit/group handle"
+expect_true "escort bad target" 'return sms.task.escort("nope") == nil'
+
+echo "==> [build] escort spawns group fixture and returns Escort task"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_escort_target')
+  if not g then
+    sms.group.create({
+      name='_smoke_task_escort_target',
+      position={x=0,y=0,z=0},
+      country='USA', category='airplane',
+      units={{type='F-15C', alt=5000}},
+    })
+  end
+" >/dev/null
+
+expect_str "escort id" "
+  local g = sms.group('_smoke_task_escort_target')
+  if not g then return 'NIL' end
+  local t = sms.task.escort(g, {target_types={sms.targets.PLANES}})
+  return t and t.id or 'NIL'
+" 'Escort'
+
+expect_true "escort air-only" "
+  local g = sms.group('_smoke_task_escort_target')
+  if not g then return false end
+  return sms.task.escort(g)._sms_air_only == true
+"
+
+expect_true "escort default offset" "
+  local g = sms.group('_smoke_task_escort_target')
+  if not g then return false end
+  local t = sms.task.escort(g)
+  return t.params.pos.x == -50 and t.params.pos.y == 0 and t.params.pos.z == -50
+"
+
+expect_true "escort last_waypoint flag" "
+  local g = sms.group('_smoke_task_escort_target')
+  if not g then return false end
+  local t = sms.task.escort(g, {last_waypoint_index=4})
+  return t.params.lastWptIndexFlag == true and t.params.lastWptIndex == 4
+"
+
+echo "==> [build] escort cleanup fixture"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_escort_target')
+  if g then g:destroy() end
+" >/dev/null
 
 # ----------------------------------------------------------------
 # Section 2: discover spawn coords from existing mission

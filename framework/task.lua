@@ -625,3 +625,80 @@ sms.task.bomb_runway = function(airdrome_id, opts)
     },
   }, "bomb_runway", true)
 end
+
+-- ============================================================
+-- Coordination builders (Task v1.1 additions)
+-- ============================================================
+
+-- Escort another airborne group: follow at offset, engage threats
+-- matching opts.target_types. Air only. Mirrors sms.task.follow's
+-- target/offset shape.
+--
+-- opts:
+--   offset                 vec3?    relative to target leader, default {-50, 0, -50}
+--   engagement_dist_max    number?  meters, default 5000
+--   target_types           table?   array of attribute strings (sms.targets.* recommended)
+--   last_waypoint_index    number?  detach when target reaches this waypoint
+sms.task.escort = function(target, opts)
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn("escort: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  local offset = opts.offset or {x = -50, y = 0, z = -50}
+  if not sms.utils.is_vec3(offset) then
+    log.warn("escort: opts.offset must be a vec3, got " .. type(offset))
+    return nil
+  end
+
+  local group_id
+  if sms._is_handle_of(target, sms.group) then
+    local raw = Group.getByName(target.name)
+    if not raw then
+      log.warn("escort: group '" .. tostring(target.name) .. "' not in mission")
+      return nil
+    end
+    group_id = raw:getID()
+  elseif sms._is_handle_of(target, sms.unit) then
+    local raw = Unit.getByName(target.name)
+    if not raw then
+      log.warn("escort: unit '" .. tostring(target.name) .. "' not in mission")
+      return nil
+    end
+    local g = raw:getGroup()
+    if not g then
+      log.error("escort: unit '" .. tostring(target.name) .. "' has no group")
+      return nil
+    end
+    group_id = g:getID()
+  else
+    log.warn("escort: target must be sms.unit or sms.group handle")
+    return nil
+  end
+
+  local engagement_dist_max = opts.engagement_dist_max or 5000
+  if type(engagement_dist_max) ~= "number" then
+    log.warn("escort: opts.engagement_dist_max must be a number, got " .. type(engagement_dist_max))
+    return nil
+  end
+  if opts.target_types ~= nil and type(opts.target_types) ~= "table" then
+    log.warn("escort: opts.target_types must be a table, got " .. type(opts.target_types))
+    return nil
+  end
+  if opts.last_waypoint_index ~= nil and type(opts.last_waypoint_index) ~= "number" then
+    log.warn("escort: opts.last_waypoint_index must be a number, got " .. type(opts.last_waypoint_index))
+    return nil
+  end
+
+  return _stamp({
+    id = "Escort",
+    params = {
+      groupId           = group_id,
+      pos               = {x = offset.x, y = offset.y, z = offset.z},
+      lastWptIndexFlag  = opts.last_waypoint_index ~= nil,
+      lastWptIndex      = opts.last_waypoint_index,
+      engagementDistMax = engagement_dist_max,
+      targetTypes       = opts.target_types,
+    },
+  }, "escort", true)
+end
