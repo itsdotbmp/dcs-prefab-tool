@@ -527,3 +527,101 @@ sms.task.ewr = function(opts)
     params = {priority = priority},
   }, "ewr", false, true)
 end
+
+-- ============================================================
+-- Point/runway-target builders (Task v1.1 additions)
+-- ============================================================
+
+-- Fire at a point on the ground. Optional radius spreads fire over a
+-- circle; without radius DCS targets the exact point. Ground only.
+sms.task.fire_at_point = function(point, opts)
+  if not sms.utils.is_vec3(point) then
+    log.warn("fire_at_point: point must be a vec3, got " .. type(point))
+    return nil
+  end
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn("fire_at_point: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  if opts.radius ~= nil and type(opts.radius) ~= "number" then
+    log.warn("fire_at_point: opts.radius must be a number, got " .. type(opts.radius))
+    return nil
+  end
+  return _stamp({
+    id = "FireAtPoint",
+    params = {
+      point  = {x = point.x, y = point.z},  -- DCS 2D
+      radius = opts.radius,
+    },
+  }, "fire_at_point", false, true)
+end
+
+-- Attack a map object (building / structure / etc.) at the given vec3.
+-- DCS doesn't take a map-object id from scripts; the point must be
+-- within ~2km of the structure for the AI to find it. Air only.
+sms.task.attack_map_object = function(point, opts)
+  if not sms.utils.is_vec3(point) then
+    log.warn("attack_map_object: point must be a vec3, got " .. type(point))
+    return nil
+  end
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn("attack_map_object: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  if opts.attack_qty ~= nil and type(opts.attack_qty) ~= "number" then
+    log.warn("attack_map_object: opts.attack_qty must be a number, got " .. type(opts.attack_qty))
+    return nil
+  end
+  if opts.direction ~= nil and type(opts.direction) ~= "number" then
+    log.warn("attack_map_object: opts.direction must be a number (degrees), got " .. type(opts.direction))
+    return nil
+  end
+  local weapon_type = _resolve_weapon_type(opts.weapon_type, "attack_map_object")
+  return _stamp({
+    id = "AttackMapObject",
+    params = {
+      point       = {x = point.x, y = point.z},
+      weaponType  = weapon_type,
+      expend      = opts.expend or "Auto",
+      attackQty   = opts.attack_qty,
+      direction   = opts.direction and sms.utils.deg_to_rad(opts.direction) or nil,
+      groupAttack = opts.group_attack and true or false,
+    },
+  }, "attack_map_object", true)
+end
+
+-- Bomb a runway by integer DCS airdrome ID. See issue #23 for the
+-- planned sms.airdrome handle integration. Air only.
+sms.task.bomb_runway = function(airdrome_id, opts)
+  if type(airdrome_id) ~= "number" then
+    log.warn("bomb_runway: airdrome_id must be a number (DCS airdrome ID), got " .. type(airdrome_id))
+    return nil
+  end
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn("bomb_runway: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  if opts.attack_qty ~= nil and type(opts.attack_qty) ~= "number" then
+    log.warn("bomb_runway: opts.attack_qty must be a number, got " .. type(opts.attack_qty))
+    return nil
+  end
+  if opts.direction ~= nil and type(opts.direction) ~= "number" then
+    log.warn("bomb_runway: opts.direction must be a number (degrees), got " .. type(opts.direction))
+    return nil
+  end
+  local weapon_type = _resolve_weapon_type(opts.weapon_type, "bomb_runway")
+  return _stamp({
+    id = "BombingRunway",
+    params = {
+      runwayId    = airdrome_id,
+      weaponType  = weapon_type,
+      expend      = opts.expend or "Auto",
+      attackQty   = opts.attack_qty,
+      direction   = opts.direction and sms.utils.deg_to_rad(opts.direction) or nil,
+      groupAttack = opts.group_attack and true or false,
+    },
+  }, "bomb_runway", true)
+end

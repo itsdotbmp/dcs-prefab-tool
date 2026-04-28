@@ -198,6 +198,33 @@ expect_true "ewr not air-only"    'return sms.task.ewr()._sms_air_only == nil'
 expect_true "ewr bad opts"        'return sms.task.ewr("nope") == nil'
 
 # ----------------------------------------------------------------
+# Section: v1.1 point/runway builders
+# ----------------------------------------------------------------
+
+echo "==> [build] fire_at_point returns FireAtPoint, ground-only"
+expect_str  "fire_at_point id"        'return sms.task.fire_at_point({x=0,y=0,z=0}).id' 'FireAtPoint'
+expect_true "fire_at_point ground"    'return sms.task.fire_at_point({x=0,y=0,z=0})._sms_ground_only == true'
+expect_true "fire_at_point not air"   'return sms.task.fire_at_point({x=0,y=0,z=0})._sms_air_only == nil'
+expect_true "fire_at_point radius"    'return sms.task.fire_at_point({x=0,y=0,z=0}, {radius=200}).params.radius == 200'
+expect_true "fire_at_point bad point" 'return sms.task.fire_at_point("nope") == nil'
+expect_true "fire_at_point bad rad"   'return sms.task.fire_at_point({x=0,y=0,z=0}, {radius="big"}) == nil'
+
+echo "==> [build] attack_map_object returns AttackMapObject, air-only"
+expect_str  "amo id"            'return sms.task.attack_map_object({x=0,y=0,z=0}).id' 'AttackMapObject'
+expect_true "amo air-only"      'return sms.task.attack_map_object({x=0,y=0,z=0})._sms_air_only == true'
+expect_true "amo bad point"     'return sms.task.attack_map_object("nope") == nil'
+expect_true "amo direction rad" "
+  local t = sms.task.attack_map_object({x=0,y=0,z=0}, {direction=90})
+  return math.abs(t.params.direction - math.pi/2) < 1e-6
+"
+
+echo "==> [build] bomb_runway returns BombingRunway, air-only"
+expect_str  "bomb_runway id"      'return sms.task.bomb_runway(7).id' 'BombingRunway'
+expect_true "bomb_runway air"     'return sms.task.bomb_runway(7)._sms_air_only == true'
+expect_true "bomb_runway runway"  'return sms.task.bomb_runway(7).params.runwayId == 7'
+expect_true "bomb_runway bad id"  'return sms.task.bomb_runway("seven") == nil'
+
+# ----------------------------------------------------------------
 # Section 2: discover spawn coords from existing mission
 # ----------------------------------------------------------------
 echo "==> discover spawn coords from existing mission"
