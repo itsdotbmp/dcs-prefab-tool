@@ -816,3 +816,130 @@ sms.task.fac_engage_group = function(target, opts)
     },
   }, "fac_engage_group", false, false)
 end
+
+-- ============================================================
+-- Engage en route builders (Task v1.1 additions)
+-- ============================================================
+--
+-- Distinct from the immediate-attack family (sms.task.attack and
+-- sms.task.attack_in_area). Enroute = "permission to engage", with a
+-- priority field that determines order against other enroute tasks.
+
+-- Engage anything matching target_types. Air only.
+sms.task.engage_en_route_targets = function(opts)
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn("engage_en_route_targets: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  if type(opts.target_types) ~= "table" then
+    log.warn("engage_en_route_targets: opts.target_types is required (table of attribute strings)")
+    return nil
+  end
+  if opts.max_dist ~= nil and type(opts.max_dist) ~= "number" then
+    log.warn("engage_en_route_targets: opts.max_dist must be a number, got " .. type(opts.max_dist))
+    return nil
+  end
+  local priority = opts.priority or 1
+  if type(priority) ~= "number" then
+    log.warn("engage_en_route_targets: opts.priority must be a number, got " .. type(priority))
+    return nil
+  end
+  return _stamp({
+    id = "EngageTargets",
+    params = {
+      targetTypes = opts.target_types,
+      maxDist     = opts.max_dist,
+      priority    = priority,
+    },
+  }, "engage_en_route_targets", true)
+end
+
+-- Permission to engage a specific group (enroute). Air only.
+sms.task.engage_en_route_group = function(target, opts)
+  if not sms._is_handle_of(target, sms.group) then
+    log.warn("engage_en_route_group: target must be an sms.group handle")
+    return nil
+  end
+  local raw = Group.getByName(target.name)
+  if not raw then
+    log.warn("engage_en_route_group: group '" .. tostring(target.name) .. "' not in mission")
+    return nil
+  end
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn("engage_en_route_group: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  if opts.attack_qty ~= nil and type(opts.attack_qty) ~= "number" then
+    log.warn("engage_en_route_group: opts.attack_qty must be a number, got " .. type(opts.attack_qty))
+    return nil
+  end
+  if opts.direction ~= nil and type(opts.direction) ~= "number" then
+    log.warn("engage_en_route_group: opts.direction must be a number (degrees), got " .. type(opts.direction))
+    return nil
+  end
+  local priority = opts.priority or 1
+  if type(priority) ~= "number" then
+    log.warn("engage_en_route_group: opts.priority must be a number, got " .. type(priority))
+    return nil
+  end
+  local weapon_type = _resolve_weapon_type(opts.weapon_type, "engage_en_route_group")
+  return _stamp({
+    id = "EngageGroup",
+    params = {
+      groupId        = raw:getID(),
+      weaponType     = weapon_type,
+      expend         = opts.expend or "Auto",
+      attackQty      = opts.attack_qty,
+      attackQtyLimit = opts.attack_qty ~= nil,
+      direction      = opts.direction and sms.utils.deg_to_rad(opts.direction) or nil,
+      priority       = priority,
+    },
+  }, "engage_en_route_group", true)
+end
+
+-- Permission to engage a specific unit (enroute). Air only.
+sms.task.engage_en_route_unit = function(target, opts)
+  if not sms._is_handle_of(target, sms.unit) then
+    log.warn("engage_en_route_unit: target must be an sms.unit handle")
+    return nil
+  end
+  local raw = Unit.getByName(target.name)
+  if not raw then
+    log.warn("engage_en_route_unit: unit '" .. tostring(target.name) .. "' not in mission")
+    return nil
+  end
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn("engage_en_route_unit: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  if opts.attack_qty ~= nil and type(opts.attack_qty) ~= "number" then
+    log.warn("engage_en_route_unit: opts.attack_qty must be a number, got " .. type(opts.attack_qty))
+    return nil
+  end
+  if opts.direction ~= nil and type(opts.direction) ~= "number" then
+    log.warn("engage_en_route_unit: opts.direction must be a number (degrees), got " .. type(opts.direction))
+    return nil
+  end
+  local priority = opts.priority or 1
+  if type(priority) ~= "number" then
+    log.warn("engage_en_route_unit: opts.priority must be a number, got " .. type(priority))
+    return nil
+  end
+  local weapon_type = _resolve_weapon_type(opts.weapon_type, "engage_en_route_unit")
+  return _stamp({
+    id = "EngageUnit",
+    params = {
+      unitId         = raw:getID(),
+      weaponType     = weapon_type,
+      expend         = opts.expend or "Auto",
+      attackQty      = opts.attack_qty,
+      attackQtyLimit = opts.attack_qty ~= nil,
+      direction      = opts.direction and sms.utils.deg_to_rad(opts.direction) or nil,
+      groupAttack    = opts.group_attack and true or false,
+      priority       = priority,
+    },
+  }, "engage_en_route_unit", true)
+end

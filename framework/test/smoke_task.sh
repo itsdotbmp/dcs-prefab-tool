@@ -15,7 +15,7 @@ DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 # Fixture cleanup: nukes anything this smoke spawns, even on mid-run
 # abort (set -e). Idempotent — destroys only what currently exists.
 # Keep this list in sync with the names this smoke creates.
-SMOKE_FIXTURES="_smoke_task_ground _smoke_task_air _smoke_task_target_grp _smoke_task_target_static _smoke_task_escort_target _smoke_task_fac_target"
+SMOKE_FIXTURES="_smoke_task_ground _smoke_task_air _smoke_task_target_grp _smoke_task_target_static _smoke_task_escort_target _smoke_task_fac_target _smoke_task_engage_target"
 
 cleanup_smoke_fixtures() {
   [ -z "${SMOKE_FIXTURES}" ] && return 0
@@ -349,6 +349,75 @@ expect_true "fac_engage_group default priority" "
 echo "==> [build] FAC fixture cleanup"
 "${DCSSMS}" exec --code "
   local g = sms.group('_smoke_task_fac_target')
+  if g then g:destroy() end
+" >/dev/null
+
+# ----------------------------------------------------------------
+# Section: v1.1 engage_en_route builders
+# ----------------------------------------------------------------
+
+echo "==> [build] engage_en_route_targets returns EngageTargets, air-only"
+expect_str  "eert id" "
+  return sms.task.engage_en_route_targets({target_types={sms.targets.PLANES}}).id
+" 'EngageTargets'
+expect_true "eert air-only" "
+  return sms.task.engage_en_route_targets({target_types={sms.targets.PLANES}})._sms_air_only == true
+"
+expect_true "eert default priority" "
+  return sms.task.engage_en_route_targets({target_types={sms.targets.PLANES}}).params.priority == 1
+"
+expect_true "eert priority set" "
+  return sms.task.engage_en_route_targets({target_types={sms.targets.PLANES}, priority=3}).params.priority == 3
+"
+expect_true "eert requires target_types" 'return sms.task.engage_en_route_targets({}) == nil'
+expect_true "eert bad max_dist" "
+  return sms.task.engage_en_route_targets({target_types={sms.targets.AIR}, max_dist='close'}) == nil
+"
+
+# Group/unit engage tests piggyback on the FAC fixture if alive
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_engage_target')
+  if not g then
+    sms.group.create({
+      name='_smoke_task_engage_target',
+      position={x=0,y=0,z=0},
+      country='RUSSIA', category='airplane',
+      units={{type='Su-27', alt=5000}},
+    })
+  end
+" >/dev/null
+
+echo "==> [build] engage_en_route_group returns EngageGroup, air-only, priority"
+expect_str "eerg id" "
+  local g = sms.group('_smoke_task_engage_target')
+  if not g then return 'NIL' end
+  return sms.task.engage_en_route_group(g).id
+" 'EngageGroup'
+expect_true "eerg priority" "
+  local g = sms.group('_smoke_task_engage_target')
+  if not g then return false end
+  return sms.task.engage_en_route_group(g, {priority=2}).params.priority == 2
+"
+expect_true "eerg air-only" "
+  local g = sms.group('_smoke_task_engage_target')
+  if not g then return false end
+  return sms.task.engage_en_route_group(g)._sms_air_only == true
+"
+expect_true "eerg bad target" 'return sms.task.engage_en_route_group("nope") == nil'
+
+echo "==> [build] engage_en_route_unit returns EngageUnit"
+expect_true "eeru id" "
+  local g = sms.group('_smoke_task_engage_target')
+  if not g then return false end
+  local us = g:get_units()
+  if not us or #us == 0 then return false end
+  local t = sms.task.engage_en_route_unit(us[1])
+  return t and t.id == 'EngageUnit'
+"
+
+echo "==> [build] engage cleanup fixture"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_engage_target')
   if g then g:destroy() end
 " >/dev/null
 
