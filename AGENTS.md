@@ -509,8 +509,11 @@ sms.group.create({
 -- Clone an ME-placed template at a new position
 sms.group.clone("MY_TEMPLATE_GROUP", {
   name = "spawned-instance",
-  position = some_vec3,
+  position = some_vec3,        -- optional; defaults to template's ME position
 })
+
+-- Clone a (possibly late-activated) template at its own ME position
+sms.group.clone("MY_TEMPLATE_GROUP", { name = "spawned-instance" })
 ```
 
 Public field names (the framework normalizes these to DCS's quirky underlying keys):

@@ -378,8 +378,8 @@ sms.group.clone = function(template_name, overrides)
     log.error("clone: overrides.name is required (non-empty string)")
     return nil
   end
-  if not _is_vec3(overrides.position) then
-    log.error("clone: overrides.position is required (vec3)")
+  if overrides.position ~= nil and not _is_vec3(overrides.position) then
+    log.error("clone: overrides.position must be a vec3 if provided")
     return nil
   end
 
@@ -409,12 +409,28 @@ sms.group.clone = function(template_name, overrides)
     u.unitId = nil
   end
 
+  -- Strip late-activation. Cloning means "spawn an instance now"; if
+  -- the template was late-activated the clone would silently never
+  -- appear in the world. Users who want a late-activated clone can
+  -- re-add it post-spawn (or pass it as a future override).
+  def.lateActivation = nil
+
   -- Compute original anchor (leader unit's DCS-2D position).
   local orig_x = def.units[1].x
   local orig_y = def.units[1].y  -- DCS-2D y == our z
 
-  -- New anchor from overrides.
+  -- New anchor from overrides; default to template leader's mission
+  -- position when omitted. The mission-descriptor walk works regardless
+  -- of whether the template is late-activated, so this works for
+  -- inactive templates too. DCS-2D y maps to vec3 z; alt is only set on
+  -- aircraft mission entries, so ground templates fall back to 0
+  -- (cloner only consumes x/z anyway — y is preserved per-unit via the
+  -- copied `alt` field).
   local new_anchor = overrides.position
+  if not new_anchor then
+    local u = def.units[1]
+    new_anchor = {x = u.x, y = u.alt or 0, z = u.y}
+  end
 
   -- Re-anchor every unit: original (x, y) -> new (anchor.x + dx, anchor.z + dy)
   for _, u in ipairs(def.units) do

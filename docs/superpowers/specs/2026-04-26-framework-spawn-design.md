@@ -114,9 +114,11 @@ local strike2 = sms.group.clone("Red-Strike-Package", {
 | Field | Type | Required | Default | Notes |
 |---|---|---|---|---|
 | `name` | string | ✓ | — | New group name; auto-suffixed on collision |
-| `position` | vec3 | ✓ | — | New anchor; original offsets are preserved relative to it |
+| `position` | vec3 | ✗ | template's ME anchor | New anchor; original offsets are preserved relative to it. When omitted, defaults to the template leader's `env.mission` position — works for late-activated templates (which `Group.getByName` doesn't expose) without requiring the caller to walk the mission descriptor. |
 
 v1 only `name` + `position` are overridable. Per-unit overrides defer.
+
+**Late activation is stripped.** If the template has `lateActivation = true`, `clone` removes it from the cloned def. Cloning means "spawn an instance now" — inheriting the flag would make the clone silently never appear in the world. Users who want a late-activated clone can re-add the flag after the call, or pass it through a future override.
 
 **New smoke test `framework/test/smoke_spawn.sh`** — bridge-driven; exercises `sms.utils` conversions, `create` happy paths (ground single, ground multi-unit with offsets, air with altitude, heading-degrees-conversion), `create` failure paths, auto-suffix behavior, and `clone` against an ME-discovered template.
 
@@ -332,7 +334,8 @@ Then re-anchor: compute the original anchor as `(g.units[1].x, 0, g.units[1].y)`
 | Air category but a unit has no `alt` (or `alt` is not a number) | log + nil |
 | `coalition.addGroup` succeeds but post-call verify fails | log `create: DCS rejected the spawn (check type/payload/route validity)`, return `nil` |
 | `clone` template not found in `env.mission.*` | log `clone: template '<X>' not in mission`, return `nil` |
-| `clone` overrides missing `name` or `position` | log + nil |
+| `clone` overrides missing `name` | log + nil (`position` may be omitted; defaults to template's ME anchor) |
+| `clone` overrides `position` provided but not a vec3 | log + nil |
 | Garbage input (numbers, booleans) | log + nil at the type-check step |
 
 **No collision failures** — auto-suffix handles uniqueness universally. The returned handle's `:get_name()` is authoritative for the actual resolved name.
