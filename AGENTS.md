@@ -115,6 +115,15 @@ Smoke tests deliberately exercise warn paths to verify rejection. Seeing `[sms.*
 
 When you write new framework code, mimic this contract. Do not `error()`. Do not `assert()` on user input. Use `pcall` around any vanilla DCS call that could throw.
 
+### Category enforcement: air-only and ground-only
+
+Two private flags on a task table mark category restrictions:
+
+- `_sms_air_only = true` — only `airplane` / `helicopter` groups accept this task. Set by `attack`, `attack_in_area`, `bomb`, `land`, `follow`, `orbit`, `no_task`, `refuel`, `escort`, `attack_map_object`, `bomb_runway`, `awacs`, `tanker`, and the `engage_en_route_*` family.
+- `_sms_ground_only = true` — only `ground` groups accept (ships and trains are excluded). Set by `fire_at_point` and `ewr`.
+
+`set_task` / `push_task` reject mismatches at apply time with `log.warn + return false`. `combo` aggregates: a combo containing any air-only sub-task inherits `_sms_air_only`; same for ground. A combo with both flags is built without a build-time warning — DCS will reject it at apply time.
+
 ---
 
 ## 4. Conventions and units
@@ -478,10 +487,25 @@ The fields are otherwise transparent to DCS. Manually-built task tables (no `_sm
 | `sms.task.follow(target, opts?)` | sms.unit / sms.group; opts: `{offset = {x,y,z}}` | `Follow` | air (v1) |
 | `sms.task.orbit(pos, opts?)` | vec3; opts: `{altitude=5000, speed=200, pattern="Circle"\|"Anchored"}`. Anchored adds `{hot_leg_bearing=0 (deg), leg_length=30000 (m), width=10000 (m), clockwise=false}`. DCS renamed "RaceTrack" → "Anchored" in a recent update. | `Orbit` | air |
 | `sms.task.attack(target, opts?)` | sms.group / sms.unit / sms.static; opts: `{weapon_type="Auto", expend="Auto", attack_qty}` | `AttackGroup` (group) / `AttackUnit` (unit, static) | air (v1) |
-| `sms.task.attack_in_area(area, opts?)` | circular sms.area; opts: `{altitude_min, altitude_max, weapon_type}` | `EngageTargetsInZone` | air (v1) |
+| `sms.task.attack_in_area(area, opts?)` | sms.area handle (must be circular in v1); opts: `{weapon_type="Auto", altitude_min, altitude_max, priority=1}` | `EngageTargetsInZone` | air enroute |
 | `sms.task.bomb(target, opts?)` | vec3 / sms.area / sms.unit / sms.static; opts: `{altitude, weapon_type, expend, group_attack, direction}` | `Bombing` | air |
 | `sms.task.land(target, opts?)` | vec3 / sms.static / sms.unit / DCS Airbase; opts: `{duration=300}` | `Land` | air (incl. helo) |
 | `sms.task.combo({t1, t2, ...})` | array of task tables | `ComboTask` (parallel; propagates `_sms_air_only` if any constituent has it) | inherits |
+| `sms.task.no_task()` | — | `NoTask` | air |
+| `sms.task.refuel()` | — | `Refueling` | air |
+| `sms.task.attack_map_object(point, opts?)` | vec3 (within 2km of structure); opts: `{weapon_type="Auto", expend="Auto", attack_qty?, direction? (deg), group_attack=false}` | `AttackMapObject` | air |
+| `sms.task.bomb_runway(airdrome_id, opts?)` | integer DCS airdrome ID; opts same as `attack_map_object`. Handle/name acceptance tracked in [#23](https://github.com/nielsvaes/dcs-sms/issues/23). | `BombingRunway` | air |
+| `sms.task.fire_at_point(point, opts?)` | vec3; opts: `{radius?}` | `FireAtPoint` | ground |
+| `sms.task.escort(target, opts?)` | sms.unit \| sms.group; opts: `{offset={-50,0,-50}, engagement_dist_max=5000, target_types?, last_waypoint_index?}` | `Escort` | air |
+| `sms.task.fac_attack_group(target, opts?)` | sms.group; opts: `{weapon_type="Auto", designation="Auto", datalink=true}` | `FAC_AttackGroup` | any |
+| `sms.task.fac(opts)` | opts: `{radius (required), priority=1}` | `FAC` | any enroute |
+| `sms.task.fac_engage_group(target, opts?)` | sms.group; opts same as `fac_attack_group` plus `priority=1` | `FAC_EngageGroup` | any enroute |
+| `sms.task.engage_en_route_targets(opts)` | opts: `{target_types (required), max_dist?, priority=1}` | `EngageTargets` | air enroute |
+| `sms.task.engage_en_route_group(target, opts?)` | sms.group; opts: `{weapon_type="Auto", expend="Auto", attack_qty?, direction?, priority=1}` | `EngageGroup` | air enroute |
+| `sms.task.engage_en_route_unit(target, opts?)` | sms.unit; opts same as `engage_en_route_group` plus `group_attack=false` | `EngageUnit` | air enroute |
+| `sms.task.awacs(opts?)` | opts: `{priority=1}` | `AWACS` | air enroute |
+| `sms.task.tanker(opts?)` | opts: `{priority=1}` | `Tanker` | air enroute |
+| `sms.task.ewr(opts?)` | opts: `{priority=1}` | `EWR` | ground enroute |
 
 **Snapshot vs follow.** `move_to(unit)` reads `unit:get_position()` once at build time; if the unit moves before the task ends, the task still drives to the original location. For continuous tracking, use `follow(unit)`.
 
@@ -501,6 +525,37 @@ The fields are otherwise transparent to DCS. Manually-built task tables (no `_sm
 | `:push_task(task)` | `true` on dispatch; same failure modes. Wraps `Group:getController():pushTask`. **Partially LIFO:** short-lived tasks (`attack`, `bomb`, `land`) interrupt and the previous task resumes when they finish. But Mission tasks (`move_to`, `orbit`) do **not** stack — pushing one over another replaces the previous route. For "via B then to A" semantics use a multi-waypoint route (v1.1) or chain via `sms.timer.after` / events. |
 
 **Out of v1:** `sequence` verb (use `push_task` LIFO ordering or event-driven retasking), ground-specific engage verbs (DCS ground engagement is ROE-driven, separate design problem), polygon-area `attack_in_area`, `pop_task`, current-task introspection (DCS doesn't expose it cleanly), per-waypoint task mutation.
+
+### `sms.targets` — `framework/targets.lua`
+
+Named constants for DCS target attribute strings, used by enroute engagement task builders. Builders accept either these constants or raw strings (forward-compat for new attributes the framework hasn't catalogued).
+
+| Constant | Resolves to |
+|---|---|
+| `sms.targets.AIR` | `"Air"` |
+| `sms.targets.PLANES` | `"Planes"` |
+| `sms.targets.HELICOPTERS` | `"Helicopters"` |
+| `sms.targets.GROUND_UNITS` | `"Ground Units"` |
+| `sms.targets.GROUND_VEHICLES` | `"Ground vehicles"` |
+| `sms.targets.SHIPS` | `"Ships"` |
+| `sms.targets.AIR_DEFENCE` | `"Air Defence"` |
+| `sms.targets.SAM` | `"SAM"` |
+| `sms.targets.AAA` | `"AAA"` |
+| `sms.targets.STATICS` | `"Static"` |
+| `sms.targets.BUILDINGS` | `"Buildings"` |
+| `sms.targets.ALL` | `"All"` |
+
+### `sms.designations` — `framework/designations.lua`
+
+Named constants for DCS FAC designation enum strings. Used by `sms.task.fac_attack_group` / `sms.task.fac_engage_group` opts.
+
+| Constant | Resolves to |
+|---|---|
+| `sms.designations.NO` | `"No"` |
+| `sms.designations.AUTO` | `"Auto"` |
+| `sms.designations.WP` | `"WP"` (white phosphorus marker) |
+| `sms.designations.IR_POINTER` | `"IR-Pointer"` |
+| `sms.designations.LASER` | `"Laser"` |
 
 ---
 
