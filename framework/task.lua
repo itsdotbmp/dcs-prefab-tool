@@ -81,6 +81,21 @@ local function _stamp(t, verb, air_only, ground_only)
   return t
 end
 
+-- Generic priority validator + extractor for enroute role tasks.
+local function _validate_priority(verb, opts)
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn(verb .. ": opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  local priority = opts.priority or 1
+  if type(priority) ~= "number" then
+    log.warn(verb .. ": opts.priority must be a number, got " .. type(priority))
+    return nil
+  end
+  return priority
+end
+
 -- ============================================================
 -- Builders
 -- ============================================================
@@ -362,11 +377,8 @@ sms.task.attack_in_area = function(area, opts)
   end
   local weapon_type = _resolve_weapon_type(opts.weapon_type, "attack_in_area")
 
-  local priority = opts.priority or 1
-  if type(priority) ~= "number" then
-    log.warn("attack_in_area: opts.priority must be a number, got " .. type(priority))
-    return nil
-  end
+  local priority = _validate_priority("attack_in_area", opts)
+  if priority == nil then return nil end
 
   local params = {
     point       = {x = center.x, y = center.z},
@@ -468,4 +480,50 @@ sms.task.combo = function(tasks)
     id     = "ComboTask",
     params = { tasks = tasks },
   }, "combo", any_air_only, any_ground_only)
+end
+
+-- ============================================================
+-- Role-type / no-target builders (Task v1.1 additions)
+-- ============================================================
+
+-- Empty noop. Air only per DCS FAQ. Useful for clearing the active
+-- task without resetting the controller (resetTask clears the queue
+-- entirely; setTask(no_task) just stops the current activity).
+sms.task.no_task = function()
+  return _stamp({id = "NoTask", params = {}}, "no_task", true)
+end
+
+-- Refuel from nearest tanker. Air only.
+sms.task.refuel = function()
+  return _stamp({id = "Refueling", params = {}}, "refuel", true)
+end
+
+-- Act as AWACS for friendly units. Enroute, air only.
+sms.task.awacs = function(opts)
+  local priority = _validate_priority("awacs", opts)
+  if priority == nil then return nil end
+  return _stamp({
+    id     = "AWACS",
+    params = {priority = priority},
+  }, "awacs", true)
+end
+
+-- Act as tanker for friendly units. Enroute, air only.
+sms.task.tanker = function(opts)
+  local priority = _validate_priority("tanker", opts)
+  if priority == nil then return nil end
+  return _stamp({
+    id     = "Tanker",
+    params = {priority = priority},
+  }, "tanker", true)
+end
+
+-- Act as EW radar for friendly units. Enroute, ground only.
+sms.task.ewr = function(opts)
+  local priority = _validate_priority("ewr", opts)
+  if priority == nil then return nil end
+  return _stamp({
+    id     = "EWR",
+    params = {priority = priority},
+  }, "ewr", false, true)
 end

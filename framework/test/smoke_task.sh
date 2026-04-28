@@ -167,6 +167,37 @@ echo "==> [build] move_to with non-handle -> nil"
 expect_true "move_to bad target" 'return sms.task.move_to("nope") == nil'
 
 # ----------------------------------------------------------------
+# Section: v1.1 role-type builders (no_task, refuel, awacs, tanker, ewr)
+# ----------------------------------------------------------------
+
+echo "==> [build] no_task returns NoTask, air-only"
+expect_str  "no_task id"          'return sms.task.no_task().id' 'NoTask'
+expect_true "no_task air-only"    'return sms.task.no_task()._sms_air_only == true'
+expect_str  "no_task verb"        'return sms.task.no_task()._sms_verb' 'no_task'
+
+echo "==> [build] refuel returns Refueling, air-only"
+expect_str  "refuel id"           'return sms.task.refuel().id' 'Refueling'
+expect_true "refuel air-only"     'return sms.task.refuel()._sms_air_only == true'
+
+echo "==> [build] awacs returns AWACS with priority default 1, air-only"
+expect_str  "awacs id"            'return sms.task.awacs().id' 'AWACS'
+expect_true "awacs default prio"  'return sms.task.awacs().params.priority == 1'
+expect_true "awacs air-only"      'return sms.task.awacs()._sms_air_only == true'
+expect_true "awacs prio set"      'return sms.task.awacs({priority=3}).params.priority == 3'
+expect_true "awacs bad prio"      'return sms.task.awacs({priority="high"}) == nil'
+
+echo "==> [build] tanker returns Tanker with priority default 1, air-only"
+expect_str  "tanker id"           'return sms.task.tanker().id' 'Tanker'
+expect_true "tanker air-only"     'return sms.task.tanker()._sms_air_only == true'
+
+echo "==> [build] ewr returns EWR with priority default 1, ground-only"
+expect_str  "ewr id"              'return sms.task.ewr().id' 'EWR'
+expect_true "ewr default prio"    'return sms.task.ewr().params.priority == 1'
+expect_true "ewr ground-only"     'return sms.task.ewr()._sms_ground_only == true'
+expect_true "ewr not air-only"    'return sms.task.ewr()._sms_air_only == nil'
+expect_true "ewr bad opts"        'return sms.task.ewr("nope") == nil'
+
+# ----------------------------------------------------------------
 # Section 2: discover spawn coords from existing mission
 # ----------------------------------------------------------------
 echo "==> discover spawn coords from existing mission"
