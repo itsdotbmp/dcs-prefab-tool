@@ -15,7 +15,7 @@ DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 # Fixture cleanup: nukes anything this smoke spawns, even on mid-run
 # abort (set -e). Idempotent — destroys only what currently exists.
 # Keep this list in sync with the names this smoke creates.
-SMOKE_FIXTURES="_smoke_task_ground _smoke_task_air _smoke_task_target_grp _smoke_task_target_static _smoke_task_escort_target"
+SMOKE_FIXTURES="_smoke_task_ground _smoke_task_air _smoke_task_target_grp _smoke_task_target_static _smoke_task_escort_target _smoke_task_fac_target"
 
 cleanup_smoke_fixtures() {
   [ -z "${SMOKE_FIXTURES}" ] && return 0
@@ -57,6 +57,8 @@ echo "==> load framework files"
 "${DCSSMS}" exec --file sms.lua >/dev/null
 "${DCSSMS}" exec --file log.lua >/dev/null
 "${DCSSMS}" exec --file utils.lua >/dev/null
+"${DCSSMS}" exec --file targets.lua >/dev/null
+"${DCSSMS}" exec --file designations.lua >/dev/null
 "${DCSSMS}" exec --file group.lua >/dev/null
 "${DCSSMS}" exec --file unit.lua >/dev/null
 "${DCSSMS}" exec --file area.lua >/dev/null
@@ -277,6 +279,76 @@ expect_true "escort last_waypoint flag" "
 echo "==> [build] escort cleanup fixture"
 "${DCSSMS}" exec --code "
   local g = sms.group('_smoke_task_escort_target')
+  if g then g:destroy() end
+" >/dev/null
+
+# ----------------------------------------------------------------
+# Section: v1.1 FAC builders
+# ----------------------------------------------------------------
+
+# Reuse the escort fixture if still alive, else spawn fresh
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then
+    sms.group.create({
+      name='_smoke_task_fac_target',
+      position={x=0,y=0,z=0},
+      country='RUSSIA', category='ground',
+      units={{type='Tank Maus'}},
+    })
+  end
+" >/dev/null
+
+echo "==> [build] fac_attack_group returns FAC_AttackGroup, any-category"
+expect_str "fac_attack_group id" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return 'NIL' end
+  local t = sms.task.fac_attack_group(g)
+  return t and t.id or 'NIL'
+" 'FAC_AttackGroup'
+expect_true "fac_attack_group not air-only" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return false end
+  return sms.task.fac_attack_group(g)._sms_air_only == nil
+"
+expect_true "fac_attack_group not ground-only" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return false end
+  return sms.task.fac_attack_group(g)._sms_ground_only == nil
+"
+expect_true "fac_attack_group default designation" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return false end
+  return sms.task.fac_attack_group(g).params.designation == 'Auto'
+"
+expect_true "fac_attack_group designation constant" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return false end
+  local t = sms.task.fac_attack_group(g, {designation=sms.designations.LASER})
+  return t.params.designation == 'Laser'
+"
+
+echo "==> [build] fac returns FAC, any-category"
+expect_str  "fac id"               'return sms.task.fac({radius=10000}).id' 'FAC'
+expect_true "fac default priority" 'return sms.task.fac({radius=10000}).params.priority == 1'
+expect_true "fac requires radius"  'return sms.task.fac({}) == nil'
+expect_true "fac not air-only"     'return sms.task.fac({radius=10000})._sms_air_only == nil'
+
+echo "==> [build] fac_engage_group returns FAC_EngageGroup with priority"
+expect_str "fac_engage_group id" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return 'NIL' end
+  return sms.task.fac_engage_group(g).id
+" 'FAC_EngageGroup'
+expect_true "fac_engage_group default priority" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return false end
+  return sms.task.fac_engage_group(g).params.priority == 1
+"
+
+echo "==> [build] FAC fixture cleanup"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_fac_target')
   if g then g:destroy() end
 " >/dev/null
 

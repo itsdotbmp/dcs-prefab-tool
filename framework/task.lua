@@ -702,3 +702,117 @@ sms.task.escort = function(target, opts)
     },
   }, "escort", true)
 end
+
+-- ============================================================
+-- FAC builders (Task v1.1 additions)
+-- ============================================================
+
+-- Validate a designation string. Accepts sms.designations.* values or
+-- the raw string equivalents. Returns the resolved string or nil + warn.
+local function _validate_designation(verb, raw)
+  if raw == nil then return "Auto" end
+  if type(raw) ~= "string" then
+    log.warn(verb .. ": opts.designation must be a string, got " .. type(raw))
+    return nil
+  end
+  return raw  -- pass-through; DCS validates
+end
+
+-- FAC for a specific target group (immediate). Air or ground.
+sms.task.fac_attack_group = function(target, opts)
+  if not sms._is_handle_of(target, sms.group) then
+    log.warn("fac_attack_group: target must be an sms.group handle")
+    return nil
+  end
+  local raw = Group.getByName(target.name)
+  if not raw then
+    log.warn("fac_attack_group: group '" .. tostring(target.name) .. "' not in mission")
+    return nil
+  end
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn("fac_attack_group: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  local designation = _validate_designation("fac_attack_group", opts.designation)
+  if designation == nil then return nil end
+  if opts.datalink ~= nil and type(opts.datalink) ~= "boolean" then
+    log.warn("fac_attack_group: opts.datalink must be a boolean, got " .. type(opts.datalink))
+    return nil
+  end
+  local weapon_type = _resolve_weapon_type(opts.weapon_type, "fac_attack_group")
+  return _stamp({
+    id = "FAC_AttackGroup",
+    params = {
+      groupId     = raw:getID(),
+      weaponType  = weapon_type,
+      designation = designation,
+      datalink    = opts.datalink ~= false,  -- default true
+    },
+  }, "fac_attack_group", false, false)  -- air or ground
+end
+
+-- Area FAC (enroute). Air or ground.
+sms.task.fac = function(opts)
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn("fac: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  if type(opts.radius) ~= "number" then
+    log.warn("fac: opts.radius is required (number, meters)")
+    return nil
+  end
+  local priority = opts.priority or 1
+  if type(priority) ~= "number" then
+    log.warn("fac: opts.priority must be a number, got " .. type(priority))
+    return nil
+  end
+  return _stamp({
+    id = "FAC",
+    params = {
+      radius   = opts.radius,
+      priority = priority,
+    },
+  }, "fac", false, false)
+end
+
+-- Enroute FAC for a specific target group. Air or ground.
+sms.task.fac_engage_group = function(target, opts)
+  if not sms._is_handle_of(target, sms.group) then
+    log.warn("fac_engage_group: target must be an sms.group handle")
+    return nil
+  end
+  local raw = Group.getByName(target.name)
+  if not raw then
+    log.warn("fac_engage_group: group '" .. tostring(target.name) .. "' not in mission")
+    return nil
+  end
+  opts = opts or {}
+  if type(opts) ~= "table" then
+    log.warn("fac_engage_group: opts must be a table or nil, got " .. type(opts))
+    return nil
+  end
+  local designation = _validate_designation("fac_engage_group", opts.designation)
+  if designation == nil then return nil end
+  if opts.datalink ~= nil and type(opts.datalink) ~= "boolean" then
+    log.warn("fac_engage_group: opts.datalink must be a boolean, got " .. type(opts.datalink))
+    return nil
+  end
+  local priority = opts.priority or 1
+  if type(priority) ~= "number" then
+    log.warn("fac_engage_group: opts.priority must be a number, got " .. type(priority))
+    return nil
+  end
+  local weapon_type = _resolve_weapon_type(opts.weapon_type, "fac_engage_group")
+  return _stamp({
+    id = "FAC_EngageGroup",
+    params = {
+      groupId     = raw:getID(),
+      weaponType  = weapon_type,
+      designation = designation,
+      datalink    = opts.datalink ~= false,
+      priority    = priority,
+    },
+  }, "fac_engage_group", false, false)
+end
