@@ -380,14 +380,25 @@ end
 -- via a one-frame deferred dispatch (same race-avoidance reason as
 -- set_task).
 --
--- DCS pushTask is *partially* LIFO: short-lived tasks like attack /
--- bomb / land interrupt the current task, run to completion, and then
--- the previous task resumes. But Mission tasks do NOT stack with each
--- other — pushing a Mission on top of another Mission replaces the
--- previous route, so push_task(move_to(B)) over set_task(move_to(A))
--- behaves like set_task(move_to(B)) — the AI does not return to A.
--- For "via B then to A" use a multi-waypoint route (planned for v1.1)
--- or chain via timer/event callbacks.
+-- DCS pushTask is *partially* LIFO. Empirically (verified with parallel
+-- M-1 Abrams runs, see commit history around the move_to speed fix):
+--
+--   * Short-lived tasks (attack / bomb / land — claim from earlier
+--     framework versions, not re-verified post-task-refactor) interrupt
+--     the current task, run to completion, then the previous task
+--     resumes. If you find this isn't actually true, file an issue.
+--
+--   * Mission tasks do NOT stack with each other under any wrapping.
+--     We confirmed all three permutations behave identically — the
+--     pushed Mission replaces the active one, AI does not return to
+--     the original target:
+--       - bare Mission   +  push bare Mission        -> replaces
+--       - ComboTask{M}   +  push ComboTask{M}        -> replaces
+--       - ComboTask{M}   +  push bare Mission        -> replaces
+--     Wrapping in ComboTask is NOT a workaround. Don't reach for it.
+--
+-- For "via B then to A" semantics, use a multi-waypoint route (planned
+-- for v1.1) or chain via timer/event callbacks.
 sms.group.push_task = function(g, task)
   local raw = _validate_apply("push_task", g, task)
   if not raw then return false end
