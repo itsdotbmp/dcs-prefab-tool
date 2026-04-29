@@ -50,8 +50,23 @@ expect_str() {
 echo "==> hook status"
 "${DCSSMS}" status
 
-echo "==> load framework"
-"${DCSSMS}" exec --file load_all.lua >/dev/null
+echo "==> load framework files"
+"${DCSSMS}" exec --file sms.lua >/dev/null
+"${DCSSMS}" exec --file log.lua >/dev/null
+"${DCSSMS}" exec --file utils.lua >/dev/null
+"${DCSSMS}" exec --file targets.lua >/dev/null
+"${DCSSMS}" exec --file designations.lua >/dev/null
+"${DCSSMS}" exec --file group.lua >/dev/null
+"${DCSSMS}" exec --file unit.lua >/dev/null
+"${DCSSMS}" exec --file area.lua >/dev/null
+"${DCSSMS}" exec --file timer.lua >/dev/null
+"${DCSSMS}" exec --file group_spawn.lua >/dev/null
+"${DCSSMS}" exec --file static.lua >/dev/null
+"${DCSSMS}" exec --file events.lua >/dev/null
+"${DCSSMS}" exec --file weapon.lua >/dev/null
+"${DCSSMS}" exec --file task.lua >/dev/null
+"${DCSSMS}" exec --file commands.lua >/dev/null
+"${DCSSMS}" exec --file options.lua >/dev/null
 
 # ----------------------------------------------------------------
 # Synthetic builder shape checks
