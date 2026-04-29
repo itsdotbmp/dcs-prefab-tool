@@ -230,11 +230,9 @@ local function _validate_apply(method, group_handle, payload)
   end
   -- For tasks (set_task / push_task), require the DCS shape (id+params).
   -- For commands/options, the apply method has already done its own shape check.
-  if method == "set_task" or method == "push_task" then
-    if type(payload.id) ~= "string" or type(payload.params) ~= "table" then
-      log.warn(method .. ": task must be a table with 'id' (string) and 'params' (table) fields")
-      return nil
-    end
+  if (method == "set_task" or method == "push_task") and not _is_task_table(payload) then
+    log.warn(method .. ": task must be a table with 'id' (string) and 'params' (table) fields")
+    return nil
   end
   if payload._sms_air_only then
     local cat = group_handle:get_category()
