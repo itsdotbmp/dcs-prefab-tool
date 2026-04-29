@@ -464,6 +464,33 @@ sms.group.push_task = function(g, task)
   return true
 end
 
+-- ============================================================
+-- set_command (apply API for sms.commands builders)
+-- ============================================================
+
+-- Dispatch a command from sms.commands to the group's controller. Wraps
+-- Group:getController():setCommand(cmd). Unlike set_task, no deferred
+-- dispatch — commands have no observed same-frame race.
+sms.group.set_command = function(g, cmd)
+  if type(cmd) ~= "table" or type(cmd._sms_verb) ~= "string" then
+    log.warn("set_command: command must be built via sms.commands.* (missing _sms_verb)")
+    return false
+  end
+  local raw = _validate_apply("set_command", g, cmd)
+  if not raw then return false end
+  local ctrl = raw:getController()
+  if not ctrl then
+    log.warn("set_command: group '" .. tostring(g.name) .. "' has no controller")
+    return false
+  end
+  local ok, err = pcall(ctrl.setCommand, ctrl, { id = cmd.id, params = cmd.params })
+  if not ok then
+    log.error("set_command: DCS rejected command for '" .. tostring(g.name) .. "': " .. tostring(err))
+    return false
+  end
+  return true
+end
+
 -- Sugar constructor: sms.group("name") -> handle | nil + log.
 -- The factory lives in sms.lua; this call wires it up using Group.getByName
 -- as the existence check.
