@@ -28,7 +28,25 @@ assert(type(sms.unit) == "table",    "framework/unit.lua must be loaded first")
 assert(type(sms.timer) == "table",   "framework/timer.lua must be loaded first")
 assert(type(sms.events) == "table",  "framework/events.lua must be loaded first")
 local log = sms.log.module("sms.weapon")
+
+---@class sms.weapon
+---@field name                  string
+---@field type                  string|nil
+---@field category              "bomb"|"missile"|"rocket"|"shell"|"torpedo"|nil
+---@field coalition             "red"|"blue"|"neutral"|nil
+---@field country               string|nil
+---@field state                 "created"|"tracking"|"impacted"|"destroyed"
+---@field launcher              sms.unit|nil
+---@field release_position      {x: number, y: number, z: number}|nil
+---@field release_heading       number|nil  # degrees
+---@field release_pitch         number|nil  # degrees
+---@field release_altitude_asl  number|nil  # meters
+---@field release_altitude_agl  number|nil  # meters
 sms.weapon = sms.weapon or {}
+
+---@class sms.weapon.tracking_opts
+---@field rate?         number  # poll rate in Hz (default 60)
+---@field ip_distance?  number  # max land.getIP extrapolation distance in meters (default 50)
 
 -- The fabricated sms.events.WEAPON_IMPACT constant is defined in
 -- framework/events.lua (the module that owns sms.events.*). This file
@@ -71,6 +89,8 @@ end
 -- Snapshot all release-time state at construction. The handle stays
 -- usable after the DCS weapon object is destroyed because nothing here
 -- relies on the raw object after wrap returns.
+---@param raw any  # raw DCS weapon object (userdata) from a SHOT/HIT event
+---@return sms.weapon|nil
 sms.weapon.wrap = function(raw)
   if type(raw) ~= "userdata" and type(raw) ~= "table" then
     log.warn("wrap: argument must be a DCS weapon object, got " .. type(raw))
@@ -137,6 +157,8 @@ end
 -- Always-available getters (snapshotted, work in any state)
 -- ============================================================
 
+---@param w sms.weapon
+---@return string|nil
 sms.weapon.get_name = function(w)
   if not _is_handle(w) then
     log.warn("get_name: argument must be an sms.weapon handle")
@@ -145,6 +167,8 @@ sms.weapon.get_name = function(w)
   return w.name
 end
 
+---@param w sms.weapon
+---@return string|nil  # DCS type name (e.g. "weapons.missiles.AIM_120C")
 sms.weapon.get_type = function(w)
   if not _is_handle(w) then
     log.warn("get_type: argument must be an sms.weapon handle")
@@ -153,6 +177,8 @@ sms.weapon.get_type = function(w)
   return w.type
 end
 
+---@param w sms.weapon
+---@return "bomb"|"missile"|"rocket"|"shell"|"torpedo"|nil
 sms.weapon.get_category = function(w)
   if not _is_handle(w) then
     log.warn("get_category: argument must be an sms.weapon handle")
@@ -161,6 +187,8 @@ sms.weapon.get_category = function(w)
   return w.category
 end
 
+---@param w sms.weapon
+---@return "red"|"blue"|"neutral"|nil
 sms.weapon.get_coalition = function(w)
   if not _is_handle(w) then
     log.warn("get_coalition: argument must be an sms.weapon handle")
@@ -169,6 +197,8 @@ sms.weapon.get_coalition = function(w)
   return w.coalition
 end
 
+---@param w sms.weapon
+---@return string|nil  # lowercase DCS country name (e.g. "usa", "russia")
 sms.weapon.get_country = function(w)
   if not _is_handle(w) then
     log.warn("get_country: argument must be an sms.weapon handle")
@@ -177,6 +207,8 @@ sms.weapon.get_country = function(w)
   return w.country
 end
 
+---@param w sms.weapon
+---@return sms.unit|nil
 sms.weapon.get_launcher = function(w)
   if not _is_handle(w) then
     log.warn("get_launcher: argument must be an sms.weapon handle")
@@ -185,6 +217,8 @@ sms.weapon.get_launcher = function(w)
   return w.launcher
 end
 
+---@param w sms.weapon
+---@return "created"|"tracking"|"impacted"|"destroyed"|nil
 sms.weapon.get_state = function(w)
   if not _is_handle(w) then
     log.warn("get_state: argument must be an sms.weapon handle")
@@ -195,6 +229,8 @@ end
 
 -- Release-time getters. Snapshotted at wrap; nil if launcher was absent.
 
+---@param w sms.weapon
+---@return {x: number, y: number, z: number}|nil  # DCS world coords (x=north, y=alt, z=east)
 sms.weapon.get_release_position = function(w)
   if not _is_handle(w) then
     log.warn("get_release_position: argument must be an sms.weapon handle")
@@ -203,6 +239,8 @@ sms.weapon.get_release_position = function(w)
   return w.release_position
 end
 
+---@param w sms.weapon
+---@return number|nil  # degrees
 sms.weapon.get_release_heading = function(w)
   if not _is_handle(w) then
     log.warn("get_release_heading: argument must be an sms.weapon handle")
@@ -211,6 +249,8 @@ sms.weapon.get_release_heading = function(w)
   return w.release_heading
 end
 
+---@param w sms.weapon
+---@return number|nil  # degrees
 sms.weapon.get_release_pitch = function(w)
   if not _is_handle(w) then
     log.warn("get_release_pitch: argument must be an sms.weapon handle")
@@ -219,6 +259,8 @@ sms.weapon.get_release_pitch = function(w)
   return w.release_pitch
 end
 
+---@param w sms.weapon
+---@return number|nil  # meters above sea level
 sms.weapon.get_release_altitude_asl = function(w)
   if not _is_handle(w) then
     log.warn("get_release_altitude_asl: argument must be an sms.weapon handle")
@@ -227,6 +269,8 @@ sms.weapon.get_release_altitude_asl = function(w)
   return w.release_altitude_asl
 end
 
+---@param w sms.weapon
+---@return number|nil  # meters above ground level
 sms.weapon.get_release_altitude_agl = function(w)
   if not _is_handle(w) then
     log.warn("get_release_altitude_agl: argument must be an sms.weapon handle")
@@ -237,10 +281,20 @@ end
 
 -- Category sugar. False if category lookup failed at wrap time.
 
+---@param w sms.weapon
+---@return boolean
 sms.weapon.is_bomb    = function(w) return _is_handle(w) and w.category == "bomb"    or false end
+---@param w sms.weapon
+---@return boolean
 sms.weapon.is_missile = function(w) return _is_handle(w) and w.category == "missile" or false end
+---@param w sms.weapon
+---@return boolean
 sms.weapon.is_rocket  = function(w) return _is_handle(w) and w.category == "rocket"  or false end
+---@param w sms.weapon
+---@return boolean
 sms.weapon.is_shell   = function(w) return _is_handle(w) and w.category == "shell"   or false end
+---@param w sms.weapon
+---@return boolean
 sms.weapon.is_torpedo = function(w) return _is_handle(w) and w.category == "torpedo" or false end
 
 -- ============================================================
@@ -283,6 +337,8 @@ end
 -- weapon object stops existing. Transitions state, computes extrapolated
 -- impact position (with last-known fallback), fires the on_impact
 -- callback, and emits sms.events.WEAPON_IMPACT for cross-cutting subscribers.
+---@param w sms.weapon
+---@private
 sms.weapon._on_impact_detected = function(w)
   if w.state ~= "tracking" then return end  -- defensive
   -- Extrapolate impact via land.getIP. Falls back to last-known position
@@ -319,11 +375,16 @@ sms.weapon._on_impact_detected = function(w)
   })
 end
 
+---@param w sms.weapon
+---@return boolean
 sms.weapon.is_tracking = function(w)
   if not _is_handle(w) then return false end
   return w.state == "tracking"
 end
 
+---@param w sms.weapon
+---@param opts? sms.weapon.tracking_opts
+---@return boolean
 sms.weapon.start_tracking = function(w, opts)
   if not _is_handle(w) then
     log.warn("start_tracking: argument must be an sms.weapon handle")
@@ -355,6 +416,8 @@ sms.weapon.start_tracking = function(w, opts)
   return true
 end
 
+---@param w sms.weapon
+---@return boolean
 sms.weapon.stop_tracking = function(w)
   if not _is_handle(w) then
     log.warn("stop_tracking: argument must be an sms.weapon handle")
@@ -375,6 +438,8 @@ end
 -- Callback slots (single-slot, last-write-wins)
 -- ============================================================
 
+---@param w sms.weapon
+---@param fn fun(w: sms.weapon)
 sms.weapon.on_tick = function(w, fn)
   if not _is_handle(w) then
     log.warn("on_tick: argument must be an sms.weapon handle")
@@ -387,6 +452,8 @@ sms.weapon.on_tick = function(w, fn)
   w._on_tick_fn = fn
 end
 
+---@param w sms.weapon
+---@param fn fun(w: sms.weapon)
 sms.weapon.on_impact = function(w, fn)
   if not _is_handle(w) then
     log.warn("on_impact: argument must be an sms.weapon handle")
@@ -403,6 +470,8 @@ end
 -- Live getters (require state == "tracking")
 -- ============================================================
 
+---@param w sms.weapon
+---@return boolean
 sms.weapon.is_alive = function(w)
   if not _is_handle(w) then return false end
   if w.state ~= "tracking" then return false end
@@ -411,6 +480,8 @@ sms.weapon.is_alive = function(w)
   return ok and exists == true
 end
 
+---@param w sms.weapon
+---@return {x: number, y: number, z: number}|nil  # DCS world coords (x=north, y=alt, z=east)
 sms.weapon.get_position = function(w)
   if not _is_handle(w) then
     log.warn("get_position: argument must be an sms.weapon handle")
@@ -425,6 +496,8 @@ sms.weapon.get_position = function(w)
   return {x = p.x, y = p.y, z = p.z}
 end
 
+---@param w sms.weapon
+---@return {x: number, y: number, z: number}|nil  # m/s per axis
 sms.weapon.get_velocity = function(w)
   if not _is_handle(w) then
     log.warn("get_velocity: argument must be an sms.weapon handle")
@@ -439,12 +512,16 @@ sms.weapon.get_velocity = function(w)
   return {x = v.x, y = v.y, z = v.z}
 end
 
+---@param w sms.weapon
+---@return number|nil  # m/s
 sms.weapon.get_speed = function(w)
   local v = sms.weapon.get_velocity(w)
   if not v then return nil end
   return sms.utils.vec3_length(v)
 end
 
+---@param w sms.weapon
+---@return sms.unit|sms.static|nil  # current locked target (unit, static, or nil)
 sms.weapon.get_target = function(w)
   if not _is_handle(w) then
     log.warn("get_target: argument must be an sms.weapon handle")
@@ -469,6 +546,8 @@ end
 -- Impact getters (require state == "impacted")
 -- ============================================================
 
+---@param w sms.weapon
+---@return {x: number, y: number, z: number}|nil  # DCS world coords (x=north, y=alt, z=east)
 sms.weapon.get_impact_position = function(w)
   if not _is_handle(w) then
     log.warn("get_impact_position: argument must be an sms.weapon handle")
@@ -483,6 +562,8 @@ sms.weapon.get_impact_position = function(w)
   return {x = p.x, y = p.y, z = p.z}
 end
 
+---@param w sms.weapon
+---@return {x: number, y: number, z: number}|nil  # DCS world coords (x=north, y=alt, z=east)
 sms.weapon.get_last_known_position = function(w)
   if not _is_handle(w) then
     log.warn("get_last_known_position: argument must be an sms.weapon handle")
@@ -500,6 +581,9 @@ end
 -- Distance from impact to a vec3 OR to any handle that exposes :get_position().
 -- Duck-typed: works for sms.unit, sms.static, sms.weapon, or any future
 -- positionable handle.
+---@param w sms.weapon
+---@param target {x: number, y: number, z: number}|sms.unit|sms.static|sms.group|sms.weapon|table  # vec3 or any handle exposing :get_position()
+---@return number|nil  # meters
 sms.weapon.get_impact_distance_from = function(w, target)
   if not _is_handle(w) then
     log.warn("get_impact_distance_from: argument must be an sms.weapon handle")
@@ -534,6 +618,8 @@ end
 -- different events and conflating them loses information) or
 -- "destroyed" (already done). To get an impact-style event from a
 -- programmatic abort, read get_position() before calling destroy().
+---@param w sms.weapon
+---@return boolean
 sms.weapon.destroy = function(w)
   if not _is_handle(w) then
     log.warn("destroy: argument must be an sms.weapon handle")

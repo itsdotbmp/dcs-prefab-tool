@@ -29,7 +29,20 @@ assert(type(sms.static) == "table", "framework/static.lua must be loaded first")
 assert(type(sms.area) == "table",   "framework/area.lua must be loaded first")
 assert(type(sms.utils) == "table",  "framework/utils.lua must be loaded first")
 local log = sms.log.module("sms.task")
+
+---@class sms.task
 sms.task = sms.task or {}
+
+-- A task table built by an sms.task.* builder. Returned by all builders;
+-- consumed by sms.group.set_task / sms.group.push_task. The _sms_* fields
+-- are private metadata used by the apply path; manually-built {id, params}
+-- tables are also accepted at apply time but lack these tags.
+---@class sms.task.task
+---@field id string
+---@field params table
+---@field _sms_verb string?
+---@field _sms_air_only boolean?
+---@field _sms_ground_only boolean?
 
 -- ============================================================
 -- Internal helpers
@@ -170,6 +183,11 @@ end
 -- and DCS uses the group's default cruise speed — the closest thing DCS
 -- offers to "keep what you were doing." Pass opts.speed explicitly when
 -- you need a specific transit speed.
+---@class sms.task.move_to_opts
+---@field speed number?  # m/s; locked when given
+---@param target sms.unit|sms.group|sms.static|sms.area|{x: number, y: number, z: number}
+---@param opts sms.task.move_to_opts?
+---@return sms.task.task|nil
 sms.task.move_to = function(target, opts)
   opts = opts or {}
   if type(opts) ~= "table" then
@@ -208,6 +226,7 @@ end
 
 -- Stop and hold position. Air group loiters; ground group stops.
 -- DCS interprets "Nothing" appropriately per category.
+---@return sms.task.task
 sms.task.hold = function()
   return _stamp({ id = "Nothing", params = {} }, "hold", false)
 end
@@ -215,6 +234,11 @@ end
 -- Continuously follow a unit or group at a fixed offset.
 -- Accepts sms.unit (resolves to its parent group) or sms.group.
 -- Air-only in v1 — DCS Follow task is for aircraft formations.
+---@class sms.task.follow_opts
+---@field offset {x: number, y: number, z: number}?  # default {-50, 0, -50}
+---@param target sms.unit|sms.group
+---@param opts sms.task.follow_opts?
+---@return sms.task.task|nil
 sms.task.follow = function(target, opts)
   opts = opts or {}
   if type(opts) ~= "table" then
@@ -253,6 +277,17 @@ end
 --   leg_length        number?    meters,                     default 30000 (~16 nm)
 --   width             number?    meters,                     default 10000 (~5 nm)
 --   clockwise         boolean?                               default false
+---@class sms.task.orbit_opts
+---@field altitude number?         # meters, default 5000
+---@field speed number?            # m/s, default 200
+---@field pattern string?          # "Circle"|"Anchored", default "Circle"
+---@field hot_leg_bearing number?  # degrees, Anchored only, default 0
+---@field leg_length number?       # meters, Anchored only, default 30000
+---@field width number?            # meters, Anchored only, default 10000
+---@field clockwise boolean?       # Anchored only, default false
+---@param pos {x: number, y: number, z: number}
+---@param opts sms.task.orbit_opts?
+---@return sms.task.task|nil
 sms.task.orbit = function(pos, opts)
   if not sms.utils.is_vec3(pos) then
     log.warn("orbit: pos must be a vec3, got " .. type(pos))
@@ -323,6 +358,13 @@ end
 -- ID space for targeting purposes. If a static target turns out to be a
 -- poor fit for the AI's weapon profile, fall back to sms.task.bomb on
 -- the static's position.
+---@class sms.task.attack_opts
+---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
+---@field expend string?      # DCS expend enum, default "Auto"
+---@field attack_qty number?  # max attack passes
+---@param target sms.group|sms.unit|sms.static
+---@param opts sms.task.attack_opts?
+---@return sms.task.task|nil
 sms.task.attack = function(target, opts)
   opts = opts or {}
   if type(opts) ~= "table" then
@@ -386,6 +428,14 @@ end
 
 -- Engage anything in a circular sms.area. Air only in v1; polygon areas
 -- rejected with log + nil.
+---@class sms.task.attack_in_area_opts
+---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
+---@field priority number?      # default 1
+---@field altitude_min number?  # meters
+---@field altitude_max number?  # meters
+---@param area sms.area
+---@param opts sms.task.attack_in_area_opts?
+---@return sms.task.task|nil
 sms.task.attack_in_area = function(area, opts)
   if not sms._is_handle_of(area, sms.area) then
     log.warn("attack_in_area: area must be an sms.area handle")
@@ -429,6 +479,15 @@ end
 
 -- Bomb a position. Target may be a vec3 or a handle (snapshotted to vec3).
 -- Air only.
+---@class sms.task.bomb_opts
+---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
+---@field altitude number?     # meters, default 6000
+---@field expend string?       # default "Auto"
+---@field direction number?    # degrees
+---@field group_attack boolean?
+---@param target sms.unit|sms.group|sms.static|sms.area|{x: number, y: number, z: number}
+---@param opts sms.task.bomb_opts?
+---@return sms.task.task|nil
 sms.task.bomb = function(target, opts)
   local pos = _position_of(target, "bomb")
   if not pos then return nil end
@@ -465,6 +524,11 @@ end
 
 -- Land at a position or a handle's position. duration in seconds (default 300).
 -- Air only (helicopters mostly).
+---@class sms.task.land_opts
+---@field duration number?  # seconds, default 300
+---@param target sms.unit|sms.group|sms.static|sms.area|{x: number, y: number, z: number}
+---@param opts sms.task.land_opts?
+---@return sms.task.task|nil
 sms.task.land = function(target, opts)
   local pos = _position_of(target, "land")
   if not pos then return nil end
@@ -492,6 +556,8 @@ end
 -- Run all listed tasks in parallel via DCS ComboTask. Propagates
 -- _sms_air_only if any constituent has it. Rejects with log + nil if any
 -- constituent is nil (caught a builder error upstream) or non-table.
+---@param tasks sms.task.task[]
+---@return sms.task.task|nil
 sms.task.combo = function(tasks)
   if type(tasks) ~= "table" then
     log.warn("combo: tasks must be an array of task tables, got " .. type(tasks))
@@ -524,16 +590,22 @@ end
 -- Empty noop. Air only per DCS FAQ. Useful for clearing the active
 -- task without resetting the controller (resetTask clears the queue
 -- entirely; setTask(no_task) just stops the current activity).
+---@return sms.task.task
 sms.task.no_task = function()
   return _stamp({id = "NoTask", params = {}}, "no_task", true)
 end
 
 -- Refuel from nearest tanker. Air only.
+---@return sms.task.task
 sms.task.refuel = function()
   return _stamp({id = "Refueling", params = {}}, "refuel", true)
 end
 
 -- Act as AWACS for friendly units. Enroute, air only.
+---@class sms.task.priority_opts
+---@field priority number?  # default 1
+---@param opts sms.task.priority_opts?
+---@return sms.task.task|nil
 sms.task.awacs = function(opts)
   local priority = _validate_priority("awacs", opts)
   if priority == nil then return nil end
@@ -544,6 +616,8 @@ sms.task.awacs = function(opts)
 end
 
 -- Act as tanker for friendly units. Enroute, air only.
+---@param opts sms.task.priority_opts?
+---@return sms.task.task|nil
 sms.task.tanker = function(opts)
   local priority = _validate_priority("tanker", opts)
   if priority == nil then return nil end
@@ -554,6 +628,8 @@ sms.task.tanker = function(opts)
 end
 
 -- Act as EW radar for friendly units. Enroute, ground only.
+---@param opts sms.task.priority_opts?
+---@return sms.task.task|nil
 sms.task.ewr = function(opts)
   local priority = _validate_priority("ewr", opts)
   if priority == nil then return nil end
@@ -569,6 +645,11 @@ end
 
 -- Fire at a point on the ground. Optional radius spreads fire over a
 -- circle; without radius DCS targets the exact point. Ground only.
+---@class sms.task.fire_at_point_opts
+---@field radius number?  # meters
+---@param point {x: number, y: number, z: number}
+---@param opts sms.task.fire_at_point_opts?
+---@return sms.task.task|nil
 sms.task.fire_at_point = function(point, opts)
   if not sms.utils.is_vec3(point) then
     log.warn("fire_at_point: point must be a vec3, got " .. type(point))
@@ -595,6 +676,15 @@ end
 -- Attack a map object (building / structure / etc.) at the given vec3.
 -- DCS doesn't take a map-object id from scripts; the point must be
 -- within ~2km of the structure for the AI to find it. Air only.
+---@class sms.task.attack_map_object_opts
+---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
+---@field expend string?         # default "Auto"
+---@field attack_qty number?
+---@field direction number?      # degrees
+---@field group_attack boolean?
+---@param point {x: number, y: number, z: number}
+---@param opts sms.task.attack_map_object_opts?
+---@return sms.task.task|nil
 sms.task.attack_map_object = function(point, opts)
   if not sms.utils.is_vec3(point) then
     log.warn("attack_map_object: point must be a vec3, got " .. type(point))
@@ -629,6 +719,15 @@ end
 
 -- Bomb a runway by integer DCS airdrome ID. See issue #23 for the
 -- planned sms.airdrome handle integration. Air only.
+---@class sms.task.bomb_runway_opts
+---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
+---@field expend string?         # default "Auto"
+---@field attack_qty number?
+---@field direction number?      # degrees
+---@field group_attack boolean?
+---@param airdrome_id integer    # DCS airdrome ID
+---@param opts sms.task.bomb_runway_opts?
+---@return sms.task.task|nil
 sms.task.bomb_runway = function(airdrome_id, opts)
   if type(airdrome_id) ~= "number" then
     log.warn("bomb_runway: airdrome_id must be a number (DCS airdrome ID), got " .. type(airdrome_id))
@@ -674,6 +773,14 @@ end
 --   engagement_dist_max    number?  meters, default 5000
 --   target_types           table?   array of attribute strings (sms.targets.* recommended)
 --   last_waypoint_index    number?  detach when target reaches this waypoint
+---@class sms.task.escort_opts
+---@field offset {x: number, y: number, z: number}?  # default {-50, 0, -50}
+---@field engagement_dist_max number?                # meters, default 5000
+---@field target_types string[]?                     # attribute strings (sms.targets.* recommended)
+---@field last_waypoint_index number?
+---@param target sms.unit|sms.group
+---@param opts sms.task.escort_opts?
+---@return sms.task.task|nil
 sms.task.escort = function(target, opts)
   opts = opts or {}
   if type(opts) ~= "table" then
@@ -732,6 +839,13 @@ local function _validate_designation(verb, raw)
 end
 
 -- FAC for a specific target group (immediate). Air or ground.
+---@class sms.task.fac_attack_group_opts
+---@field designation string?  # sms.designations.* value (or raw DCS string)
+---@field datalink boolean?    # default true
+---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
+---@param target sms.group
+---@param opts sms.task.fac_attack_group_opts?
+---@return sms.task.task|nil
 sms.task.fac_attack_group = function(target, opts)
   local group_id = _resolve_group_id("fac_attack_group", target)
   if not group_id then return nil end
@@ -759,6 +873,11 @@ sms.task.fac_attack_group = function(target, opts)
 end
 
 -- Area FAC (enroute). Air or ground.
+---@class sms.task.fac_opts
+---@field radius number   # required, meters
+---@field priority number?  # default 1
+---@param opts sms.task.fac_opts
+---@return sms.task.task|nil
 sms.task.fac = function(opts)
   opts = opts or {}
   if type(opts) ~= "table" then
@@ -784,6 +903,14 @@ sms.task.fac = function(opts)
 end
 
 -- Enroute FAC for a specific target group. Air or ground.
+---@class sms.task.fac_engage_group_opts
+---@field designation string?  # sms.designations.* value (or raw DCS string)
+---@field datalink boolean?    # default true
+---@field priority number?     # default 1
+---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
+---@param target sms.group
+---@param opts sms.task.fac_engage_group_opts?
+---@return sms.task.task|nil
 sms.task.fac_engage_group = function(target, opts)
   local group_id = _resolve_group_id("fac_engage_group", target)
   if not group_id then return nil end
@@ -825,6 +952,12 @@ end
 -- priority field that determines order against other enroute tasks.
 
 -- Engage anything matching target_types. Air only.
+---@class sms.task.engage_en_route_targets_opts
+---@field target_types string[]  # required, attribute strings (sms.targets.* recommended)
+---@field max_dist number?       # meters
+---@field priority number?       # default 1
+---@param opts sms.task.engage_en_route_targets_opts
+---@return sms.task.task|nil
 sms.task.engage_en_route_targets = function(opts)
   opts = opts or {}
   if type(opts) ~= "table" then
@@ -855,6 +988,15 @@ sms.task.engage_en_route_targets = function(opts)
 end
 
 -- Permission to engage a specific group (enroute). Air only.
+---@class sms.task.engage_en_route_group_opts
+---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
+---@field expend string?      # default "Auto"
+---@field attack_qty number?
+---@field direction number?   # degrees
+---@field priority number?    # default 1
+---@param target sms.group
+---@param opts sms.task.engage_en_route_group_opts?
+---@return sms.task.task|nil
 sms.task.engage_en_route_group = function(target, opts)
   local group_id = _resolve_group_id("engage_en_route_group", target)
   if not group_id then return nil end
@@ -892,6 +1034,16 @@ sms.task.engage_en_route_group = function(target, opts)
 end
 
 -- Permission to engage a specific unit (enroute). Air only.
+---@class sms.task.engage_en_route_unit_opts
+---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
+---@field expend string?       # default "Auto"
+---@field attack_qty number?
+---@field direction number?    # degrees
+---@field group_attack boolean?
+---@field priority number?     # default 1
+---@param target sms.unit
+---@param opts sms.task.engage_en_route_unit_opts?
+---@return sms.task.task|nil
 sms.task.engage_en_route_unit = function(target, opts)
   local unit_id = _resolve_unit_id("engage_en_route_unit", target)
   if not unit_id then return nil end

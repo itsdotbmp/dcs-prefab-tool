@@ -36,7 +36,34 @@
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 assert(type(sms.utils) == "table", "framework/utils.lua must be loaded first")
 local log = sms.log.module("sms.static")
+
+---@class sms.static
+---@field name string
+---@overload fun(name: string): sms.static|nil
 sms.static = sms.static or {}
+
+-- Configuration table for sms.static.create. Required: name, type, position, country.
+-- Optional fields are passed through to coalition.addStaticObject; unknown fields
+-- are forwarded verbatim for forward-compat.
+---@class sms.static.create_cfg
+---@field name       string                       # static object name (auto-suffixed if taken)
+---@field type       string                       # DCS type-name (e.g. "Hangar A")
+---@field position   {x: number, y: number, z: number}  # DCS world coords (x=north, y=alt, z=east)
+---@field country    string                       # country name (resolved via sms.utils.resolve_country)
+---@field heading?   number                       # heading in degrees (default 0)
+---@field category?  string                       # DCS static category override
+---@field dead?      boolean                      # spawn as wreckage
+---@field mass?      number                       # mass in kg (cargo)
+---@field canCargo?  boolean                      # cargo-capable flag
+---@field shape_name? string                      # explicit shape name
+---@field livery_id?  string                      # livery id
+
+-- Override table for sms.static.clone. name + position are required; any other
+-- fields are not used directly by clone (the template def is reused), but the
+-- shape mirrors create_cfg so callers can pass familiar config.
+---@class sms.static.clone_overrides
+---@field name      string                                # new (unique) name
+---@field position  {x: number, y: number, z: number}     # new world position
 
 -- DCS coalition int -> normalized lowercase string. Lookup now lives in
 -- sms.utils.coalition_int_to_str (issue #14).
@@ -90,6 +117,8 @@ end
 -- Entity wrapper methods
 -- ============================================================
 
+---@param s sms.static|string
+---@return boolean
 sms.static.is_alive = function(s)
   local name = _name_of(s)
   if not name then return false end
@@ -104,10 +133,14 @@ sms.static.is_alive = function(s)
   return StaticObject.getByName(name) ~= nil
 end
 
+---@param s sms.static|string
+---@return string|nil
 sms.static.get_name = function(s)
   return _name_of(s)
 end
 
+---@param s sms.static|string
+---@return {x: number, y: number, z: number}|nil  # DCS world coords (x=north, y=alt, z=east)
 sms.static.get_position = function(s)
   local name = _name_of(s)
   if not sms.static.is_alive(name) then
@@ -119,6 +152,8 @@ sms.static.get_position = function(s)
   return {x = p.x, y = p.y, z = p.z}
 end
 
+---@param s sms.static|string
+---@return string|nil  # "red" | "blue" | "neutral"
 sms.static.get_coalition = function(s)
   local name = _name_of(s)
   if not sms.static.is_alive(name) then
@@ -134,6 +169,8 @@ sms.static.get_coalition = function(s)
   return s_str
 end
 
+---@param s sms.static|string
+---@return string|nil  # lowercase country name (e.g. "usa", "russia")
 sms.static.get_country = function(s)
   local name = _name_of(s)
   if not sms.static.is_alive(name) then
@@ -150,6 +187,8 @@ sms.static.get_country = function(s)
   return c_str
 end
 
+---@param s sms.static|string
+---@return string|nil  # DCS type-name string
 sms.static.get_type = function(s)
   local name = _name_of(s)
   if not sms.static.is_alive(name) then
@@ -159,6 +198,8 @@ sms.static.get_type = function(s)
   return StaticObject.getByName(name):getTypeName()
 end
 
+---@param s sms.static|string
+---@return boolean|nil
 sms.static.destroy = function(s)
   local name = _name_of(s)
   if not sms.static.is_alive(name) then
@@ -280,6 +321,8 @@ local function _validate_create_config(cfg)
   return true
 end
 
+---@param cfg sms.static.create_cfg
+---@return sms.static|nil
 sms.static.create = function(cfg)
   if not _validate_create_config(cfg) then return nil end
 
@@ -326,6 +369,9 @@ local function _find_template_in_mission(template_name)
   return nil
 end
 
+---@param template_name string  # name of an ME-defined static template
+---@param overrides sms.static.clone_overrides
+---@return sms.static|nil
 sms.static.clone = function(template_name, overrides)
   if type(template_name) ~= "string" or template_name == "" then
     log.warn("clone: template_name must be a non-empty string")

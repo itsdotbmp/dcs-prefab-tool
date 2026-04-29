@@ -28,6 +28,40 @@ assert(type(sms.utils) == "table", "framework/utils.lua must be loaded first")
 local log = sms.log.module("sms.spawn")
 
 -- ============================================================
+-- Config shapes (sms.group.create / sms.group.clone)
+-- ============================================================
+
+---@class sms.group.unit_spec
+---@field type string  # DCS unit type (e.g. "M-1 Abrams", "F-16C_50")
+---@field name? string  # optional unit name; auto-suffixed on collision
+---@field offset? {x: number, y: number, z: number}  # per-unit offset from group anchor (meters)
+---@field heading? number  # heading in degrees (default 0)
+---@field skill? string  # "Average" | "Good" | "High" | "Excellent" | "Random" (default "Average")
+---@field livery_id? string
+---@field onboard_num? string
+---@field alt? number  # altitude in meters (required for airplane/helicopter)
+---@field alt_type? string  # "BARO" | "RADIO" (default "BARO" for air)
+---@field speed? number  # initial speed (m/s); airplanes default to 200 if unset
+---@field payload? table
+---@field callsign? table|string
+---@field frequency? number
+---@field modulation? number
+---@field parking_id? string|number
+
+---@class sms.group.create_cfg
+---@field name string  # group name; auto-suffixed on collision
+---@field position {x: number, y: number, z: number}  # group anchor (vec3, DCS world coords)
+---@field country string  # country name (resolved via sms.utils.resolve_country)
+---@field category? string  # "ground" | "airplane" | "helicopter" | "ship" | "train" (default "ground")
+---@field task? string  # group-level task string (default per category)
+---@field route? table  # DCS route table; auto-generated for aircraft if omitted
+---@field units sms.group.unit_spec[]  # non-empty list of unit specs
+
+---@class sms.group.clone_overrides
+---@field name string  # new group name (required); auto-suffixed on collision
+---@field position? {x: number, y: number, z: number}  # new anchor; defaults to template leader's mission position
+
+-- ============================================================
 -- Module-private state and lookup tables
 -- ============================================================
 
@@ -287,6 +321,8 @@ local function _validate_create_config(cfg)
   return true
 end
 
+---@param cfg sms.group.create_cfg
+---@return sms.group|nil
 sms.group.create = function(cfg)
   if not _validate_create_config(cfg) then return nil end
 
@@ -361,6 +397,9 @@ local function _find_template_in_mission(template_name)
   return nil
 end
 
+---@param template_name string  # name of a group defined in the mission editor (any coalition / late-activated OK)
+---@param overrides sms.group.clone_overrides
+---@return sms.group|nil
 sms.group.clone = function(template_name, overrides)
   if type(template_name) ~= "string" or template_name == "" then
     log.warn("clone: template_name must be a non-empty string")

@@ -22,8 +22,13 @@ assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 -- The auto-derived tag will also be "sms.utils" (basename + "sms." prefix),
 -- so the migration is a one-line swap with no log-output change.
 local log = sms.log.module("sms.utils")
+
+---@class sms.utils
 sms.utils = sms.utils or {}
 
+---@param a number
+---@param b number
+---@return number
 sms.utils.add_numbers = function(a, b)
   log.info("add_numbers(" .. tostring(a) .. ", " .. tostring(b) .. ")")
   return a + b
@@ -34,6 +39,8 @@ end
 -- ============================================================
 
 -- Heading conversion: framework public input is degrees, DCS API is radians.
+---@param deg number
+---@return number|nil
 sms.utils.deg_to_rad = function(deg)
   if type(deg) ~= "number" then
     log.warn("deg_to_rad: argument must be a number, got " .. type(deg))
@@ -42,6 +49,8 @@ sms.utils.deg_to_rad = function(deg)
   return deg * math.pi / 180
 end
 
+---@param rad number
+---@return number|nil
 sms.utils.rad_to_deg = function(rad)
   if type(rad) ~= "number" then
     log.warn("rad_to_deg: argument must be a number, got " .. type(rad))
@@ -52,6 +61,8 @@ end
 
 -- Altitude conversion: framework I/O is meters (DCS-native), but pilots
 -- think in feet — these helpers are for user code, not internal.
+---@param ft number
+---@return number|nil
 sms.utils.feet_to_meters = function(ft)
   if type(ft) ~= "number" then
     log.warn("feet_to_meters: argument must be a number, got " .. type(ft))
@@ -60,6 +71,8 @@ sms.utils.feet_to_meters = function(ft)
   return ft * 0.3048
 end
 
+---@param m number
+---@return number|nil
 sms.utils.meters_to_feet = function(m)
   if type(m) ~= "number" then
     log.warn("meters_to_feet: argument must be a number, got " .. type(m))
@@ -76,6 +89,8 @@ end
 -- vec3 (spawn.create position/offset, static.create position, area
 -- is_vec3_in target, etc.). Returns bool — does not log, since callers
 -- do their own contextual error message.
+---@param v any
+---@return boolean
 sms.utils.is_vec3 = function(v)
   return type(v) == "table"
      and type(v.x) == "number"
@@ -86,6 +101,8 @@ end
 -- Euclidean length of a DCS vec3 (x = north, y = altitude, z = east).
 -- Uses 3D length, not horizontal-plane length — vec3 is a full 3D vector
 -- and pilots care about vertical speed components too.
+---@param v {x: number, y: number, z: number}
+---@return number|nil
 sms.utils.vec3_length = function(v)
   if not sms.utils.is_vec3(v) then
     log.warn("vec3_length: argument must be a vec3 with x/y/z numbers")
@@ -97,6 +114,9 @@ end
 -- Euclidean distance between two DCS vec3s. Pure maths — does not
 -- duck-type position-handle arguments. If a caller has a positionable
 -- handle, they call :get_position() themselves.
+---@param a {x: number, y: number, z: number}
+---@param b {x: number, y: number, z: number}
+---@return number|nil
 sms.utils.vec3_distance = function(a, b)
   if not sms.utils.is_vec3(a) then
     log.warn("vec3_distance: first argument must be a vec3 with x/y/z numbers")
@@ -119,6 +139,8 @@ end
 -- Wrap a heading in degrees to the canonical [0, 360) range. Lua 5.1's
 -- modulo is mathematical (not C-style remainder), so a single `% 360`
 -- handles negative inputs correctly: -90 % 360 == 270.
+---@param deg number
+---@return number|nil
 sms.utils.normalize_heading = function(deg)
   if type(deg) ~= "number" then
     log.warn("normalize_heading: argument must be a number, got " .. type(deg))
@@ -131,6 +153,9 @@ end
 -- 90 = east (clockwise — DCS convention). Computed on the horizontal
 -- plane (xz), ignoring altitude. atan2(east, north) gives heading
 -- measured clockwise from north; we then convert and normalize.
+---@param from {x: number, y: number, z: number}
+---@param to {x: number, y: number, z: number}
+---@return number|nil
 sms.utils.bearing_to = function(from, to)
   if not sms.utils.is_vec3(from) then
     log.warn("bearing_to: 'from' must be a vec3 with x/y/z numbers")
@@ -156,6 +181,8 @@ end
 -- can pass "United Kingdom" and have it resolve to country.id.UNITED_KINGDOM.
 -- Returns nil silently on bad input or unknown country — callers craft
 -- their own contextual error message ("create: unknown country '...'").
+---@param s string
+---@return integer|nil  # DCS country.id integer
 sms.utils.resolve_country = function(s)
   if type(s) ~= "string" then return nil end
   local key = s:upper():gsub(" ", "_")
@@ -168,6 +195,8 @@ end
 -- silently on unknown int — callers do their own log message with context.
 -- Naming follows the X_to_Y convention used by deg_to_rad / feet_to_meters.
 local _coalition_str = {[0] = "neutral", [1] = "red", [2] = "blue"}
+---@param c integer
+---@return "red"|"blue"|"neutral"|nil
 sms.utils.coalition_int_to_str = function(c)
   return _coalition_str[c]
 end
@@ -181,6 +210,9 @@ end
 -- private copies for clone()-style mission-descriptor cloning. Does not preserve
 -- metatables (callers building cfg tables don't use them) and does not
 -- handle cycles (mission descriptors are trees).
+---@generic T
+---@param t T
+---@return T
 sms.utils.deep_copy = function(t)
   if type(t) ~= "table" then return t end
   local copy = {}

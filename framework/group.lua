@@ -30,6 +30,10 @@
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 assert(type(sms.utils) == "table", "framework/utils.lua must be loaded first")
 local log = sms.log.module("sms.group")
+
+---@class sms.group
+---@field name string
+---@overload fun(name: string): sms.group|nil
 sms.group = sms.group or {}
 
 -- DCS coalition int -> normalized lowercase string. Lookup now lives in
@@ -44,6 +48,8 @@ local function _name_of(g)
   return nil
 end
 
+---@param g sms.group|string
+---@return boolean
 sms.group.is_alive = function(g)
   local name = _name_of(g)
   if not name then return false end
@@ -51,10 +57,14 @@ sms.group.is_alive = function(g)
   return obj ~= nil and obj:isExist()
 end
 
+---@param g sms.group|string
+---@return string|nil
 sms.group.get_name = function(g)
   return _name_of(g)
 end
 
+---@param g sms.group|string
+---@return string|nil  # "red" | "blue" | "neutral"
 sms.group.get_coalition = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
@@ -80,6 +90,8 @@ local _category_str = {
   [Group.Category.TRAIN]      = "train",
 }
 
+---@param g sms.group|string
+---@return string|nil  # "ground" | "airplane" | "helicopter" | "ship" | "train"
 sms.group.get_category = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
@@ -95,6 +107,8 @@ sms.group.get_category = function(g)
   return s
 end
 
+---@param g sms.group|string
+---@return {x: number, y: number, z: number}|nil  # DCS world coords (x=north, y=alt, z=east)
 sms.group.get_position = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
@@ -111,6 +125,8 @@ sms.group.get_position = function(g)
   return {x = p.x, y = p.y, z = p.z}
 end
 
+---@param g sms.group|string
+---@return boolean|nil
 sms.group.destroy = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
@@ -121,6 +137,8 @@ sms.group.destroy = function(g)
   return true
 end
 
+---@param g sms.group|string
+---@return sms.unit[]|nil
 sms.group.get_units = function(g)
   local name = _name_of(g)
   if not sms.group.is_alive(name) then
@@ -144,6 +162,10 @@ end
 -- a group. For DEAD specifically, fires once when the group is fully dead
 -- (last unit just died). For all other entity-scoped events, fires per-unit
 -- — a "group hit" or "group takeoff" has no sensible aggregate meaning.
+---@param self sms.group
+---@param name string  # event name (see sms.events)
+---@param fn fun(evt: table)
+---@return table|nil  # connection handle
 sms.group.connect = function(self, name, fn)
   if not sms._is_handle_of(self, sms.group) then
     log.warn("group:connect: self must be an sms.group handle")
@@ -359,6 +381,9 @@ local _DEFER_SECONDS = 0.01
 
 -- Replace the group's current task. Wraps Controller:setTask via a
 -- one-frame deferred dispatch.
+---@param g sms.group
+---@param task table  # task table from sms.task.* (or raw {id=..., params=...})
+---@return boolean
 sms.group.set_task = function(g, task)
   local raw = _validate_apply("set_task", g, task)
   if not raw then return false end
@@ -407,6 +432,9 @@ end
 --
 -- For "via B then to A" semantics, use a multi-waypoint route (planned
 -- for v1.1) or chain via timer/event callbacks.
+---@param g sms.group
+---@param task table  # task table from sms.task.* (or raw {id=..., params=...})
+---@return boolean
 sms.group.push_task = function(g, task)
   local raw = _validate_apply("push_task", g, task)
   if not raw then return false end

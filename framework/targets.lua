@@ -9,6 +9,20 @@
 -- Loading order: sms.lua -> log.lua -> utils.lua -> targets.lua.
 
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
+
+---@class sms.targets
+---@field AIR             "Air"
+---@field PLANES          "Planes"
+---@field HELICOPTERS     "Helicopters"
+---@field GROUND_UNITS    "Ground Units"
+---@field GROUND_VEHICLES "Ground vehicles"
+---@field SHIPS           "Ships"
+---@field AIR_DEFENCE     "Air Defence"
+---@field SAM             "SAM"
+---@field AAA             "AAA"
+---@field STATICS         "Static"
+---@field BUILDINGS       "Buildings"
+---@field ALL             "All"
 sms.targets = sms.targets or {}
 
 sms.targets.AIR             = "Air"

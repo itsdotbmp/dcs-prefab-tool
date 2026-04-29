@@ -8,6 +8,13 @@
 -- Loading order: sms.lua -> log.lua -> utils.lua -> designations.lua.
 
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
+
+---@class sms.designations
+---@field NO         string  # "No"          — no designation
+---@field AUTO       string  # "Auto"        — auto-select designation
+---@field WP         string  # "WP"          — white phosphorus marker
+---@field IR_POINTER string  # "IR-Pointer"  — IR pointer designation
+---@field LASER      string  # "Laser"       — laser designation
 sms.designations = sms.designations or {}
 
 sms.designations.NO         = "No"

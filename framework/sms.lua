@@ -3,6 +3,22 @@
 -- Also exposes shared cross-cutting helpers used by entity-wrapper modules
 -- (sms.group, sms.unit, sms.area, future sms.static, ...).
 -- Idempotent: safe to load multiple times.
+
+---@class sms
+---@field version          string
+---@field group            sms.group
+---@field unit             sms.unit
+---@field area             sms.area
+---@field static           sms.static
+---@field weapon           sms.weapon
+---@field timer            sms.timer
+---@field events           sms.events
+---@field task             sms.task
+---@field utils            sms.utils
+---@field log              sms.log
+---@field designations     sms.designations
+---@field targets          sms.targets
+---@field group_spawn      sms.group_spawn
 sms = sms or {}
 sms.version = "0.1.0"
 
@@ -12,6 +28,9 @@ sms.version = "0.1.0"
 -- returns nil for them, but a handle whose :is_alive() returns false and
 -- whose :get_name() works from the cached name field is still useful for
 -- post-mortem event reporting).
+---@param module table  # the module table to use as __index for the handle
+---@param name string
+---@return table  # handle of the form {name = name} with __index = module
 sms._make_handle = function(module, name)
   return setmetatable({name = name}, {__index = module})
 end
@@ -27,6 +46,10 @@ end
 -- Used by sms.group, sms.unit, and any future cargo-cult entity wrapper.
 -- Modules with custom construction logic (multiple paths, snapshot data,
 -- etc.) define their own callable instead — see sms.area.
+---@param module table  # module table to install the __call metamethod on
+---@param dcs_getter fun(name: string): any  # e.g. Group.getByName, Unit.getByName
+---@param module_log table  # logger from sms.log.module (must expose .tag and .warn)
+---@return nil
 sms._make_callable_handle = function(module, dcs_getter, module_log)
   local type_name = module_log.tag:match("^sms%.(.+)$") or module_log.tag
   setmetatable(module, {
@@ -44,6 +67,9 @@ end
 -- Used for strict handle-type validation in cross-module APIs (e.g. when
 -- sms.area's is_unit_in needs to confirm the argument is a real sms.unit
 -- handle, not a string or arbitrary {name=...} table).
+---@param value any
+---@param module table
+---@return boolean
 sms._is_handle_of = function(value, module)
   if type(value) ~= "table" then return false end
   local mt = getmetatable(value)

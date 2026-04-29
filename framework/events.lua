@@ -45,7 +45,39 @@
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 assert(type(sms.unit) == "table", "framework/unit.lua must be loaded first")
 local log = sms.log.module("sms.events")
+
+---@class sms.events
+---@field BIRTH                  string
+---@field DEAD                   string
+---@field HIT                    string
+---@field KILL                   string
+---@field TAKEOFF                string
+---@field LAND                   string
+---@field CRASH                  string
+---@field EJECTION               string
+---@field PILOT_DEAD             string
+---@field SHOT                   string
+---@field ENGINE_STARTUP         string
+---@field ENGINE_SHUTDOWN        string
+---@field REFUELING              string
+---@field REFUELING_STOP         string
+---@field PLAYER_ENTER_UNIT      string
+---@field PLAYER_LEAVE_UNIT      string
+---@field HUMAN_FAILURE          string
+---@field UNIT_LOST              string
+---@field SHOOTING_START         string
+---@field SHOOTING_END           string
+---@field LANDING_QUALITY_MARK   string
+---@field LANDING_AFTER_EJECTION string
+---@field EMERGENCY_LANDING      string
+---@field WEAPON_IMPACT          string
+---@field _entity_scoped         table<string, boolean>
 sms.events = sms.events or {}
+
+---@class sms.events.connection
+---@field name   string
+---@field fn     fun(evt: table)
+---@field active boolean
 
 -- Module-level state (file-local).
 local _subscribers = {}                 -- _subscribers[name] = { conn, conn, ... }
@@ -155,6 +187,9 @@ local function _ensure_world_handler()
   })
 end
 
+---@param name string  # event name (see sms.events constants)
+---@param fn fun(evt: table)
+---@return sms.events.connection|nil
 sms.events.connect = function(name, fn)
   if type(name) ~= "string" then
     log.warn("connect: name must be a string, got " .. type(name))
@@ -171,6 +206,8 @@ sms.events.connect = function(name, fn)
   return conn
 end
 
+---@param name string  # event name (see sms.events constants)
+---@param ... any  # passed verbatim to subscribers
 sms.events.emit = function(name, ...)
   if type(name) ~= "string" then
     log.warn("emit: name must be a string, got " .. type(name))
@@ -197,6 +234,8 @@ sms.events.emit = function(name, ...)
   end
 end
 
+---@param conn sms.events.connection
+---@return boolean
 sms.events.disconnect = function(conn)
   if not _is_connection(conn) then
     log.warn("disconnect: argument must be a Connection handle")
@@ -216,6 +255,8 @@ sms.events.disconnect = function(conn)
   return true
 end
 
+---@param conn sms.events.connection
+---@return boolean
 sms.events.is_active = function(conn)
   if not _is_connection(conn) then return false end
   return conn.active == true

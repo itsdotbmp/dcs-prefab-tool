@@ -22,6 +22,10 @@
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 assert(type(sms.utils) == "table", "framework/utils.lua must be loaded first")
 local log = sms.log.module("sms.unit")
+
+---@class sms.unit
+---@field name string
+---@overload fun(name: string): sms.unit|nil
 sms.unit = sms.unit or {}
 
 -- DCS coalition int -> normalized lowercase string. Lookup now lives in
@@ -36,6 +40,8 @@ local function _name_of(u)
   return nil
 end
 
+---@param u sms.unit|string
+---@return boolean
 sms.unit.is_alive = function(u)
   local name = _name_of(u)
   if not name then return false end
@@ -43,10 +49,14 @@ sms.unit.is_alive = function(u)
   return obj ~= nil and obj:isExist()
 end
 
+---@param u sms.unit|string
+---@return string|nil
 sms.unit.get_name = function(u)
   return _name_of(u)
 end
 
+---@param u sms.unit|string
+---@return string|nil  # "red" | "blue" | "neutral"
 sms.unit.get_coalition = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
@@ -62,6 +72,8 @@ sms.unit.get_coalition = function(u)
   return s
 end
 
+---@param u sms.unit|string
+---@return {x: number, y: number, z: number}|nil  # DCS world coords (x=north, y=alt, z=east)
 sms.unit.get_position = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
@@ -73,6 +85,8 @@ sms.unit.get_position = function(u)
   return {x = p.x, y = p.y, z = p.z}
 end
 
+---@param u sms.unit|string
+---@return string|nil  # DCS type name (e.g. "F-15C", "T-72B")
 sms.unit.get_type = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
@@ -82,6 +96,8 @@ sms.unit.get_type = function(u)
   return Unit.getByName(name):getTypeName()
 end
 
+---@param u sms.unit|string
+---@return sms.group|nil
 sms.unit.get_group = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
@@ -98,6 +114,9 @@ end
 -- bus after the unit is gone. Useful when reactive code (g:connect(DEAD),
 -- subscribers, etc.) should treat a programmatic destroy the same as a
 -- combat death.
+---@param u sms.unit|string
+---@param opts? {emit_event?: boolean}
+---@return boolean|nil
 sms.unit.destroy = function(u, opts)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
@@ -139,6 +158,8 @@ end
 -- Heading in degrees (0 = north, 90 = east). Computed from the forward
 -- axis of the unit's pose, projected to the horizontal plane and
 -- converted from radians. Returns nil + log if the unit is not alive.
+---@param u sms.unit|string
+---@return number|nil  # heading in degrees, [0, 360)
 sms.unit.get_heading = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
@@ -155,6 +176,8 @@ end
 -- Pitch in degrees, positive = nose up. Computed from the y-component
 -- (vertical) of the forward axis: asin(forward.y). Returns nil + log
 -- if the unit is not alive.
+---@param u sms.unit|string
+---@return number|nil  # pitch in degrees, positive = nose up
 sms.unit.get_pitch = function(u)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
@@ -168,6 +191,9 @@ end
 
 -- Altitude in meters. ASL (above sea level) by default; pass true for
 -- AGL (above ground level). Returns nil + log if the unit is not alive.
+---@param u sms.unit|string
+---@param agl? boolean  # true for AGL (above ground level); default false = ASL
+---@return number|nil  # altitude in meters
 sms.unit.get_altitude = function(u, agl)
   local name = _name_of(u)
   if not sms.unit.is_alive(name) then
@@ -191,6 +217,10 @@ end
 -- loaded by the time unit.lua loads — only by the time connect is
 -- called. sms.events._entity_scoped is the canonical whitelist of
 -- entity-meaningful event names.
+---@param self sms.unit
+---@param name string  # event name (see sms.events)
+---@param fn fun(evt: table)
+---@return table|nil  # connection handle
 sms.unit.connect = function(self, name, fn)
   if not sms._is_handle_of(self, sms.unit) then
     log.warn("unit:connect: self must be an sms.unit handle")

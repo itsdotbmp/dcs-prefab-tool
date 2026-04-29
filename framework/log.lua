@@ -39,7 +39,16 @@
 -- is recoverable.
 
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
+
+---@class sms.log
 sms.log = sms.log or {}
+
+---@class sms.log.module
+---@field tag   string
+---@field debug fun(msg: any)
+---@field info  fun(msg: any)
+---@field warn  fun(msg: any)
+---@field error fun(msg: any)
 
 local _LEVELS = { debug = 10, info = 20, warn = 30, error = 40 }
 local _level = _LEVELS.info
@@ -68,6 +77,7 @@ end
 -- (case-insensitive). Anything below the threshold is dropped without
 -- touching env.*. Logs an error and leaves the threshold unchanged on
 -- bad input — the logger's own failure mode is still log + nil-ish.
+---@param name "debug"|"info"|"warn"|"error"
 sms.log.set_level = function(name)
   local n = _resolve_level(name)
   if not n then
@@ -79,6 +89,7 @@ sms.log.set_level = function(name)
 end
 
 -- Read the current threshold. Returns the lowercase string name, never nil.
+---@return "debug"|"info"|"warn"|"error"
 sms.log.get_level = function()
   for k, v in pairs(_LEVELS) do
     if v == _level then return k end
@@ -86,11 +97,17 @@ sms.log.get_level = function()
   return "info"  -- defensive fallback; shouldn't be reachable
 end
 
+---@param msg any
 sms.log.debug = function(msg) _emit("sms", "debug", msg) end
+---@param msg any
 sms.log.info  = function(msg) _emit("sms", "info",  msg) end
+---@param msg any
 sms.log.warn  = function(msg) _emit("sms", "warn",  msg) end
+---@param msg any
 sms.log.error = function(msg) _emit("sms", "error", msg) end
 
+---@param name? string  # tag override; auto-derived from caller's chunk source when omitted
+---@return sms.log.module
 sms.log.module = function(name)
   local tag = name
   if not tag then

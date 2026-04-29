@@ -36,6 +36,11 @@
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 assert(type(sms.utils) == "table", "framework/utils.lua must be loaded first")
 local log = sms.log.module("sms.area")
+
+---@class sms.area
+---@field name string|nil
+---@field kind "circle"|"polygon"
+---@overload fun(name: string): sms.area|nil
 sms.area = sms.area or {}
 
 -- ============================================================
@@ -153,6 +158,8 @@ end
 -- Methods
 -- ============================================================
 
+---@param a sms.area
+---@return string|nil
 sms.area.get_name = function(a)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("get_name: argument must be an sms.area handle")
@@ -161,6 +168,8 @@ sms.area.get_name = function(a)
   return a.name
 end
 
+---@param a sms.area
+---@return "circle"|"polygon"|nil
 sms.area.get_kind = function(a)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("get_kind: argument must be an sms.area handle")
@@ -169,6 +178,8 @@ sms.area.get_kind = function(a)
   return a.kind
 end
 
+---@param a sms.area
+---@return {x: number, y: number, z: number}|nil  # DCS world coords (center for circle, centroid for polygon)
 sms.area.get_position = function(a)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("get_position: argument must be an sms.area handle")
@@ -182,6 +193,8 @@ sms.area.get_position = function(a)
   return {x = c.x, y = c.y, z = c.z}
 end
 
+---@param a sms.area
+---@return number|nil  # radius in meters; nil for polygon areas
 sms.area.get_radius = function(a)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("get_radius: argument must be an sms.area handle")
@@ -194,6 +207,8 @@ sms.area.get_radius = function(a)
   return a._data.radius
 end
 
+---@param a sms.area
+---@return {x: number, y: number, z: number}[]|nil  # list of vec3 vertices; nil for circle areas
 sms.area.get_vertices = function(a)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("get_vertices: argument must be an sms.area handle")
@@ -211,6 +226,9 @@ sms.area.get_vertices = function(a)
   return copy
 end
 
+---@param a sms.area
+---@param target {x: number, y: number, z: number}
+---@return boolean
 sms.area.is_vec3_in = function(a, target)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("is_vec3_in: argument must be an sms.area handle")
@@ -226,6 +244,9 @@ sms.area.is_vec3_in = function(a, target)
   return _point_in_polygon(a._data.vertices, target.x, target.z)
 end
 
+---@param a sms.area
+---@param u sms.unit
+---@return boolean
 sms.area.is_unit_in = function(a, u)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("is_unit_in: argument must be an sms.area handle")
@@ -243,6 +264,9 @@ sms.area.is_unit_in = function(a, u)
   return _point_in_polygon(a._data.vertices, p.x, p.z)
 end
 
+---@param a sms.area
+---@param s sms.static
+---@return boolean
 sms.area.is_static_in = function(a, s)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("is_static_in: argument must be an sms.area handle")
@@ -260,6 +284,9 @@ sms.area.is_static_in = function(a, s)
   return _point_in_polygon(a._data.vertices, p.x, p.z)
 end
 
+---@param a sms.area
+---@param g sms.group
+---@return boolean
 sms.area.is_any_of_group_in = function(a, g)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("is_any_of_group_in: argument must be an sms.area handle")
@@ -288,6 +315,9 @@ sms.area.is_any_of_group_in = function(a, g)
   return false
 end
 
+---@param a sms.area
+---@param g sms.group
+---@return boolean
 sms.area.is_all_of_group_in = function(a, g)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("is_all_of_group_in: argument must be an sms.area handle")
@@ -314,6 +344,8 @@ sms.area.is_all_of_group_in = function(a, g)
   return true
 end
 
+---@param a sms.area
+---@return {x: number, y: number, z: number}|nil  # DCS world coords inside the area
 sms.area.get_random_point = function(a)
   if not sms._is_handle_of(a, sms.area) then
     log.warn("get_random_point: argument must be an sms.area handle")
@@ -329,6 +361,10 @@ end
 -- Constructors
 -- ============================================================
 
+---@param center {x: number, y: number, z: number}
+---@param radius number  # meters, positive
+---@param name? string
+---@return sms.area|nil
 sms.area.create_circular = function(center, radius, name)
   if not sms.utils.is_vec3(center) then
     log.warn("create_circular: center must be a vec3 with x/y/z numbers")
@@ -345,6 +381,9 @@ sms.area.create_circular = function(center, radius, name)
   return _make_circle_handle(name, center, radius)
 end
 
+---@param vertices {x: number, y: number, z: number}[]  # at least 3 vec3 entries
+---@param name? string
+---@return sms.area|nil
 sms.area.create_polygon = function(vertices, name)
   if type(vertices) ~= "table" then
     log.warn("create_polygon: vertices must be a table (list) of vec3 entries")
@@ -367,6 +406,8 @@ sms.area.create_polygon = function(vertices, name)
   return _make_polygon_handle(name, vertices)
 end
 
+---@param name string  # name of an ME polygon drawing
+---@return sms.area|nil
 sms.area.from_drawing = function(name)
   if type(name) ~= "string" then
     log.warn("from_drawing: name must be a string")

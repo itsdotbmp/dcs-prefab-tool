@@ -23,6 +23,15 @@
 
 assert(type(sms) == "table", "framework/sms.lua must be loaded first")
 local log = sms.log.module("sms.timer")
+
+---@class sms.timer
+---@field kind            "after"|"every"
+---@field active          boolean
+---@field next_fire_time  number|nil
+---@field interval        number|nil  # only on `every` handles
+---@field iterations      integer|nil # only on `every` handles
+---@field max             integer|nil # only on `every` handles
+---@field id              integer
 sms.timer = sms.timer or {}
 
 -- Handle metatable. __index points at the module table itself so
@@ -36,6 +45,9 @@ local function _is_handle(h)
   return type(h) == "table" and getmetatable(h) == _handle_mt
 end
 
+---@param seconds number  # non-negative
+---@param fn fun()
+---@return sms.timer|nil
 sms.timer.after = function(seconds, fn)
   if type(seconds) ~= "number" or seconds < 0 then
     log.warn("after: seconds must be a non-negative number, got " .. tostring(seconds))
@@ -69,6 +81,10 @@ sms.timer.after = function(seconds, fn)
   return handle
 end
 
+---@param seconds number  # positive
+---@param fn fun(): boolean?  # return false to self-cancel
+---@param max? integer
+---@return sms.timer|nil
 sms.timer.every = function(seconds, fn, max)
   if type(seconds) ~= "number" or seconds <= 0 then
     log.warn("every: seconds must be a positive number, got " .. tostring(seconds))
@@ -126,6 +142,8 @@ sms.timer.every = function(seconds, fn, max)
   return handle
 end
 
+---@param h sms.timer
+---@return boolean
 sms.timer.stop = function(h)
   if not _is_handle(h) then
     log.warn("stop: argument must be a timer handle")
@@ -138,11 +156,15 @@ sms.timer.stop = function(h)
   return true
 end
 
+---@param h sms.timer
+---@return boolean
 sms.timer.is_active = function(h)
   if not _is_handle(h) then return false end
   return h.active == true
 end
 
+---@param h sms.timer
+---@return number|nil  # seconds until next fire
 sms.timer.get_remaining = function(h)
   if not _is_handle(h) then
     log.warn("get_remaining: argument must be a timer handle")
@@ -158,6 +180,7 @@ end
 -- Current simulation time (seconds since mission start). Thin wrapper so
 -- mission code that timestamps events stays inside the sms.* idiom rather
 -- than reaching for DCS's `timer.getTime` directly. Sim-time, pauses with DCS.
+---@return number  # sim-time seconds since mission start
 sms.timer.now = function()
   return timer.getTime()
 end
