@@ -15,7 +15,7 @@ DCSSMS="${REPO_ROOT}/tools/dcs-sms.exe"
 # Fixture cleanup: nukes anything this smoke spawns, even on mid-run
 # abort (set -e). Idempotent — destroys only what currently exists.
 # Keep this list in sync with the names this smoke creates.
-SMOKE_FIXTURES="_smoke_task_ground _smoke_task_air _smoke_task_target_grp _smoke_task_target_static"
+SMOKE_FIXTURES="_smoke_task_ground _smoke_task_air _smoke_task_target_grp _smoke_task_target_static _smoke_task_escort_target _smoke_task_fac_target _smoke_task_engage_target"
 
 cleanup_smoke_fixtures() {
   [ -z "${SMOKE_FIXTURES}" ] && return 0
@@ -57,6 +57,8 @@ echo "==> load framework files"
 "${DCSSMS}" exec --file sms.lua >/dev/null
 "${DCSSMS}" exec --file log.lua >/dev/null
 "${DCSSMS}" exec --file utils.lua >/dev/null
+"${DCSSMS}" exec --file targets.lua >/dev/null
+"${DCSSMS}" exec --file designations.lua >/dev/null
 "${DCSSMS}" exec --file group.lua >/dev/null
 "${DCSSMS}" exec --file unit.lua >/dev/null
 "${DCSSMS}" exec --file area.lua >/dev/null
@@ -167,6 +169,259 @@ echo "==> [build] move_to with non-handle -> nil"
 expect_true "move_to bad target" 'return sms.task.move_to("nope") == nil'
 
 # ----------------------------------------------------------------
+# Section: v1.1 role-type builders (no_task, refuel, awacs, tanker, ewr)
+# ----------------------------------------------------------------
+
+echo "==> [build] no_task returns NoTask, air-only"
+expect_str  "no_task id"          'return sms.task.no_task().id' 'NoTask'
+expect_true "no_task air-only"    'return sms.task.no_task()._sms_air_only == true'
+expect_str  "no_task verb"        'return sms.task.no_task()._sms_verb' 'no_task'
+
+echo "==> [build] refuel returns Refueling, air-only"
+expect_str  "refuel id"           'return sms.task.refuel().id' 'Refueling'
+expect_true "refuel air-only"     'return sms.task.refuel()._sms_air_only == true'
+
+echo "==> [build] awacs returns AWACS with priority default 1, air-only"
+expect_str  "awacs id"            'return sms.task.awacs().id' 'AWACS'
+expect_true "awacs default prio"  'return sms.task.awacs().params.priority == 1'
+expect_true "awacs air-only"      'return sms.task.awacs()._sms_air_only == true'
+expect_true "awacs prio set"      'return sms.task.awacs({priority=3}).params.priority == 3'
+expect_true "awacs bad prio"      'return sms.task.awacs({priority="high"}) == nil'
+
+echo "==> [build] tanker returns Tanker with priority default 1, air-only"
+expect_str  "tanker id"           'return sms.task.tanker().id' 'Tanker'
+expect_true "tanker air-only"     'return sms.task.tanker()._sms_air_only == true'
+
+echo "==> [build] ewr returns EWR with priority default 1, ground-only"
+expect_str  "ewr id"              'return sms.task.ewr().id' 'EWR'
+expect_true "ewr default prio"    'return sms.task.ewr().params.priority == 1'
+expect_true "ewr ground-only"     'return sms.task.ewr()._sms_ground_only == true'
+expect_true "ewr not air-only"    'return sms.task.ewr()._sms_air_only == nil'
+expect_true "ewr bad opts"        'return sms.task.ewr("nope") == nil'
+
+# ----------------------------------------------------------------
+# Section: v1.1 point/runway builders
+# ----------------------------------------------------------------
+
+echo "==> [build] fire_at_point returns FireAtPoint, ground-only"
+expect_str  "fire_at_point id"        'return sms.task.fire_at_point({x=0,y=0,z=0}).id' 'FireAtPoint'
+expect_true "fire_at_point ground"    'return sms.task.fire_at_point({x=0,y=0,z=0})._sms_ground_only == true'
+expect_true "fire_at_point not air"   'return sms.task.fire_at_point({x=0,y=0,z=0})._sms_air_only == nil'
+expect_true "fire_at_point radius"    'return sms.task.fire_at_point({x=0,y=0,z=0}, {radius=200}).params.radius == 200'
+expect_true "fire_at_point bad point" 'return sms.task.fire_at_point("nope") == nil'
+expect_true "fire_at_point bad rad"   'return sms.task.fire_at_point({x=0,y=0,z=0}, {radius="big"}) == nil'
+
+echo "==> [build] attack_map_object returns AttackMapObject, air-only"
+expect_str  "amo id"            'return sms.task.attack_map_object({x=0,y=0,z=0}).id' 'AttackMapObject'
+expect_true "amo air-only"      'return sms.task.attack_map_object({x=0,y=0,z=0})._sms_air_only == true'
+expect_true "amo bad point"     'return sms.task.attack_map_object("nope") == nil'
+expect_true "amo direction rad" "
+  local t = sms.task.attack_map_object({x=0,y=0,z=0}, {direction=90})
+  return math.abs(t.params.direction - math.pi/2) < 1e-6
+"
+
+echo "==> [build] bomb_runway returns BombingRunway, air-only"
+expect_str  "bomb_runway id"      'return sms.task.bomb_runway(7).id' 'BombingRunway'
+expect_true "bomb_runway air"     'return sms.task.bomb_runway(7)._sms_air_only == true'
+expect_true "bomb_runway runway"  'return sms.task.bomb_runway(7).params.runwayId == 7'
+expect_true "bomb_runway bad id"  'return sms.task.bomb_runway("seven") == nil'
+
+# ----------------------------------------------------------------
+# Section: v1.1 escort
+# ----------------------------------------------------------------
+
+# escort tests need a group in env.mission to resolve groupId; reuse
+# the discovered ME template name from the spawn smoke if available,
+# otherwise spawn one.
+echo "==> [build] escort needs a sms.unit/group handle"
+expect_true "escort bad target" 'return sms.task.escort("nope") == nil'
+
+echo "==> [build] escort spawns group fixture and returns Escort task"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_escort_target')
+  if not g then
+    sms.group.create({
+      name='_smoke_task_escort_target',
+      position={x=0,y=0,z=0},
+      country='USA', category='airplane',
+      units={{type='F-15C', alt=5000}},
+    })
+  end
+" >/dev/null
+
+expect_str "escort id" "
+  local g = sms.group('_smoke_task_escort_target')
+  if not g then return 'NIL' end
+  local t = sms.task.escort(g, {target_types={sms.targets.PLANES}})
+  return t and t.id or 'NIL'
+" 'Escort'
+
+expect_true "escort air-only" "
+  local g = sms.group('_smoke_task_escort_target')
+  if not g then return false end
+  return sms.task.escort(g)._sms_air_only == true
+"
+
+expect_true "escort default offset" "
+  local g = sms.group('_smoke_task_escort_target')
+  if not g then return false end
+  local t = sms.task.escort(g)
+  return t.params.pos.x == -50 and t.params.pos.y == 0 and t.params.pos.z == -50
+"
+
+expect_true "escort last_waypoint flag" "
+  local g = sms.group('_smoke_task_escort_target')
+  if not g then return false end
+  local t = sms.task.escort(g, {last_waypoint_index=4})
+  return t.params.lastWptIndexFlag == true and t.params.lastWptIndex == 4
+"
+
+echo "==> [build] escort cleanup fixture"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_escort_target')
+  if g then g:destroy() end
+" >/dev/null
+
+# ----------------------------------------------------------------
+# Section: v1.1 FAC builders
+# ----------------------------------------------------------------
+
+# Reuse the escort fixture if still alive, else spawn fresh
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then
+    sms.group.create({
+      name='_smoke_task_fac_target',
+      position={x=0,y=0,z=0},
+      country='RUSSIA', category='ground',
+      units={{type='Tank Maus'}},
+    })
+  end
+" >/dev/null
+
+echo "==> [build] fac_attack_group returns FAC_AttackGroup, any-category"
+expect_str "fac_attack_group id" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return 'NIL' end
+  local t = sms.task.fac_attack_group(g)
+  return t and t.id or 'NIL'
+" 'FAC_AttackGroup'
+expect_true "fac_attack_group not air-only" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return false end
+  return sms.task.fac_attack_group(g)._sms_air_only == nil
+"
+expect_true "fac_attack_group not ground-only" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return false end
+  return sms.task.fac_attack_group(g)._sms_ground_only == nil
+"
+expect_true "fac_attack_group default designation" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return false end
+  return sms.task.fac_attack_group(g).params.designation == 'Auto'
+"
+expect_true "fac_attack_group designation constant" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return false end
+  local t = sms.task.fac_attack_group(g, {designation=sms.designations.LASER})
+  return t.params.designation == 'Laser'
+"
+
+echo "==> [build] fac returns FAC, any-category"
+expect_str  "fac id"               'return sms.task.fac({radius=10000}).id' 'FAC'
+expect_true "fac default priority" 'return sms.task.fac({radius=10000}).params.priority == 1'
+expect_true "fac requires radius"  'return sms.task.fac({}) == nil'
+expect_true "fac not air-only"     'return sms.task.fac({radius=10000})._sms_air_only == nil'
+
+echo "==> [build] fac_engage_group returns FAC_EngageGroup with priority"
+expect_str "fac_engage_group id" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return 'NIL' end
+  return sms.task.fac_engage_group(g).id
+" 'FAC_EngageGroup'
+expect_true "fac_engage_group default priority" "
+  local g = sms.group('_smoke_task_fac_target')
+  if not g then return false end
+  return sms.task.fac_engage_group(g).params.priority == 1
+"
+
+echo "==> [build] FAC fixture cleanup"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_fac_target')
+  if g then g:destroy() end
+" >/dev/null
+
+# ----------------------------------------------------------------
+# Section: v1.1 engage_en_route builders
+# ----------------------------------------------------------------
+
+echo "==> [build] engage_en_route_targets returns EngageTargets, air-only"
+expect_str  "eert id" "
+  return sms.task.engage_en_route_targets({target_types={sms.targets.PLANES}}).id
+" 'EngageTargets'
+expect_true "eert air-only" "
+  return sms.task.engage_en_route_targets({target_types={sms.targets.PLANES}})._sms_air_only == true
+"
+expect_true "eert default priority" "
+  return sms.task.engage_en_route_targets({target_types={sms.targets.PLANES}}).params.priority == 1
+"
+expect_true "eert priority set" "
+  return sms.task.engage_en_route_targets({target_types={sms.targets.PLANES}, priority=3}).params.priority == 3
+"
+expect_true "eert requires target_types" 'return sms.task.engage_en_route_targets({}) == nil'
+expect_true "eert bad max_dist" "
+  return sms.task.engage_en_route_targets({target_types={sms.targets.AIR}, max_dist='close'}) == nil
+"
+
+# Group/unit engage tests piggyback on the FAC fixture if alive
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_engage_target')
+  if not g then
+    sms.group.create({
+      name='_smoke_task_engage_target',
+      position={x=0,y=0,z=0},
+      country='RUSSIA', category='airplane',
+      units={{type='Su-27', alt=5000}},
+    })
+  end
+" >/dev/null
+
+echo "==> [build] engage_en_route_group returns EngageGroup, air-only, priority"
+expect_str "eerg id" "
+  local g = sms.group('_smoke_task_engage_target')
+  if not g then return 'NIL' end
+  return sms.task.engage_en_route_group(g).id
+" 'EngageGroup'
+expect_true "eerg priority" "
+  local g = sms.group('_smoke_task_engage_target')
+  if not g then return false end
+  return sms.task.engage_en_route_group(g, {priority=2}).params.priority == 2
+"
+expect_true "eerg air-only" "
+  local g = sms.group('_smoke_task_engage_target')
+  if not g then return false end
+  return sms.task.engage_en_route_group(g)._sms_air_only == true
+"
+expect_true "eerg bad target" 'return sms.task.engage_en_route_group("nope") == nil'
+
+echo "==> [build] engage_en_route_unit returns EngageUnit"
+expect_true "eeru id" "
+  local g = sms.group('_smoke_task_engage_target')
+  if not g then return false end
+  local us = g:get_units()
+  if not us or #us == 0 then return false end
+  local t = sms.task.engage_en_route_unit(us[1])
+  return t and t.id == 'EngageUnit'
+"
+
+echo "==> [build] engage cleanup fixture"
+"${DCSSMS}" exec --code "
+  local g = sms.group('_smoke_task_engage_target')
+  if g then g:destroy() end
+" >/dev/null
+
+# ----------------------------------------------------------------
 # Section 2: discover spawn coords from existing mission
 # ----------------------------------------------------------------
 echo "==> discover spawn coords from existing mission"
@@ -259,6 +514,27 @@ expect_true "attack_in_area air-only" "
 
 echo "==> [build] attack_in_area with non-area target -> nil"
 expect_true "attack_in_area bad target" 'return sms.task.attack_in_area("nope") == nil'
+
+echo "==> [build] attack_in_area priority defaults to 1"
+expect_true "attack_in_area default priority" "
+  local a = sms.area.create_circular({x=0,y=0,z=0}, 5000)
+  if not a then return false end
+  return sms.task.attack_in_area(a).params.priority == 1
+"
+
+echo "==> [build] attack_in_area priority honored"
+expect_true "attack_in_area set priority" "
+  local a = sms.area.create_circular({x=0,y=0,z=0}, 5000)
+  if not a then return false end
+  return sms.task.attack_in_area(a, {priority=5}).params.priority == 5
+"
+
+echo "==> [build] attack_in_area bad priority -> nil"
+expect_true "attack_in_area bad priority" "
+  local a = sms.area.create_circular({x=0,y=0,z=0}, 5000)
+  if not a then return false end
+  return sms.task.attack_in_area(a, {priority='high'}) == nil
+"
 
 # ----------------------------------------------------------------
 # Section 3: live ground apply — move_to + air-only rejection
