@@ -59,6 +59,8 @@ dcs-sms/
 │   ├── events.lua          sms.events — DCS world-event bus, _entity_scoped whitelist.
 │   ├── weapon.lua          sms.weapon — weapon wrapper + impact tracking.
 │   ├── task.lua            sms.task — task-table builders (move_to, attack, ...).
+│   ├── commands.lua        sms.commands — DCS controller setCommand wrappers.
+│   ├── options.lua         sms.options — DCS controller setOption wrappers + ROE dispatch.
 │   ├── load_all.lua        One-shot loader for the whole framework in dependency order.
 │   └── test/               Bash smoke tests driven by tools/dcs-sms.exe.
 │
@@ -115,14 +117,16 @@ Smoke tests deliberately exercise warn paths to verify rejection. Seeing `[sms.*
 
 When you write new framework code, mimic this contract. Do not `error()`. Do not `assert()` on user input. Use `pcall` around any vanilla DCS call that could throw.
 
-### Category enforcement: air-only and ground-only
+### Category enforcement: air-only / ground-only / naval-only / ROE
 
-Two private flags on a task table mark category restrictions:
+Four private flags on a payload (task / command / option) mark category restrictions:
 
-- `_sms_air_only = true` — only `airplane` / `helicopter` groups accept this task. Set by `attack`, `attack_in_area`, `bomb`, `land`, `follow`, `orbit`, `no_task`, `refuel`, `escort`, `attack_map_object`, `bomb_runway`, `awacs`, `tanker`, and the `engage_en_route_*` family.
-- `_sms_ground_only = true` — only `ground` groups accept (ships and trains are excluded). Set by `fire_at_point` and `ewr`.
+- `_sms_air_only = true` — only `airplane` / `helicopter` groups accept this payload.
+- `_sms_ground_only = true` — only `ground` groups accept (ships and trains are excluded).
+- `_sms_naval_only = true` — only `ship` groups accept. (No v1 builder sets this; reserved for forward-compat.)
+- `_sms_roe = true` — special marker on ROE options. Apply layer reads the group's category and dispatches to `AI.Option.{Air,Ground,Naval}.id.ROE` with category-specific value validation. Rejects values not allowed for the resolved category (e.g. `"weapon_free"` against ground groups).
 
-`set_task` / `push_task` reject mismatches at apply time with `log.warn + return false`. `combo` aggregates: a combo containing any air-only sub-task inherits `_sms_air_only`; same for ground. A combo with both flags is built without a build-time warning — DCS will reject it at apply time.
+`set_task` / `push_task` / `set_command` / `set_option` reject mismatches at apply time with `log.warn + return false`. `combo` (sms.task only) aggregates: a combo containing any air-only or ground-only sub-task inherits the corresponding flag.
 
 ---
 
@@ -165,7 +169,7 @@ A handle is a small `{name = "..."}` table with a metatable whose `__index` poin
 The bridge currently loads framework files via `net.dostring_in` in this order:
 
 ```
-sms.lua → log.lua → utils.lua → targets.lua → designations.lua → group.lua → unit.lua → area.lua → timer.lua → group_spawn.lua → static.lua → events.lua → weapon.lua → task.lua
+sms.lua → log.lua → utils.lua → targets.lua → designations.lua → group.lua → unit.lua → area.lua → timer.lua → group_spawn.lua → static.lua → events.lua → weapon.lua → task.lua → commands.lua → options.lua
 ```
 
 Each module asserts the dependencies it actually uses. When adding a new module, decide where it slots in based on what it needs and append the assert.
@@ -558,6 +562,83 @@ Named constants for DCS FAC designation enum strings. Used by `sms.task.fac_atta
 | `sms.designations.WP` | `"WP"` (white phosphorus marker) |
 | `sms.designations.IR_POINTER` | `"IR-Pointer"` |
 | `sms.designations.LASER` | `"Laser"` |
+
+### `sms.commands` — `framework/commands.lua`
+
+One-shot controller commands. Each builder returns a DCS command table (`{id, params, _sms_verb, _sms_air_only?}`); apply via `group:set_command(cmd)`.
+
+| Function | Args | Categories |
+|---|---|---|
+| `sms.commands.no_action()` | — | all |
+| `sms.commands.set_invisible(value)` | bool | all |
+| `sms.commands.set_immortal(value)` | bool | all |
+| `sms.commands.stop_route(value)` | bool | all |
+| `sms.commands.switch_action(idx)` | int | all |
+| `sms.commands.set_unlimited_fuel(value)` | bool | air |
+| `sms.commands.eplrs(value, group_id?)` | bool + optional int | all |
+| `sms.commands.set_frequency(hz, modulation?, power?)` | Hz, `MODULATION.AM`/`.FM`, optional W | all |
+| `sms.commands.set_frequency_for_unit(hz, modulation?, power?, unit_id)` | same plus unit id | all |
+| `sms.commands.switch_waypoint(from, to)` | two ints | all |
+| `sms.commands.set_callsign(callname, number?)` | numeric callname enum + flight num | air |
+| `sms.commands.activate_beacon(opts)` | `{type, system, frequency, callsign?, name?, unit_id?, channel?, mode_channel?, aa?, bearing?}` | air |
+| `sms.commands.deactivate_beacon()` | — | air |
+| `sms.commands.activate_acls(unit_id?, name?)` | optional int + optional string | air |
+| `sms.commands.deactivate_acls()` | — | air |
+| `sms.commands.activate_icls(channel, unit_id?, callsign?)` | int + optional int + optional string | air |
+| `sms.commands.deactivate_icls()` | — | air |
+| `sms.commands.activate_link4(frequency, unit_id?, callsign?)` | Hz + optional int + optional string | air |
+| `sms.commands.deactivate_link4()` | — | air |
+
+**Enums** (uppercase tables; builders accept either constant or raw value): `sms.commands.MODULATION` (`AM`/`FM`), `sms.commands.BEACON.TYPE`, `sms.commands.BEACON.SYSTEM`, `sms.commands.CALLSIGN`.
+
+**Apply API on sms.group:**
+
+| Method | Returns |
+|---|---|
+| `group:set_command(cmd)` | `true` on dispatch; `false` + log on bad input or category mismatch. Wraps `Group:getController():setCommand`. Manually-built tables (no `_sms_verb`) are rejected — different from `set_task`. |
+
+### `sms.options` — `framework/options.lua`
+
+Persistent controller options. Each builder returns `{id (int|nil), params|value, _sms_verb, _sms_air_only?, _sms_ground_only?, _sms_roe?}`; apply via `group:set_option(opt)`.
+
+| Function | Args | Categories |
+|---|---|---|
+| `sms.options.roe(value)` | `sms.options.ROE.*` (or string). Dispatched per category at apply time. | all (special) |
+| `sms.options.reaction_on_threat(value)` | `sms.options.REACTION_ON_THREAT.*` | air |
+| `sms.options.radar_using(value)` | `sms.options.RADAR_USING.*` | air |
+| `sms.options.flare_using(value)` | `sms.options.FLARE_USING.*` | air |
+| `sms.options.formation(value)` | `sms.options.FORMATION.*` preset OR raw DCS packed integer | air |
+| `sms.options.formation_interval(meters)` | non-negative number | air |
+| `sms.options.rtb_on_bingo(value)` | bool | air |
+| `sms.options.rtb_on_bingo_ammo(value)` | bool | air |
+| `sms.options.silence(value)` | bool | air |
+| `sms.options.jettison_empty_tanks(value)` | bool | air |
+| `sms.options.landing_straight_in(value)` | bool | air |
+| `sms.options.landing_force_pair(value)` | bool | air |
+| `sms.options.landing_restrict_pair(value)` | bool | air |
+| `sms.options.landing_overhead_break(value)` | bool | air |
+| `sms.options.waypoint_pass_report(value)` | bool. **Inverted internally** — `true` = report. | air |
+| `sms.options.radio_contact(attrs?)` | list of DCS attribute strings (default `{"Air"}`) | air |
+| `sms.options.radio_engage(attrs?)` | same | air |
+| `sms.options.radio_kill(attrs?)` | same | air |
+| `sms.options.alarm_state(value)` | `sms.options.ALARM_STATE.AUTO`/`GREEN`/`RED` | ground |
+| `sms.options.disperse_on_attack(seconds)` | non-negative int seconds (0 disables) | ground |
+
+**Enums:** `sms.options.ROE`, `sms.options.REACTION_ON_THREAT`, `sms.options.RADAR_USING`, `sms.options.FLARE_USING`, `sms.options.ALARM_STATE`, `sms.options.FORMATION`. Each is a small table of uppercase keys → lowercase string values.
+
+**ROE dispatch.** `sms.options.roe(value)` returns a table with `_sms_roe = true` and no `id`. At apply time, `set_option` reads the group's category and resolves to:
+
+- `airplane` / `helicopter` → `AI.Option.Air.id.ROE`; full 5 values allowed.
+- `ground` / `train` → `AI.Option.Ground.id.ROE`; 3 values (`open_fire`, `return_fire`, `weapon_hold`).
+- `ship` → `AI.Option.Naval.id.ROE`; 3 values (same as ground).
+
+Air-only ROE strings (`weapon_free`, `open_fire_weapon_free`) are rejected for ground/naval with a logged `false`.
+
+**Apply API on sms.group:**
+
+| Method | Returns |
+|---|---|
+| `group:set_option(opt)` | `true` on dispatch; `false` + log on bad input, category mismatch, or ROE value not allowed for the resolved category. Wraps `Group:getController():setOption`. Manually-built tables (no `_sms_verb`) are rejected. |
 
 ---
 
