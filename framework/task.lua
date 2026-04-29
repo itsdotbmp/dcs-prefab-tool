@@ -437,6 +437,10 @@ sms.task.bomb = function(target, opts)
     log.warn("bomb: opts must be a table or nil, got " .. type(opts))
     return nil
   end
+  if opts.direction ~= nil and type(opts.direction) ~= "number" then
+    log.warn("bomb: opts.direction must be a number (degrees), got " .. type(opts.direction))
+    return nil
+  end
   local weapon_type = _resolve_weapon_type(opts.weapon_type, "bomb")
   local altitude    = opts.altitude or 6000
   if type(altitude) ~= "number" then
@@ -452,7 +456,7 @@ sms.task.bomb = function(target, opts)
       altitudeEnabled   = true,
       expend            = opts.expend or "Auto",
       weaponType        = weapon_type,
-      direction         = opts.direction,
+      direction         = opts.direction and sms.utils.deg_to_rad(opts.direction) or nil,
       directionEnabled  = opts.direction ~= nil,
       groupAttack       = opts.group_attack and true or false,
     },

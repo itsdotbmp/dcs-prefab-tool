@@ -488,7 +488,7 @@ The fields are otherwise transparent to DCS. Manually-built task tables (no `_sm
 | `sms.task.orbit(pos, opts?)` | vec3; opts: `{altitude=5000, speed=200, pattern="Circle"\|"Anchored"}`. Anchored adds `{hot_leg_bearing=0 (deg), leg_length=30000 (m), width=10000 (m), clockwise=false}`. DCS renamed "RaceTrack" → "Anchored" in a recent update. | `Orbit` | air |
 | `sms.task.attack(target, opts?)` | sms.group / sms.unit / sms.static; opts: `{weapon_type="Auto", expend="Auto", attack_qty}` | `AttackGroup` (group) / `AttackUnit` (unit, static) | air (v1) |
 | `sms.task.attack_in_area(area, opts?)` | sms.area handle (must be circular in v1); opts: `{weapon_type="Auto", altitude_min, altitude_max, priority=1}` | `EngageTargetsInZone` | air enroute |
-| `sms.task.bomb(target, opts?)` | vec3 / sms.area / sms.unit / sms.static; opts: `{altitude, weapon_type, expend, group_attack, direction}` | `Bombing` | air |
+| `sms.task.bomb(target, opts?)` | vec3 / sms.area / sms.unit / sms.static; opts: `{altitude, weapon_type, expend, group_attack, direction? (deg)}` | `Bombing` | air |
 | `sms.task.land(target, opts?)` | vec3 / sms.static / sms.unit / DCS Airbase; opts: `{duration=300}` | `Land` | air (incl. helo) |
 | `sms.task.combo({t1, t2, ...})` | array of task tables | `ComboTask` (parallel; propagates `_sms_air_only` if any constituent has it) | inherits |
 | `sms.task.no_task()` | — | `NoTask` | air |
@@ -501,7 +501,7 @@ The fields are otherwise transparent to DCS. Manually-built task tables (no `_sm
 | `sms.task.fac(opts)` | opts: `{radius (required), priority=1}` | `FAC` | any enroute |
 | `sms.task.fac_engage_group(target, opts?)` | sms.group; opts same as `fac_attack_group` plus `priority=1` | `FAC_EngageGroup` | any enroute |
 | `sms.task.engage_en_route_targets(opts)` | opts: `{target_types (required), max_dist?, priority=1}` | `EngageTargets` | air enroute |
-| `sms.task.engage_en_route_group(target, opts?)` | sms.group; opts: `{weapon_type="Auto", expend="Auto", attack_qty?, direction?, priority=1}` | `EngageGroup` | air enroute |
+| `sms.task.engage_en_route_group(target, opts?)` | sms.group; opts: `{weapon_type="Auto", expend="Auto", attack_qty?, direction? (deg), priority=1}` | `EngageGroup` | air enroute |
 | `sms.task.engage_en_route_unit(target, opts?)` | sms.unit; opts same as `engage_en_route_group` plus `group_attack=false` | `EngageUnit` | air enroute |
 | `sms.task.awacs(opts?)` | opts: `{priority=1}` | `AWACS` | air enroute |
 | `sms.task.tanker(opts?)` | opts: `{priority=1}` | `Tanker` | air enroute |
