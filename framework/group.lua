@@ -491,6 +491,47 @@ sms.group.set_command = function(g, cmd)
   return true
 end
 
+-- ============================================================
+-- set_option (apply API for sms.options builders)
+-- ============================================================
+
+-- Dispatch an option from sms.options to the group's controller. Wraps
+-- Group:getController():setOption(id, value). Handles ROE category
+-- dispatch (resolves AI.Option.{Air,Ground,Naval}.id.ROE + numeric value
+-- via sms.options helpers).
+sms.group.set_option = function(g, opt)
+  if type(opt) ~= "table" or type(opt._sms_verb) ~= "string" then
+    log.warn("set_option: option must be built via sms.options.* (missing _sms_verb)")
+    return false
+  end
+  local raw = _validate_apply("set_option", g, opt)
+  if not raw then return false end
+  local ctrl = raw:getController()
+  if not ctrl then
+    log.warn("set_option: group '" .. tostring(g.name) .. "' has no controller")
+    return false
+  end
+  local id, value
+  if opt._sms_roe then
+    local category = g:get_category()
+    id    = sms.options._roe_resolve_for_category(category)
+    value = sms.options._roe_value_to_dcs(opt.value, category)
+    if not id or value == nil then
+      log.error("set_option: roe id/value resolution failed for category '" .. tostring(category) .. "'")
+      return false
+    end
+  else
+    id    = opt.id
+    value = opt.params
+  end
+  local ok, err = pcall(ctrl.setOption, ctrl, id, value)
+  if not ok then
+    log.error("set_option: DCS rejected option for '" .. tostring(g.name) .. "': " .. tostring(err))
+    return false
+  end
+  return true
+end
+
 -- Sugar constructor: sms.group("name") -> handle | nil + log.
 -- The factory lives in sms.lua; this call wires it up using Group.getByName
 -- as the existence check.
