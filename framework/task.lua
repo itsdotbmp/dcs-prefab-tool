@@ -96,6 +96,65 @@ local function _validate_priority(verb, opts)
   return priority
 end
 
+-- Resolve an sms.group handle to its DCS group id. Strict: only sms.group
+-- accepted. Returns id or nil + log.
+local function _resolve_group_id(verb, target)
+  if not sms._is_handle_of(target, sms.group) then
+    log.warn(verb .. ": target must be an sms.group handle")
+    return nil
+  end
+  local raw = Group.getByName(target.name)
+  if not raw then
+    log.warn(verb .. ": group '" .. tostring(target.name) .. "' not in mission")
+    return nil
+  end
+  return raw:getID()
+end
+
+-- Resolve an sms.unit handle to its DCS unit id. Strict: only sms.unit
+-- accepted. Returns id or nil + log.
+local function _resolve_unit_id(verb, target)
+  if not sms._is_handle_of(target, sms.unit) then
+    log.warn(verb .. ": target must be an sms.unit handle")
+    return nil
+  end
+  local raw = Unit.getByName(target.name)
+  if not raw then
+    log.warn(verb .. ": unit '" .. tostring(target.name) .. "' not in mission")
+    return nil
+  end
+  return raw:getID()
+end
+
+-- Resolve an sms.group OR sms.unit handle to the owning DCS group's id.
+-- Used by builders that anchor on a group but accept either form (a unit's
+-- parent group is the natural anchor). Returns id or nil + log.
+local function _resolve_owning_group_id(verb, target)
+  if sms._is_handle_of(target, sms.group) then
+    local raw = Group.getByName(target.name)
+    if not raw then
+      log.warn(verb .. ": group '" .. tostring(target.name) .. "' not in mission")
+      return nil
+    end
+    return raw:getID()
+  end
+  if sms._is_handle_of(target, sms.unit) then
+    local raw = Unit.getByName(target.name)
+    if not raw then
+      log.warn(verb .. ": unit '" .. tostring(target.name) .. "' not in mission")
+      return nil
+    end
+    local g = raw:getGroup()
+    if not g then
+      log.error(verb .. ": unit '" .. tostring(target.name) .. "' has no group")
+      return nil
+    end
+    return g:getID()
+  end
+  log.warn(verb .. ": target must be sms.unit or sms.group handle")
+  return nil
+end
+
 -- ============================================================
 -- Builders
 -- ============================================================
@@ -168,30 +227,8 @@ sms.task.follow = function(target, opts)
     return nil
   end
 
-  local group_id
-  if sms._is_handle_of(target, sms.group) then
-    local raw = Group.getByName(target.name)
-    if not raw then
-      log.warn("follow: group '" .. tostring(target.name) .. "' not in mission")
-      return nil
-    end
-    group_id = raw:getID()
-  elseif sms._is_handle_of(target, sms.unit) then
-    local raw = Unit.getByName(target.name)
-    if not raw then
-      log.warn("follow: unit '" .. tostring(target.name) .. "' not in mission")
-      return nil
-    end
-    local g = raw:getGroup()
-    if not g then
-      log.error("follow: unit '" .. tostring(target.name) .. "' has no group")
-      return nil
-    end
-    group_id = g:getID()
-  else
-    log.warn("follow: target must be sms.unit or sms.group handle")
-    return nil
-  end
+  local group_id = _resolve_owning_group_id("follow", target)
+  if not group_id then return nil end
 
   return _stamp({
     id = "Follow",
@@ -296,15 +333,12 @@ sms.task.attack = function(target, opts)
   local expend      = opts.expend or "Auto"
 
   if sms._is_handle_of(target, sms.group) then
-    local raw = Group.getByName(target.name)
-    if not raw then
-      log.warn("attack: group '" .. tostring(target.name) .. "' not in mission")
-      return nil
-    end
+    local id = _resolve_group_id("attack", target)
+    if not id then return nil end
     return _stamp({
       id = "AttackGroup",
       params = {
-        groupId        = raw:getID(),
+        groupId        = id,
         weaponType     = weapon_type,
         expend         = expend,
         attackQty      = opts.attack_qty,
@@ -314,15 +348,12 @@ sms.task.attack = function(target, opts)
   end
 
   if sms._is_handle_of(target, sms.unit) then
-    local raw = Unit.getByName(target.name)
-    if not raw then
-      log.warn("attack: unit '" .. tostring(target.name) .. "' not in mission")
-      return nil
-    end
+    local id = _resolve_unit_id("attack", target)
+    if not id then return nil end
     return _stamp({
       id = "AttackUnit",
       params = {
-        unitId         = raw:getID(),
+        unitId         = id,
         weaponType     = weapon_type,
         expend         = expend,
         attackQty      = opts.attack_qty,
@@ -651,30 +682,8 @@ sms.task.escort = function(target, opts)
     return nil
   end
 
-  local group_id
-  if sms._is_handle_of(target, sms.group) then
-    local raw = Group.getByName(target.name)
-    if not raw then
-      log.warn("escort: group '" .. tostring(target.name) .. "' not in mission")
-      return nil
-    end
-    group_id = raw:getID()
-  elseif sms._is_handle_of(target, sms.unit) then
-    local raw = Unit.getByName(target.name)
-    if not raw then
-      log.warn("escort: unit '" .. tostring(target.name) .. "' not in mission")
-      return nil
-    end
-    local g = raw:getGroup()
-    if not g then
-      log.error("escort: unit '" .. tostring(target.name) .. "' has no group")
-      return nil
-    end
-    group_id = g:getID()
-  else
-    log.warn("escort: target must be sms.unit or sms.group handle")
-    return nil
-  end
+  local group_id = _resolve_owning_group_id("escort", target)
+  if not group_id then return nil end
 
   local engagement_dist_max = opts.engagement_dist_max or 5000
   if type(engagement_dist_max) ~= "number" then
@@ -720,15 +729,8 @@ end
 
 -- FAC for a specific target group (immediate). Air or ground.
 sms.task.fac_attack_group = function(target, opts)
-  if not sms._is_handle_of(target, sms.group) then
-    log.warn("fac_attack_group: target must be an sms.group handle")
-    return nil
-  end
-  local raw = Group.getByName(target.name)
-  if not raw then
-    log.warn("fac_attack_group: group '" .. tostring(target.name) .. "' not in mission")
-    return nil
-  end
+  local group_id = _resolve_group_id("fac_attack_group", target)
+  if not group_id then return nil end
   opts = opts or {}
   if type(opts) ~= "table" then
     log.warn("fac_attack_group: opts must be a table or nil, got " .. type(opts))
@@ -744,7 +746,7 @@ sms.task.fac_attack_group = function(target, opts)
   return _stamp({
     id = "FAC_AttackGroup",
     params = {
-      groupId     = raw:getID(),
+      groupId     = group_id,
       weaponType  = weapon_type,
       designation = designation,
       datalink    = opts.datalink ~= false,  -- default true
@@ -779,15 +781,8 @@ end
 
 -- Enroute FAC for a specific target group. Air or ground.
 sms.task.fac_engage_group = function(target, opts)
-  if not sms._is_handle_of(target, sms.group) then
-    log.warn("fac_engage_group: target must be an sms.group handle")
-    return nil
-  end
-  local raw = Group.getByName(target.name)
-  if not raw then
-    log.warn("fac_engage_group: group '" .. tostring(target.name) .. "' not in mission")
-    return nil
-  end
+  local group_id = _resolve_group_id("fac_engage_group", target)
+  if not group_id then return nil end
   opts = opts or {}
   if type(opts) ~= "table" then
     log.warn("fac_engage_group: opts must be a table or nil, got " .. type(opts))
@@ -808,7 +803,7 @@ sms.task.fac_engage_group = function(target, opts)
   return _stamp({
     id = "FAC_EngageGroup",
     params = {
-      groupId     = raw:getID(),
+      groupId     = group_id,
       weaponType  = weapon_type,
       designation = designation,
       datalink    = opts.datalink ~= false,
@@ -857,15 +852,8 @@ end
 
 -- Permission to engage a specific group (enroute). Air only.
 sms.task.engage_en_route_group = function(target, opts)
-  if not sms._is_handle_of(target, sms.group) then
-    log.warn("engage_en_route_group: target must be an sms.group handle")
-    return nil
-  end
-  local raw = Group.getByName(target.name)
-  if not raw then
-    log.warn("engage_en_route_group: group '" .. tostring(target.name) .. "' not in mission")
-    return nil
-  end
+  local group_id = _resolve_group_id("engage_en_route_group", target)
+  if not group_id then return nil end
   opts = opts or {}
   if type(opts) ~= "table" then
     log.warn("engage_en_route_group: opts must be a table or nil, got " .. type(opts))
@@ -888,7 +876,7 @@ sms.task.engage_en_route_group = function(target, opts)
   return _stamp({
     id = "EngageGroup",
     params = {
-      groupId        = raw:getID(),
+      groupId        = group_id,
       weaponType     = weapon_type,
       expend         = opts.expend or "Auto",
       attackQty      = opts.attack_qty,
@@ -901,15 +889,8 @@ end
 
 -- Permission to engage a specific unit (enroute). Air only.
 sms.task.engage_en_route_unit = function(target, opts)
-  if not sms._is_handle_of(target, sms.unit) then
-    log.warn("engage_en_route_unit: target must be an sms.unit handle")
-    return nil
-  end
-  local raw = Unit.getByName(target.name)
-  if not raw then
-    log.warn("engage_en_route_unit: unit '" .. tostring(target.name) .. "' not in mission")
-    return nil
-  end
+  local unit_id = _resolve_unit_id("engage_en_route_unit", target)
+  if not unit_id then return nil end
   opts = opts or {}
   if type(opts) ~= "table" then
     log.warn("engage_en_route_unit: opts must be a table or nil, got " .. type(opts))
@@ -932,7 +913,7 @@ sms.task.engage_en_route_unit = function(target, opts)
   return _stamp({
     id = "EngageUnit",
     params = {
-      unitId         = raw:getID(),
+      unitId         = unit_id,
       weaponType     = weapon_type,
       expend         = opts.expend or "Auto",
       attackQty      = opts.attack_qty,
