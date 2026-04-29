@@ -190,7 +190,10 @@ expect_true "awacs bad prio"      'return sms.task.awacs({priority="high"}) == n
 
 echo "==> [build] tanker returns Tanker with priority default 1, air-only"
 expect_str  "tanker id"           'return sms.task.tanker().id' 'Tanker'
+expect_true "tanker default prio" 'return sms.task.tanker().params.priority == 1'
 expect_true "tanker air-only"     'return sms.task.tanker()._sms_air_only == true'
+expect_true "tanker prio set"     'return sms.task.tanker({priority=2}).params.priority == 2'
+expect_true "tanker bad prio"     'return sms.task.tanker({priority="high"}) == nil'
 
 echo "==> [build] ewr returns EWR with priority default 1, ground-only"
 expect_str  "ewr id"              'return sms.task.ewr().id' 'EWR'
