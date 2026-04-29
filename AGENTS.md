@@ -182,6 +182,8 @@ For one-shot (re)loading of the whole framework in a mission, use [`framework/lo
 
 > Notation: `:method` = takes a handle (also accepts a name string); `module.fn` = static module function.
 > Every method follows the [failure model](#3-failure-model-log--nil-never-throw) — "returns X" implicitly means "returns X | nil + log on failure" unless the row notes otherwise.
+>
+> **Per-function reference with worked examples lives in [`docs/api/`](docs/api/) — one page per module.** This file is the dense surface map; `docs/api/<module>.md` is the long-form reference (signature, full options table, runnable example, see-also).
 
 ### `sms` (root) — `framework/sms.lua`
 
@@ -738,6 +740,8 @@ When you need behavior the framework doesn't cover, this is the workflow:
 - Add a tagged logger at the top of the file: `local log = sms.log.module("sms.<name>")`.
 - If you depend on another `sms.*` module, `assert(type(sms.<dep>) == "table", ...)` at the top of the file. State the load order in the file's top comment.
 - Update [`AGENTS.md`](AGENTS.md) (this file) as part of the same PR. Adding a method without updating this doc is a regression — agents and humans both lose visibility.
+- **Update the per-module reference page at [`docs/api/<module>.md`](docs/api/) in the same PR.** Add or revise the entry for every public symbol you touch — signature, options table, return value, runnable example. A PR that ships new public surface without a corresponding `docs/api/` entry is incomplete. This rule is parallel to the `AGENTS.md` sync rule and applies at every stage (spec → plan → implementation → review).
+- If your change introduces a cross-module pattern worth showcasing, add or update a recipe in [`docs/api/examples.md`](docs/api/) too.
 - Add or extend a smoke test under `framework/test/` (`smoke_<module>.sh` driven by `tools/dcs-sms.exe`).
 
 ---

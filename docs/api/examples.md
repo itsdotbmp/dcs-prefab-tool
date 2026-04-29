@@ -1,0 +1,297 @@
+# Examples — cross-module recipes
+
+Copy-and-paste recipes that combine multiple `sms.*` modules. Each one is realistic mission-script Lua, not a toy snippet.
+
+Every recipe below assumes [`sms` is loaded](../../README.md#quick-start-mission-framework) and that anything mentioned by name (groups, drawings, zones) exists in your `.miz`. When a recipe needs an entity that does **not** exist in the ME, it spawns it inline.
+
+For per-module reference see the [API index](README.md). For the dense surface map see [`AGENTS.md`](../../AGENTS.md).
+
+---
+
+## 1. ROE flip on proximity
+
+**Scenario** — A blue CAP and a red CAP are airborne with rules of engagement set to *Weapons Hold*. As soon as the two flights close to within 20 nautical miles, blue is cleared to *Weapons Free*. Used a lot for training scenarios where you want a known engagement geometry.
+
+**Modules used** — [`sms.group`](group.md), [`sms.task`](task.md), [`sms.timer`](timer.md), [`sms.utils`](utils.md). ROE itself is **not yet wrapped** by the framework — see the note at the end of this recipe.
+
+```lua
+-- Spawn the two CAPs.
+local blue_cap = sms.group.create({
+  name     = "blue-cap",
+  position = {x = 0,      y = 0, z = 0},
+  country  = "USA",
+  category = "airplane",
+  units    = { {type = "FA-18C_hornet", alt = 7500, heading = 90, speed = 220} },
+})
+
+local red_cap = sms.group.create({
+  name     = "red-cap",
+  position = {x = 80000, y = 0, z = 0},   -- ~43 nm east
+  country  = "RUSSIA",
+  category = "airplane",
+  units    = { {type = "Su-27", alt = 7500, heading = 270, speed = 220} },
+})
+
+-- Send each side to orbit a point 30 km in front of itself.
+blue_cap:set_task(sms.task.orbit({x = 30000, y = 0, z = 0}, {
+  altitude = 7500, speed = 220, pattern = "Circle",
+}))
+red_cap:set_task(sms.task.orbit({x = 50000, y = 0, z = 0}, {
+  altitude = 7500, speed = 220, pattern = "Circle",
+}))
+
+-- ROE constants (vanilla DCS — see note below).
+local ROE_WEAPON_HOLD = 4
+local ROE_WEAPON_FREE = 0
+
+local function set_roe(g, value)
+  local raw = Group.getByName(g:get_name())
+  if not raw then return end
+  raw:getController():setOption(0 --[[ AI.Option.Air.id.ROE ]], value)
+end
+
+set_roe(blue_cap, ROE_WEAPON_HOLD)
+set_roe(red_cap,  ROE_WEAPON_HOLD)
+
+-- Poll once per second; convert 20 NM to meters once.
+local TRIGGER_RANGE_M = sms.utils.feet_to_meters(20 * 6076)   -- 20 NM ≈ 37 040 m
+local triggered       = false
+
+sms.timer.every(1.0, function()
+  if triggered then return false end                          -- self-cancel after flip
+  if not (blue_cap:is_alive() and red_cap:is_alive()) then return false end
+
+  local d = sms.utils.vec3_distance(blue_cap:get_position(), red_cap:get_position())
+  if d and d <= TRIGGER_RANGE_M then
+    set_roe(blue_cap, ROE_WEAPON_FREE)
+    sms.log.info(string.format("blue cleared hot at %.0f m", d))
+    triggered = true
+  end
+end)
+```
+
+> **Framework gap** — `sms.group:set_roe(...)` does not exist yet. The recipe above falls back to vanilla `Group.getController():setOption(...)` per the [framework's gap-handling rule](../../AGENTS.md#1-the-prime-directive). A nice shape would be `sms.group:set_roe("hold" | "free" | "return_fire" | "weapon_hold")`. If this is a pattern you reach for often, file a GitHub issue — the framework only grows by surfacing these gaps.
+
+---
+
+## 2. Range tracker with bomb-impact reports
+
+**Scenario** — A practice range. Whenever a bomb is dropped from within the range polygon, track it and log the miss distance from a fixed target marker when it impacts.
+
+**Modules used** — [`sms.area`](area.md), [`sms.events`](events.md), [`sms.weapon`](weapon.md), [`sms.log`](log.md).
+
+```lua
+local range  = sms.area.from_drawing("PracticeRange")
+local target = sms.static("Range-Target-Bullseye")
+
+sms.events.connect(sms.events.SHOT, function(evt)
+  local w = evt.weapon
+  if not w or not w:is_bomb() then return end
+
+  -- Only score weapons released inside the range polygon.
+  local rel = w:get_release_position()
+  if not rel or not range:is_vec3_in(rel) then return end
+
+  -- Tail the weapon and score on impact.
+  w:on_impact(function(weapon)
+    local dist = weapon:get_impact_distance_from(target:get_position())
+    if dist then
+      sms.log.info(string.format(
+        "[range] %s scored %.1f m from bullseye (released by %s at %.0f m AGL)",
+        weapon:get_type(),
+        dist,
+        evt.initiator and evt.initiator:get_name() or "unknown",
+        weapon:get_release_altitude_agl() or 0
+      ))
+    end
+  end)
+
+  w:start_tracking({rate = 30})
+end)
+```
+
+`sms.events` upgrades `evt.weapon` to a tracking-capable handle automatically. `start_tracking` is idempotent, so this is safe even if the same weapon is somehow re-emitted.
+
+---
+
+## 3. Random respawn until depleted
+
+**Scenario** — A red SAM patrol is part of an ME-placed template. Whenever the live patrol is wiped out, respawn it at a random point inside a "patrol box" drawing. Cap at 5 respawns total — after that the area is clear.
+
+**Modules used** — [`sms.group`](group.md), [`sms.area`](area.md), [`sms.events`](events.md), [`sms.timer`](timer.md).
+
+```lua
+local box      = sms.area.from_drawing("PatrolBox")
+local current  = sms.group("red-patrol-1")           -- the ME-placed instance
+local lives    = 5
+
+local function arm_respawn(group_handle)
+  group_handle:connect(sms.events.DEAD, function(evt)
+    if lives <= 0 then
+      sms.log.info("[patrol] depleted at " .. evt.time)
+      return
+    end
+    lives = lives - 1
+
+    -- Small delay so the dead event fully settles before re-spawn.
+    sms.timer.after(5, function()
+      local next_pos = box:get_random_point()
+      local fresh    = sms.group.clone("RED_PATROL_TEMPLATE", {
+        name     = "red-patrol-1",
+        position = next_pos,
+      })
+      if fresh then
+        sms.log.info(string.format("[patrol] respawn %d at (%.0f, %.0f); %d lives left",
+          5 - lives, next_pos.x, next_pos.z, lives))
+        arm_respawn(fresh)
+      end
+    end)
+  end)
+end
+
+arm_respawn(current)
+```
+
+`group:connect(sms.events.DEAD, ...)` fires *once* — when the last unit of the group dies — so each respawn re-arms a new connection on the freshly-spawned group handle.
+
+---
+
+## 4. Strike package with CAP escort and on-demand retasking
+
+**Scenario** — Blue strike (two F-16s with bombs) is briefed to hit a target. A pair of F-15 CAP escorts the strike at offset. If anyone in the strike is hit, the CAP immediately breaks off escort and engages whatever fired the missile.
+
+**Modules used** — [`sms.group`](group.md), [`sms.task`](task.md), [`sms.events`](events.md).
+
+```lua
+local strike = sms.group.create({
+  name     = "blue-strike",
+  position = {x = 0, y = 0, z = 0},
+  country  = "USA",
+  category = "airplane",
+  units    = {
+    {type = "F-16C_50", alt = 6000, heading = 90, speed = 220},
+    {type = "F-16C_50", alt = 6000, heading = 90, speed = 220, offset = {x = -50, y = 0, z = 50}},
+  },
+})
+
+local cap = sms.group.create({
+  name     = "blue-cap",
+  position = {x = -2000, y = 0, z = 1000},
+  country  = "USA",
+  category = "airplane",
+  units    = {
+    {type = "F-15C", alt = 7000, heading = 90, speed = 240},
+    {type = "F-15C", alt = 7000, heading = 90, speed = 240, offset = {x = -50, y = 0, z = 50}},
+  },
+})
+
+local target_pt = {x = 60000, y = 0, z = 0}
+
+-- Strike: bomb the target.
+strike:set_task(sms.task.bomb(target_pt, {
+  altitude    = 5000,
+  weapon_type = "Bombs",
+  expend      = "All",
+  group_attack = true,
+}))
+
+-- CAP: escort the strike with a generous engagement bubble.
+cap:set_task(sms.task.escort(strike, {
+  offset             = {x = -1500, y = 500, z = 1500},
+  engagement_dist_max = 12000,
+}))
+
+-- Re-task the CAP to engage the shooter the moment the strike takes a hit.
+strike:connect(sms.events.HIT, function(evt)
+  local shooter = evt.initiator
+  if not shooter then return end
+  local shooter_group = shooter:get_group()
+  if not shooter_group or shooter_group:get_coalition() == "blue" then return end
+
+  sms.log.warn("[cap] strike hit by " .. shooter:get_name() .. " — engaging")
+  cap:set_task(sms.task.attack(shooter_group, {weapon_type = "Auto"}))
+end)
+```
+
+Note that `:set_task` *replaces* the active task — the CAP drops its escort the instant the new attack task is dispatched. Use [`:push_task`](task.md#grouppush_tasktask--bool) instead if you want the CAP to resume the escort after the engagement, but be aware of the LIFO caveats documented on `task.md`.
+
+---
+
+## 5. AWACS + Tanker support track with auto-restart
+
+**Scenario** — Two support tracks for a blue mission: an E-3 AWACS holding overhead the FOB, and a KC-135 tanker on a north-south anchor. When either lands or runs out of fuel and despawns, spawn a fresh replacement after 30 minutes.
+
+**Modules used** — [`sms.group`](group.md), [`sms.task`](task.md), [`sms.events`](events.md), [`sms.timer`](timer.md), [`sms.utils`](utils.md).
+
+```lua
+local FOB   = {x = 0,     y = 0, z = 0}
+local TRACK = {x = 50000, y = 0, z = 30000}
+
+local function spawn_awacs()
+  local g = sms.group.create({
+    name     = "blue-awacs",
+    position = {x = FOB.x - 5000, y = 0, z = FOB.z},
+    country  = "USA",
+    category = "airplane",
+    units    = { {type = "E-3A", alt = sms.utils.feet_to_meters(30000), heading = 90, speed = 200} },
+  })
+  if not g then return end
+
+  g:set_task(sms.task.combo({
+    sms.task.orbit(FOB, {
+      altitude = sms.utils.feet_to_meters(30000),
+      speed    = 200,
+      pattern  = "Circle",
+    }),
+    sms.task.awacs({priority = 1}),
+  }))
+  return g
+end
+
+local function spawn_tanker()
+  local g = sms.group.create({
+    name     = "blue-tanker",
+    position = {x = TRACK.x, y = 0, z = TRACK.z - 5000},
+    country  = "USA",
+    category = "airplane",
+    units    = { {type = "KC-135", alt = sms.utils.feet_to_meters(22000), heading = 0, speed = 180} },
+  })
+  if not g then return end
+
+  g:set_task(sms.task.combo({
+    sms.task.orbit(TRACK, {
+      altitude        = sms.utils.feet_to_meters(22000),
+      speed           = 180,
+      pattern         = "Anchored",
+      hot_leg_bearing = 0,
+      leg_length      = 60000,    -- ~32 nm legs
+      width           = 8000,
+      clockwise       = true,
+    }),
+    sms.task.tanker({priority = 1}),
+  }))
+  return g
+end
+
+local function rearm(spawn_fn)
+  local g = spawn_fn()
+  if not g then return end
+  g:connect(sms.events.DEAD, function()
+    sms.log.info("[support] " .. g:get_name() .. " gone — replacement in 30 min")
+    sms.timer.after(30 * 60, function() rearm(spawn_fn) end)
+  end)
+end
+
+rearm(spawn_awacs)
+rearm(spawn_tanker)
+```
+
+`sms.task.combo` runs both sub-tasks in parallel; the AWACS / Tanker enroute verbs need an `Orbit` mission underneath them or DCS has nothing to fly the aircraft through.
+
+---
+
+## Adding to this page
+
+New recipes are welcome. The same correctness bar as the per-module pages applies — every symbol referenced must exist in the framework source, and any vanilla DCS fallback must be flagged with a "Framework gap" note like the one in recipe 1.
+
+When you write a recipe, also consider whether it surfaces a pattern that should grow into the framework. Recipe 1's ROE fallback is a candidate — if it gets reached for in 3+ recipes, that is the signal to add `sms.group:set_roe(...)`.

@@ -13,6 +13,10 @@
 - **When you implement**, the AGENTS.md update lands in the same PR / commit-set as the code change. A PR that adds new public surface without updating AGENTS.md is incomplete.
 - **When you review code**, treat a missing AGENTS.md update as a review blocker for any change touching public surface.
 
+## Keeping `docs/api/` in sync
+
+Per-function reference pages with worked examples live at `docs/api/<module>.md` and are linked from the top-level `README.md`. They are load-bearing for users learning the framework — humans and agents both read them before writing mission code. **Any change that adds, removes, or renames a public `sms.*` symbol must update the relevant `docs/api/` page in the same change-set.** The full rule (specs / plans / implementation / review) is documented in [`AGENTS.md` §12](AGENTS.md#12-when-you-write-new-framework-code).
+
 ## Worktree directory
 
 Use `.worktrees/` for new feature branches. It is gitignored. See the using-git-worktrees skill for the standard procedure.
