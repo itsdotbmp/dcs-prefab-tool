@@ -499,6 +499,9 @@ end
 -- Dispatch a command from sms.commands to the group's controller. Wraps
 -- Group:getController():setCommand(cmd). Unlike set_task, no deferred
 -- dispatch — commands have no observed same-frame race.
+---@param g sms.group
+---@param cmd sms.commands.command
+---@return boolean
 sms.group.set_command = function(g, cmd)
   if type(cmd) ~= "table" or type(cmd._sms_verb) ~= "string" then
     log.warn("set_command: command must be built via sms.commands.* (missing _sms_verb)")
@@ -527,6 +530,9 @@ end
 -- Group:getController():setOption(id, value). Handles ROE category
 -- dispatch (resolves AI.Option.{Air,Ground,Naval}.id.ROE + numeric value
 -- via sms.options helpers).
+---@param g sms.group
+---@param opt sms.options.option
+---@return boolean
 sms.group.set_option = function(g, opt)
   if type(opt) ~= "table" or type(opt._sms_verb) ~= "string" then
     log.warn("set_option: option must be built via sms.options.* (missing _sms_verb)")

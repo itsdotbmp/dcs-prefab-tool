@@ -17,9 +17,23 @@ assert(type(sms.log)     == "table", "framework/log.lua must be loaded first")
 assert(type(sms.group)   == "table", "framework/group.lua must be loaded first")
 assert(type(sms.utils)   == "table", "framework/utils.lua must be loaded first")
 
+---@class sms.options
 sms.options = sms.options or {}
 
 local log = sms.log.module("sms.options")
+
+-- An option table built by an sms.options.* builder. Returned by all
+-- builders; consumed by sms.group.set_option. The id is nil for the ROE
+-- builder (resolved at apply time via _sms_roe + group category).
+---@class sms.options.option
+---@field id integer?
+---@field params any?
+---@field value string?
+---@field _sms_verb string?
+---@field _sms_air_only boolean?
+---@field _sms_ground_only boolean?
+---@field _sms_naval_only boolean?
+---@field _sms_roe boolean?
 
 local function _stamp(t, verb, air_only, ground_only, naval_only)
   t._sms_verb = verb
@@ -185,6 +199,8 @@ end
 -- ROE builder (special: id resolved at apply time via _sms_roe marker)
 -- ============================================================
 
+---@param value string  # sms.options.ROE.* enum string
+---@return sms.options.option|nil
 sms.options.roe = function(value)
   if type(value) ~= "string" then
     log.warn("roe: value must be a string, got " .. type(value))
@@ -205,6 +221,8 @@ end
 -- Air-only enum builders
 -- ============================================================
 
+---@param value string  # sms.options.REACTION_ON_THREAT.* enum string
+---@return sms.options.option|nil
 sms.options.reaction_on_threat = function(value)
   if type(value) ~= "string" or _reaction_on_threat[value] == nil then
     log.warn("reaction_on_threat: unknown or invalid value '" .. tostring(value) .. "'")
@@ -216,6 +234,8 @@ sms.options.reaction_on_threat = function(value)
   }, "reaction_on_threat", true)
 end
 
+---@param value string  # sms.options.RADAR_USING.* enum string
+---@return sms.options.option|nil
 sms.options.radar_using = function(value)
   if type(value) ~= "string" or _radar_using[value] == nil then
     log.warn("radar_using: unknown or invalid value '" .. tostring(value) .. "'")
@@ -227,6 +247,8 @@ sms.options.radar_using = function(value)
   }, "radar_using", true)
 end
 
+---@param value string  # sms.options.FLARE_USING.* enum string
+---@return sms.options.option|nil
 sms.options.flare_using = function(value)
   if type(value) ~= "string" or _flare_using[value] == nil then
     log.warn("flare_using: unknown or invalid value '" .. tostring(value) .. "'")
@@ -244,6 +266,8 @@ end
 
 -- formation accepts either a sms.options.FORMATION string preset or a raw
 -- DCS packed integer (escape hatch for formations not in the preset list).
+---@param value string|integer  # sms.options.FORMATION.* preset or DCS packed integer
+---@return sms.options.option|nil
 sms.options.formation = function(value)
   local packed
   if type(value) == "number" then
@@ -265,6 +289,8 @@ sms.options.formation = function(value)
 end
 
 -- Spacing in meters between formation members.
+---@param meters number  # non-negative
+---@return sms.options.option|nil
 sms.options.formation_interval = function(meters)
   if type(meters) ~= "number" or meters < 0 then
     log.warn("formation_interval: meters must be a non-negative number")
@@ -280,6 +306,9 @@ end
 -- Air-only boolean builders
 -- ============================================================
 
+---@param verb string
+---@param dcs_id integer
+---@return fun(value: boolean): sms.options.option|nil
 local function _make_bool_air_option(verb, dcs_id)
   return function(value)
     if type(value) ~= "boolean" then
@@ -302,6 +331,8 @@ sms.options.landing_overhead_break  = _make_bool_air_option("landing_overhead_br
 -- waypoint_pass_report flips the user-facing semantics: DCS exposes this
 -- as PROHIBIT_WP_PASS_REPORT (inverted). We expose `true = report` and
 -- invert internally so users don't think backwards.
+---@param value boolean
+---@return sms.options.option|nil
 sms.options.waypoint_pass_report = function(value)
   if type(value) ~= "boolean" then
     log.warn("waypoint_pass_report: value must be a boolean, got " .. type(value))
@@ -318,6 +349,9 @@ end
 -- Defaults to {"Air"} when nil/empty (matches MOOSE).
 -- ============================================================
 
+---@param verb string
+---@param dcs_id integer
+---@return fun(attrs: string[]|string|nil): sms.options.option|nil
 local function _make_radio_option(verb, dcs_id)
   return function(attrs)
     if attrs == nil then attrs = { "Air" } end
@@ -344,6 +378,8 @@ sms.options.radio_kill    = _make_radio_option("radio_kill",    AI.Option.Air.id
 -- Ground-only builders
 -- ============================================================
 
+---@param value string  # sms.options.ALARM_STATE.* enum string
+---@return sms.options.option|nil
 sms.options.alarm_state = function(value)
   if type(value) ~= "string" or _alarm_state[value] == nil then
     log.warn("alarm_state: unknown or invalid value '" .. tostring(value) .. "'")
@@ -356,6 +392,8 @@ sms.options.alarm_state = function(value)
 end
 
 -- DCS takes seconds (integer). 0 disables; positive value sets duration.
+---@param seconds number  # non-negative; 0 disables
+---@return sms.options.option|nil
 sms.options.disperse_on_attack = function(seconds)
   if type(seconds) ~= "number" or seconds < 0 then
     log.warn("disperse_on_attack: seconds must be a non-negative number")

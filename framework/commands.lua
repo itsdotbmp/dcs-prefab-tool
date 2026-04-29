@@ -15,9 +15,19 @@ assert(type(sms.log)     == "table", "framework/log.lua must be loaded first")
 assert(type(sms.group)   == "table", "framework/group.lua must be loaded first")
 assert(type(sms.utils)   == "table", "framework/utils.lua must be loaded first")
 
+---@class sms.commands
 sms.commands = sms.commands or {}
 
 local log = sms.log.module("sms.commands")
+
+-- A command table built by an sms.commands.* builder. Returned by all
+-- builders; consumed by sms.group.set_command. The _sms_* fields are
+-- private metadata used by the apply path.
+---@class sms.commands.command
+---@field id string
+---@field params table
+---@field _sms_verb string?
+---@field _sms_air_only boolean?
 
 -- Stamp a command table with the framework's private markers.
 -- Returns the same table for fluent use.
@@ -103,11 +113,14 @@ sms.commands.CALLSIGN = {
 -- ============================================================
 
 -- No-op command. Useful for clearing a queued command.
+---@return sms.commands.command
 sms.commands.no_action = function()
   return _stamp({ id = "NoAction", params = {} }, "no_action", false)
 end
 
 -- Toggle visibility to AI sensors.
+---@param value boolean
+---@return sms.commands.command|nil
 sms.commands.set_invisible = function(value)
   if type(value) ~= "boolean" then
     log.warn("set_invisible: value must be a boolean, got " .. type(value))
@@ -117,6 +130,8 @@ sms.commands.set_invisible = function(value)
 end
 
 -- Toggle damage immunity.
+---@param value boolean
+---@return sms.commands.command|nil
 sms.commands.set_immortal = function(value)
   if type(value) ~= "boolean" then
     log.warn("set_immortal: value must be a boolean, got " .. type(value))
@@ -126,6 +141,8 @@ sms.commands.set_immortal = function(value)
 end
 
 -- Halt or resume the group's route.
+---@param value boolean
+---@return sms.commands.command|nil
 sms.commands.stop_route = function(value)
   if type(value) ~= "boolean" then
     log.warn("stop_route: value must be a boolean, got " .. type(value))
@@ -135,6 +152,8 @@ sms.commands.stop_route = function(value)
 end
 
 -- Switch to a triggered action by index.
+---@param action_index number
+---@return sms.commands.command|nil
 sms.commands.switch_action = function(action_index)
   if type(action_index) ~= "number" then
     log.warn("switch_action: action_index must be a number, got " .. type(action_index))
@@ -147,6 +166,8 @@ sms.commands.switch_action = function(action_index)
 end
 
 -- Toggle unlimited fuel on aircraft.
+---@param value boolean
+---@return sms.commands.command|nil
 sms.commands.set_unlimited_fuel = function(value)
   if type(value) ~= "boolean" then
     log.warn("set_unlimited_fuel: value must be a boolean, got " .. type(value))
@@ -160,6 +181,9 @@ end
 
 -- Toggle EPLRS datalink. group_id is optional; when omitted, DCS uses the
 -- group the command is applied to.
+---@param value boolean
+---@param group_id number?
+---@return sms.commands.command|nil
 sms.commands.eplrs = function(value, group_id)
   if type(value) ~= "boolean" then
     log.warn("eplrs: value must be a boolean, got " .. type(value))
@@ -181,6 +205,10 @@ end
 -- Set the group's radio frequency. modulation is sms.commands.MODULATION.AM
 -- (default) or .FM. power is optional (W); DCS picks a reasonable default
 -- when nil.
+---@param hz number
+---@param modulation number?  # sms.commands.MODULATION.AM (default) or .FM
+---@param power number?       # watts
+---@return sms.commands.command|nil
 sms.commands.set_frequency = function(hz, modulation, power)
   if type(hz) ~= "number" then
     log.warn("set_frequency: hz must be a number, got " .. type(hz))
@@ -201,6 +229,11 @@ sms.commands.set_frequency = function(hz, modulation, power)
 end
 
 -- Per-unit variant; unit_id is the integer DCS unit id.
+---@param hz number
+---@param modulation number?  # sms.commands.MODULATION.AM (default) or .FM
+---@param power number?       # watts
+---@param unit_id number      # DCS unit id
+---@return sms.commands.command|nil
 sms.commands.set_frequency_for_unit = function(hz, modulation, power, unit_id)
   if type(hz) ~= "number" then
     log.warn("set_frequency_for_unit: hz must be a number, got " .. type(hz))
@@ -229,6 +262,9 @@ end
 -- ============================================================
 
 -- Jump from waypoint index `from_idx` to `to_idx` (DCS uses 0-based).
+---@param from_idx number
+---@param to_idx number
+---@return sms.commands.command|nil
 sms.commands.switch_waypoint = function(from_idx, to_idx)
   if type(from_idx) ~= "number" or type(to_idx) ~= "number" then
     log.warn("switch_waypoint: both indices must be numbers")
@@ -247,6 +283,9 @@ end
 -- Set the AI radio callsign. callname is a numeric DCS callname enum
 -- (sms.commands.CALLSIGN.* or any DCS Aircraft.id integer). number is the
 -- flight number (default 1).
+---@param callname number  # sms.commands.CALLSIGN.* or DCS Aircraft.id integer
+---@param number number?   # flight number, default 1
+---@return sms.commands.command|nil
 sms.commands.set_callsign = function(callname, number)
   if type(callname) ~= "number" then
     log.warn("set_callsign: callname must be a number, got " .. type(callname))
@@ -278,6 +317,19 @@ end
 --   mode_channel (string, optional) — "X" or "Y"
 --   aa        (boolean, optional) — air-to-air mode
 --   bearing   (boolean, optional) — bearing info enable
+---@class sms.commands.activate_beacon_opts
+---@field type number          # sms.commands.BEACON.TYPE.* (or DCS int)
+---@field system number        # sms.commands.BEACON.SYSTEM.* (or DCS int)
+---@field frequency number     # Hz
+---@field callsign string?     # TACAN voice callsign, e.g. "TEX"
+---@field name string?         # beacon name (defaults to "")
+---@field unit_id number?      # host unit id
+---@field channel number?      # TACAN channel number
+---@field mode_channel string? # "X" or "Y"
+---@field aa boolean?          # air-to-air mode
+---@field bearing boolean?     # bearing info enable
+---@param opts sms.commands.activate_beacon_opts
+---@return sms.commands.command|nil
 sms.commands.activate_beacon = function(opts)
   if type(opts) ~= "table" then
     log.warn("activate_beacon: opts must be a table")
@@ -311,6 +363,7 @@ sms.commands.activate_beacon = function(opts)
 end
 
 -- Deactivate any active beacon.
+---@return sms.commands.command
 sms.commands.deactivate_beacon = function()
   return _stamp({ id = "DeactivateBeacon", params = {} }, "deactivate_beacon", true)
 end
@@ -320,6 +373,9 @@ end
 -- ============================================================
 
 -- Aircraft Carrier Landing System.
+---@param unit_id number?
+---@param name string?
+---@return sms.commands.command|nil
 sms.commands.activate_acls = function(unit_id, name)
   if unit_id ~= nil and type(unit_id) ~= "number" then
     log.warn("activate_acls: unit_id must be a number when given, got " .. type(unit_id))
@@ -335,11 +391,16 @@ sms.commands.activate_acls = function(unit_id, name)
   return _stamp({ id = "ActivateACLS", params = params }, "activate_acls", true)
 end
 
+---@return sms.commands.command
 sms.commands.deactivate_acls = function()
   return _stamp({ id = "DeactivateACLS", params = {} }, "deactivate_acls", true)
 end
 
 -- Instrument Carrier Landing System.
+---@param channel number
+---@param unit_id number?
+---@param callsign string?
+---@return sms.commands.command|nil
 sms.commands.activate_icls = function(channel, unit_id, callsign)
   if type(channel) ~= "number" then
     log.warn("activate_icls: channel must be a number, got " .. type(channel))
@@ -359,11 +420,16 @@ sms.commands.activate_icls = function(channel, unit_id, callsign)
   return _stamp({ id = "ActivateICLS", params = params }, "activate_icls", true)
 end
 
+---@return sms.commands.command
 sms.commands.deactivate_icls = function()
   return _stamp({ id = "DeactivateICLS", params = {} }, "deactivate_icls", true)
 end
 
 -- Link 4 datalink.
+---@param frequency number
+---@param unit_id number?
+---@param callsign string?
+---@return sms.commands.command|nil
 sms.commands.activate_link4 = function(frequency, unit_id, callsign)
   if type(frequency) ~= "number" then
     log.warn("activate_link4: frequency must be a number, got " .. type(frequency))
@@ -383,6 +449,7 @@ sms.commands.activate_link4 = function(frequency, unit_id, callsign)
   return _stamp({ id = "ActivateLink4", params = params }, "activate_link4", true)
 end
 
+---@return sms.commands.command
 sms.commands.deactivate_link4 = function()
   return _stamp({ id = "DeactivateLink4", params = {} }, "deactivate_link4", true)
 end
