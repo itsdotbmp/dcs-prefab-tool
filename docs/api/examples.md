@@ -12,7 +12,7 @@ For per-module reference see the [API index](README.md). For the dense surface m
 
 **Scenario** — A blue CAP and a red CAP are airborne with rules of engagement set to *Weapons Hold*. As soon as the two flights close to within 20 nautical miles, blue is cleared to *Weapons Free*. Used a lot for training scenarios where you want a known engagement geometry.
 
-**Modules used** — [`sms.group`](group.md), [`sms.task`](task.md), [`sms.timer`](timer.md), [`sms.utils`](utils.md). ROE itself is **not yet wrapped** by the framework — see the note at the end of this recipe.
+**Modules used** — [`sms.group`](group.md), [`sms.task`](task.md), [`sms.options`](options.md), [`sms.timer`](timer.md), [`sms.utils`](utils.md).
 
 ```lua
 -- Spawn the two CAPs.
@@ -40,18 +40,9 @@ red_cap:set_task(sms.task.orbit({x = 50000, y = 0, z = 0}, {
   altitude = 7500, speed = 220, pattern = "Circle",
 }))
 
--- ROE constants (vanilla DCS — see note below).
-local ROE_WEAPON_HOLD = 4
-local ROE_WEAPON_FREE = 0
-
-local function set_roe(g, value)
-  local raw = Group.getByName(g:get_name())
-  if not raw then return end
-  raw:getController():setOption(0 --[[ AI.Option.Air.id.ROE ]], value)
-end
-
-set_roe(blue_cap, ROE_WEAPON_HOLD)
-set_roe(red_cap,  ROE_WEAPON_HOLD)
+-- Both sides start with weapons hold.
+blue_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
+red_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
 
 -- Poll once per second; convert 20 NM to meters once.
 local TRIGGER_RANGE_M = sms.utils.feet_to_meters(20 * 6076)   -- 20 NM ≈ 37 040 m
@@ -63,14 +54,12 @@ sms.timer.every(1.0, function()
 
   local d = sms.utils.vec3_distance(blue_cap:get_position(), red_cap:get_position())
   if d and d <= TRIGGER_RANGE_M then
-    set_roe(blue_cap, ROE_WEAPON_FREE)
+    blue_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_FREE))
     sms.log.info(string.format("blue cleared hot at %.0f m", d))
     triggered = true
   end
 end)
 ```
-
-> **Framework gap** — `sms.group:set_roe(...)` does not exist yet. The recipe above falls back to vanilla `Group.getController():setOption(...)` per the [framework's gap-handling rule](../../AGENTS.md#1-the-prime-directive). A nice shape would be `sms.group:set_roe("hold" | "free" | "return_fire" | "weapon_hold")`. If this is a pattern you reach for often, file a GitHub issue — the framework only grows by surfacing these gaps.
 
 ---
 

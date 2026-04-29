@@ -38,6 +38,8 @@ local modules = {
   "events.lua",
   "weapon.lua",
   "task.lua",
+  "commands.lua",
+  "options.lua",
 }
 
 for _, name in ipairs(modules) do

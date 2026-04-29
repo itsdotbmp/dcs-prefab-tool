@@ -230,12 +230,14 @@ local function _is_task_table(t)
   return type(t) == "table" and type(t.id) == "string" and type(t.params) == "table"
 end
 
--- Categories DCS will honor an air-only task on.
-local _air_categories = { airplane = true, helicopter = true }
+-- Categories DCS will honor a flag-restricted command/option/task on.
+local _air_categories    = { airplane = true, helicopter = true }
+local _ground_categories = { ground = true }
+local _naval_categories  = { ship = true }
 
--- Shared validation for set_task and push_task. Returns the live DCS group
--- object on success, or nil after logging.
-local function _validate_apply(method, group_handle, task)
+-- Shared validation for set_task / push_task / set_command / set_option.
+-- Returns the live DCS group object on success, or nil after logging.
+local function _validate_apply(method, group_handle, payload)
   if not sms._is_handle_of(group_handle, sms.group) then
     log.warn(method .. ": first argument must be an sms.group handle")
     return nil
@@ -244,23 +246,53 @@ local function _validate_apply(method, group_handle, task)
     log.warn(method .. ": group '" .. tostring(group_handle.name) .. "' is not alive")
     return nil
   end
-  if not _is_task_table(task) then
+  if type(payload) ~= "table" then
+    log.warn(method .. ": payload must be a table")
+    return nil
+  end
+  -- For tasks (set_task / push_task), require the DCS shape (id+params).
+  -- For commands/options, the apply method has already done its own shape check.
+  if (method == "set_task" or method == "push_task") and not _is_task_table(payload) then
     log.warn(method .. ": task must be a table with 'id' (string) and 'params' (table) fields")
     return nil
   end
-  if task._sms_air_only then
+  if payload._sms_air_only then
     local cat = group_handle:get_category()
     if not _air_categories[cat] then
-      local verb = task._sms_verb or "task"
+      local verb = payload._sms_verb or "task"
       log.warn(method .. ": '" .. verb .. "' is air-only; group '" .. tostring(group_handle.name) .. "' is " .. tostring(cat) .. " — not applied")
       return nil
     end
   end
-  if task._sms_ground_only then
+  if payload._sms_ground_only then
     local cat = group_handle:get_category()
-    if cat ~= "ground" then
-      local verb = task._sms_verb or "task"
+    if not _ground_categories[cat] then
+      local verb = payload._sms_verb or "task"
       log.warn(method .. ": '" .. verb .. "' is ground-only; group '" .. tostring(group_handle.name) .. "' is " .. tostring(cat) .. " — not applied")
+      return nil
+    end
+  end
+  if payload._sms_naval_only then
+    local cat = group_handle:get_category()
+    if not _naval_categories[cat] then
+      local verb = payload._sms_verb or "task"
+      log.warn(method .. ": '" .. verb .. "' is naval-only; group '" .. tostring(group_handle.name) .. "' is " .. tostring(cat) .. " — not applied")
+      return nil
+    end
+  end
+  -- ROE option carries _sms_roe instead of a fixed category flag.
+  -- Defer to sms.options._validate_roe (loaded by options.lua) which knows
+  -- the per-category value tables. Resolved at call time so group.lua does
+  -- not need options.lua to be loaded first.
+  if payload._sms_roe then
+    if not (sms.options and type(sms.options._validate_roe) == "function") then
+      log.error(method .. ": _sms_roe payload but sms.options._validate_roe not loaded")
+      return nil
+    end
+    local cat = group_handle:get_category()
+    local ok, msg = sms.options._validate_roe(payload.value, cat)
+    if not ok then
+      log.warn(method .. ": " .. (msg or "roe validation failed") .. "; group '" .. tostring(group_handle.name) .. "' — not applied")
       return nil
     end
   end
@@ -457,6 +489,74 @@ sms.group.push_task = function(g, task)
       log.error("push_task: DCS rejected task for '" .. tostring(name) .. "' (deferred): " .. tostring(err))
     end
   end)
+  return true
+end
+
+-- ============================================================
+-- set_command (apply API for sms.commands builders)
+-- ============================================================
+
+-- Dispatch a command from sms.commands to the group's controller. Wraps
+-- Group:getController():setCommand(cmd). Unlike set_task, no deferred
+-- dispatch — commands have no observed same-frame race.
+sms.group.set_command = function(g, cmd)
+  if type(cmd) ~= "table" or type(cmd._sms_verb) ~= "string" then
+    log.warn("set_command: command must be built via sms.commands.* (missing _sms_verb)")
+    return false
+  end
+  local raw = _validate_apply("set_command", g, cmd)
+  if not raw then return false end
+  local ctrl = raw:getController()
+  if not ctrl then
+    log.warn("set_command: group '" .. tostring(g.name) .. "' has no controller")
+    return false
+  end
+  local ok, err = pcall(ctrl.setCommand, ctrl, { id = cmd.id, params = cmd.params })
+  if not ok then
+    log.error("set_command: DCS rejected command for '" .. tostring(g.name) .. "': " .. tostring(err))
+    return false
+  end
+  return true
+end
+
+-- ============================================================
+-- set_option (apply API for sms.options builders)
+-- ============================================================
+
+-- Dispatch an option from sms.options to the group's controller. Wraps
+-- Group:getController():setOption(id, value). Handles ROE category
+-- dispatch (resolves AI.Option.{Air,Ground,Naval}.id.ROE + numeric value
+-- via sms.options helpers).
+sms.group.set_option = function(g, opt)
+  if type(opt) ~= "table" or type(opt._sms_verb) ~= "string" then
+    log.warn("set_option: option must be built via sms.options.* (missing _sms_verb)")
+    return false
+  end
+  local raw = _validate_apply("set_option", g, opt)
+  if not raw then return false end
+  local ctrl = raw:getController()
+  if not ctrl then
+    log.warn("set_option: group '" .. tostring(g.name) .. "' has no controller")
+    return false
+  end
+  local id, value
+  if opt._sms_roe then
+    local category = g:get_category()
+    id    = sms.options._roe_resolve_for_category(category)
+    value = sms.options._roe_value_to_dcs(opt.value, category)
+    if not id or value == nil then
+      log.error("set_option: roe id/value resolution failed for category '" .. tostring(category) .. "'")
+      return false
+    end
+  else
+    id    = opt.id
+    value = opt.params
+  end
+  local ok, err = pcall(ctrl.setOption, ctrl, id, value)
+  if not ok then
+    log.error("set_option: DCS rejected option for '" .. tostring(g.name) .. "': " .. tostring(err))
+    return false
+  end
   return true
 end
 

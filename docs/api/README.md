@@ -21,6 +21,8 @@ After this, every `sms.*` symbol below is available.
 | Page | Module(s) | Summary |
 |---|---|---|
 | [`task.md`](task.md) | `sms.task` | Task-table builders (move, attack, bomb, orbit, FAC, escort, …) and the apply API on `sms.group`. |
+| [`commands.md`](commands.md) | `sms.commands` | One-shot controller commands (frequency, beacons, callsign, waypoint switch, etc.) and `group:set_command`. |
+| [`options.md`](options.md) | `sms.options` | Persistent controller options (ROE, alarm state, RTB on bingo, formation, …) and `group:set_option`. ROE dispatched per category. |
 | [`group.md`](group.md) | `sms.group` | Group entity wrapper, spawn factories (`create` / `clone`), event sugar, `set_task` / `push_task`. |
 | [`unit.md`](unit.md) | `sms.unit` | Unit entity wrapper. Position, heading, altitude, group lookup, event sugar, programmatic destroy. |
 | [`static.md`](static.md) | `sms.static` | Static-object wrapper plus `create` / `clone` factories. |
