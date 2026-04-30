@@ -192,6 +192,7 @@ For one-shot (re)loading of the whole framework in a mission, use [`framework/lo
 | `sms.unit` | `unit.lua` (+ `events.lua`) | [`docs/api/unit.md`](docs/api/unit.md) | Unit entity wrapper; `:connect` event sugar. |
 | `sms.area` | `area.lua` | [`docs/api/area.md`](docs/api/area.md) | Unified circle/polygon abstraction; ME zones, drawings, runtime construction. |
 | `sms.timer` | `timer.lua` | [`docs/api/timer.md`](docs/api/timer.md) | Sim-time scheduling: `after` / `every` / `now`. |
+| `sms.rule` | `rule.lua` | [`docs/api/rule.md`](docs/api/rule.md) | Declarative trigger rules; `once` / `continuous` / `toggle` lifecycle with orthogonal cooldown + sustain; per-rule timer; dev_condition bypass for instant testing. |
 | `sms.static` | `static.lua` | [`docs/api/static.md`](docs/api/static.md) | Static-object wrapper; `create` / `clone` factories. |
 | `sms.events` | `events.lua` | [`docs/api/events.md`](docs/api/events.md) | Pub/sub bus over DCS world events; entity-scoped sugar; user-emittable signals. |
 | `sms.weapon` | `weapon.lua` | [`docs/api/weapon.md`](docs/api/weapon.md) | Weapon-object wrapper from SHOT/HIT events; tracking lifecycle; impact reports. |

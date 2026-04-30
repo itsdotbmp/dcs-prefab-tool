@@ -10,7 +10,7 @@
 ## Repo layout
 
 - `tools/` — host-side Go tooling. Currently: a CLI (`dcs-sms.exe`) that executes Lua snippets in a running DCS mission and reads back structured results. Hook for DCS lives at `tools/lua/dcs-sms-hook.lua` and is embedded into the binary.
-- `framework/` — in-DCS Lua framework. Modules: `sms`, `sms.log`, `sms.utils`, `sms.targets`, `sms.designations`, `sms.group` (+ `sms.spawn` factories), `sms.unit`, `sms.area`, `sms.timer`, `sms.static`, `sms.events`, `sms.weapon`, `sms.task`, `sms.commands`, `sms.options`. See [`AGENTS.md`](AGENTS.md) for cross-cutting rules and conventions, or [`docs/api/`](docs/api/) for per-function detail.
+- `framework/` — in-DCS Lua framework. Modules: `sms`, `sms.log`, `sms.utils`, `sms.targets`, `sms.designations`, `sms.group` (+ `sms.spawn` factories), `sms.unit`, `sms.area`, `sms.timer`, `sms.rule`, `sms.static`, `sms.events`, `sms.weapon`, `sms.task`, `sms.commands`, `sms.options`. See [`AGENTS.md`](AGENTS.md) for cross-cutting rules and conventions, or [`docs/api/`](docs/api/) for per-function detail.
 - `docs/api/` — user-facing API reference, one page per module.
 - `docs/superpowers/specs/` — design documents for each sub-project.
 - `docs/superpowers/plans/` — implementation plans.

@@ -35,6 +35,7 @@ local modules = {
   "unit.lua",
   "area.lua",
   "timer.lua",
+  "rule.lua",
   "group_spawn.lua",
   "static.lua",
   "events.lua",
