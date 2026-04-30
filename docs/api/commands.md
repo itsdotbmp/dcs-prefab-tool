@@ -4,7 +4,7 @@
 
 Each builder returns a plain DCS-shaped command table `{id = ..., params = ...}` with a private `_sms_verb` tag (and optionally `_sms_air_only`) that the apply layer uses for log messages and category enforcement. The apply step is [`group:set_command(cmd)`](#applying-a-command).
 
-All builders follow the framework's [failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw) — log + return `nil` on bad input; never throw. The dense surface map is in [`AGENTS.md` §7](../../AGENTS.md#7-sms-quick-reference-dense).
+All builders follow the framework's [failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw) — log + return `nil` on bad input; never throw.
 
 ## Loading
 

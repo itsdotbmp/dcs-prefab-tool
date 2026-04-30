@@ -2,7 +2,7 @@
 
 `sms.events` is a pub/sub bus that wraps DCS's single-handler `world.addEventHandler` so multiple subscribers can listen to the same event independently. Every `world.event.S_EVENT_FOO` is mirrored as a lowercase string constant (`sms.events.FOO = "foo"`); user code can also `emit` arbitrary custom signals on the same bus. Subscribers always receive a normalized event payload — `initiator` and `target` are wrapped `sms.unit` handles, even when the underlying unit is already dead.
 
-This page links to the canonical surface map in [`AGENTS.md` §7](../../AGENTS.md#7-module-by-module-reference). Failure semantics for every function on this page follow the [framework failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw): bad input is logged and `nil` (or `false`) is returned — nothing throws.
+This page is the canonical reference for `sms.events`. Failure semantics for every function on this page follow the [framework failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw): bad input is logged and `nil` (or `false`) is returned — nothing throws.
 
 ## Loading
 
@@ -285,4 +285,3 @@ end)
 - [`group.md`](group.md) — `group_handle:connect` and the DEAD last-unit latch.
 - [`weapon.md`](weapon.md) — `WEAPON_IMPACT` payload and tracking lifecycle.
 - [`timer.md`](timer.md) — `sms.timer.now()` is handy for stamping custom emit payloads.
-- [`AGENTS.md` §7](../../AGENTS.md#7-module-by-module-reference) — dense surface map.

@@ -7,7 +7,7 @@ Every builder returns a plain DCS task table (so manually-built tasks remain val
 - `_sms_verb` — string used in apply-layer log messages.
 - `_sms_air_only` / `_sms_ground_only` — category gates. [`set_task`](#groupset_tasktask--bool) and [`push_task`](#grouppush_tasktask--bool) reject category mismatches with a logged `false`. Manually-built tables (no `_sms_*` tags) skip the check — that is the user's responsibility.
 
-For the dense surface map see [`AGENTS.md` §7](../../AGENTS.md#smstask--frameworktasklua). The failure model — log + return `nil` (builders) or `false` (apply), never throw — is described in [`AGENTS.md` §3](../../AGENTS.md#3-failure-model-log--nil-never-throw); it is **not** restated per-function below.
+The framework failure model — log + return `nil` (builders) or `false` (apply), never throw — is described in [`AGENTS.md` §3](../../AGENTS.md#3-failure-model-log--nil-never-throw); it is **not** restated per-function below.
 
 ## Loading
 

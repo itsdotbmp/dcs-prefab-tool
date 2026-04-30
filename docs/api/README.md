@@ -2,7 +2,7 @@
 
 Per-module reference with worked code examples. Inspired by Autodesk Maya's MEL / Python command docs: every public function gets a signature, a description, an arguments table, a return value, and at least one runnable example.
 
-For the dense surface map (every symbol on a single page), see [`AGENTS.md`](../../AGENTS.md). For copy-and-paste recipes that combine multiple modules, see [`examples.md`](examples.md).
+For the framework's cross-cutting rules (failure model, conventions, handle pattern, loading order), see [`AGENTS.md`](../../AGENTS.md). For copy-and-paste recipes that combine multiple modules, see [`examples.md`](examples.md).
 
 ## Loading the framework
 

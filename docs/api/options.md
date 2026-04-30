@@ -4,7 +4,7 @@
 
 The module is a near carbon-copy of [`sms.task`](task.md)'s build/apply split, with **one deviation**: ROE cannot resolve to a single DCS option `id` at build time, because `AI.Option.Air.id.ROE`, `AI.Option.Ground.id.ROE`, and `AI.Option.Naval.id.ROE` are three different ints with three different value sets. [`sms.options.roe`](#smsoptionsroevalue--option) returns an `id`-less table tagged with `_sms_roe = true`; the apply layer reads the group's category and dispatches to the right DCS enum + value table. This is documented in detail under [ROE category dispatch](#roe-category-dispatch).
 
-For the dense surface map see [`AGENTS.md` §7](../../AGENTS.md#smsoptions--frameworkoptionslua). The failure model — log + return `nil` (builders) or `false` (apply), never throw — is described in [`AGENTS.md` §3](../../AGENTS.md#3-failure-model-log--nil-never-throw); it is **not** restated per-function below.
+The framework failure model — log + return `nil` (builders) or `false` (apply), never throw — is described in [`AGENTS.md` §3](../../AGENTS.md#3-failure-model-log--nil-never-throw); it is **not** restated per-function below.
 
 ## Loading
 

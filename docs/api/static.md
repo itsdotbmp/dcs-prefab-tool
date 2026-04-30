@@ -6,7 +6,7 @@ All public calls follow the [framework failure model](../../AGENTS.md#3-failure-
 
 > **Heads up — `is_alive` semantics differ from [`sms.unit`](unit.md).** Statics spawned with `dead = true` are still addressable via `StaticObject.getByName` even though `:isExist()` returns `false` (they're in the world as wreckage). This module gates on `getByName`-presence so dead-spawned wreckage statics remain usable through the framework — see [`is_alive`](#smsstaticis_alives--bool) below for the rationale.
 
-See also: [`AGENTS.md` §5](../../AGENTS.md#5-entity-handles--the-universal-pattern), [`AGENTS.md` §7 sms.static](../../AGENTS.md#smsstatic--frameworkstaticlua), [`AGENTS.md` §9 Spawning statics](../../AGENTS.md#9-spawning-statics).
+See also: [`AGENTS.md` §3 failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw), [`AGENTS.md` §4 conventions](../../AGENTS.md#4-conventions-and-units), [`AGENTS.md` §5 entity handles](../../AGENTS.md#5-entity-handles--the-universal-pattern).
 
 ## Loading
 
@@ -265,4 +265,3 @@ end
 - [`sms.group`](group.md) — group entity wrapper and group-level spawn factories.
 - [`sms.area`](area.md) — `area:is_static_in(static_handle)` for containment tests.
 - [`sms.utils`](utils.md) — `resolve_country`, `is_vec3`, `coalition_int_to_str`, `deg_to_rad` (used internally by this module).
-- [`AGENTS.md` §9 Spawning statics](../../AGENTS.md#9-spawning-statics) — dense surface map for the same material.

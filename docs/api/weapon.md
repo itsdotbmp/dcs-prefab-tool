@@ -21,8 +21,7 @@ extrapolated via `land.getIP` along the last-known forward axis (with
 last-known position as fallback), the per-handle `on_impact` callback fires,
 and a `sms.events.WEAPON_IMPACT` signal is emitted on the bus.
 
-This page documents the framework surface for `sms.weapon`. For the dense
-one-page surface map, see [AGENTS.md §7](../../AGENTS.md#7-module-reference).
+This page is the canonical reference for `sms.weapon`. For the cross-cutting rules every method follows, see [AGENTS.md §3 failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw), [§4 conventions](../../AGENTS.md#4-conventions-and-units), and [§5 entity handles](../../AGENTS.md#5-entity-handles--the-universal-pattern).
 All public calls follow the [framework failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw)
 — bad input or wrong-state calls log via `[sms.weapon]` and return `nil` /
 `false` rather than throwing. Silent-nil paths (calls that legitimately return
@@ -484,4 +483,3 @@ end)
 - [`sms.static`](static.md) — alternative target handle type.
 - [`sms.timer`](timer.md) — the polling primitive `start_tracking` uses.
 - [`sms.area`](area.md) — for filtering events by geographic region.
-- [AGENTS.md §7 sms.weapon](../../AGENTS.md#smsweapon--frameworkweaponlua) — dense surface map.

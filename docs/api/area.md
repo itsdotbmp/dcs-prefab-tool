@@ -9,7 +9,7 @@ Unified abstraction over "an area on the map." A handle wraps either a **circle*
 
 **All four sources produce handles with the same method surface.** Once you have a handle you don't need to care where it came from — `:is_vec3_in`, `:is_unit_in`, `:get_random_point`, etc. all work the same way. Two methods are kind-specific: `:get_radius` is circles-only, `:get_vertices` is polygons-only; calling either on the wrong kind logs and returns nil.
 
-A handle carries `kind` (`"circle"` or `"polygon"`) and a name (`string | nil` — anonymous runtime areas are allowed). See [`AGENTS.md` §5](../../AGENTS.md#5-entity-handles--the-universal-pattern) for the universal handle pattern and [§7 `sms.area`](../../AGENTS.md#smsarea--frameworkarealua) for the dense surface map.
+A handle carries `kind` (`"circle"` or `"polygon"`) and a name (`string | nil` — anonymous runtime areas are allowed). See [`AGENTS.md` §5](../../AGENTS.md#5-entity-handles--the-universal-pattern) for the universal handle pattern.
 
 All functions on this page follow the [framework failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw): bad input is logged and the function returns `nil` (or `false` for predicates). Nothing throws.
 

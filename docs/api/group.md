@@ -1,6 +1,6 @@
 # `sms.group` — group entity wrapper, spawn factories, event sugar
 
-A *group* is the DCS-native unit of organization for AI: every unit belongs to a group, and most AI behavior (route, task, ROE) is set at the group level. `sms.group` wraps DCS's `Group.*` calls in the framework's [callable-handle pattern](../../AGENTS.md#5-entity-handles--the-universal-pattern) and adds runtime spawn factories (`create` / `clone`), event sugar (`g:connect`), and the apply API for [`sms.task`](task.md) builders.
+A *group* is the DCS-native unit of organization for AI: every unit belongs to a group, and most AI behavior (route, task, ROE) is set at the group level. `sms.group` wraps DCS's `Group.*` calls in the framework's [callable-handle pattern](../../AGENTS.md#5-entity-handles--the-universal-pattern) and adds runtime spawn factories (`create` / `clone`), event sugar (`g:connect`), and the apply API for [`sms.task`](task.md) / [`sms.commands`](commands.md) / [`sms.options`](options.md) builders.
 
 A handle is a tiny `{name = ...}` table — cheap to build and discard. Handles do **not** cache: every method re-resolves the group through DCS, so a handle stays correct after the underlying group dies (`:is_alive()` flips to false). All methods accept either a handle or a raw name string.
 
@@ -324,5 +324,4 @@ sms.group.clone("LATE_ACTIVATED_TEMPLATE", { name = "spawned-instance" })
 - [`sms.task`](task.md) — task builders; `g:set_task` / `g:push_task` apply them.
 - [`sms.events`](events.md) — `g:connect` is sugar over `sms.events.connect` with group-scoped filtering and the DEAD-event last-unit latch.
 - [`sms.area`](area.md) — `area:is_any_of_group_in(g)` / `area:is_all_of_group_in(g)` for containment tests.
-- [`AGENTS.md` §7 `sms.group`](../../AGENTS.md#smsgroup--frameworkgrouplua--spawnlua-eventslua) — dense surface map.
-- [`AGENTS.md` §8 Spawning groups](../../AGENTS.md#8-spawning-groups) — spawn-flow rationale and gotchas.
+- [`AGENTS.md` §3 failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw), [§4 conventions](../../AGENTS.md#4-conventions-and-units), [§5 entity handles](../../AGENTS.md#5-entity-handles--the-universal-pattern) — cross-cutting rules every method follows.

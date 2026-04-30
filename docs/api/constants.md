@@ -2,7 +2,7 @@
 
 This page consolidates the four small foundational pieces of dcs-sms: the root namespace itself (`sms`), the two constants tables (`sms.targets` and `sms.designations`) used by task builders, and the framework bootstrap loader (`framework/load_all.lua`).
 
-For the overarching error-handling contract that every function below participates in, see the [framework failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw). Dense surface map: [`AGENTS.md` §6–§7](../../AGENTS.md).
+For the overarching error-handling contract that every function below participates in, see the [framework failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw). For the framework's loading order and module index, see [`AGENTS.md` §6](../../AGENTS.md#6-loading-order) and [§7](../../AGENTS.md#7-module-index).
 
 ## Loading
 
