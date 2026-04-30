@@ -101,7 +101,19 @@ local function _register(handle)
   local existing = sms.rule._rules[handle.name]
   if existing then
     log.info("replacing existing rule '" .. handle.name .. "'")
-    sms.rule.stop(existing)
+    -- Stop the existing rule directly via its timer field rather than
+    -- going through sms.rule.stop, which would identity-check the old
+    -- handle against the current _handle_mt. Across a dofile() reload of
+    -- this file, _handle_mt is a fresh table and old handles have the
+    -- previous load's metatable; sms.rule.stop would silently refuse to
+    -- evict them and we'd leak orphaned timers. The timer_handle field
+    -- still works because sms.timer's own dispatch uses its own metatable.
+    if existing.timer_handle then
+      pcall(function() existing.timer_handle:stop() end)
+    end
+    existing.registered = false
+    sms.rule._rules[handle.name] = nil
+    _remove_from_order(handle.name)
   end
   sms.rule._rules[handle.name] = handle
   table.insert(sms.rule._order, handle.name)
@@ -136,7 +148,13 @@ local function _do_fire(handle, via_dev, via_manual)
     -- Throws never update last_fire_time and never unregister ONCE.
     return false
   end
-  handle.last_fire_time = sms.timer.now()
+  -- Dev-only fires (dev_condition path) do NOT update last_fire_time:
+  -- dev mode is meant to be invisible to the production state machine.
+  -- Manual fires (r:fire()) DO update it so subsequent natural fires
+  -- still respect cooldown (spec D9).
+  if (not via_dev) or via_manual then
+    handle.last_fire_time = sms.timer.now()
+  end
   if handle.type == sms.rule.TYPE.ONCE then
     sms.rule.stop(handle)
   end
@@ -146,6 +164,8 @@ end
 -- Per-rule scheduler tick. Implements the canonical state machine from
 -- the spec ("State machine (canonical)" section).
 local function _tick(handle)
+  local now = sms.timer.now()
+
   -- dev_condition first: truthy bypasses sustain + cooldown.
   local ok_dev, v_dev = pcall(handle.dev_condition)
   if not ok_dev then
@@ -168,9 +188,9 @@ local function _tick(handle)
   local effective
   if v_real then
     if handle.sustain_start == nil then
-      handle.sustain_start = sms.timer.now()
+      handle.sustain_start = now
     end
-    effective = (sms.timer.now() - handle.sustain_start) >= handle.sustain
+    effective = (now - handle.sustain_start) >= handle.sustain
   else
     handle.sustain_start = nil
     effective = false
@@ -207,6 +227,13 @@ local function _start_timer(handle)
       return false
     end
     _tick(handle)
+    -- A ONCE rule (or a rule explicitly stopped from inside its own
+    -- action) is unregistered during _tick; tell sms.timer cleanly via
+    -- the documented self-cancel return so it doesn't try to reschedule
+    -- a function that was just removeFunction-ed.
+    if not handle.registered then
+      return false
+    end
   end)
 end
 
@@ -334,7 +361,7 @@ sms.rule.is_active = function(r)
   local h = _resolve_handle(r)
   if not h then return false end
   if h.type == sms.rule.TYPE.TOGGLE then
-    return h.active
+    return h.registered == true and h.active
   end
   return h.registered == true
 end
