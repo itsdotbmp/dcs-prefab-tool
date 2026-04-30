@@ -30,6 +30,7 @@ After this, every `sms.*` symbol below is available.
 | [`weapon.md`](weapon.md) | `sms.weapon` | Weapon-from-event wrapper with tracking lifecycle and impact extrapolation. |
 | [`events.md`](events.md) | `sms.events` | DCS world-event bus, normalized payloads, entity-scoped `:connect`. |
 | [`timer.md`](timer.md) | `sms.timer` | `after` / `every` / `now`, with handle methods for stop / inspect. |
+| [`rule.md`](rule.md) | `sms.rule` | Declarative trigger rules: once / continuous / toggle with cooldown + sustain knobs and a dev_condition escape hatch. |
 | [`utils.md`](utils.md) | `sms.utils` | Numeric helpers (deg/rad, ft/m), vec3 maths, country / coalition lookup. |
 | [`log.md`](log.md) | `sms.log` | Structured logging with four levels and per-module tagged loggers. |
 | [`constants.md`](constants.md) | `sms`, `sms.targets`, `sms.designations`, `load_all` | Root namespace, target-attribute constants, FAC designation constants, framework loader. |
