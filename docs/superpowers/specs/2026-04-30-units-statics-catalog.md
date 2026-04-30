@@ -135,7 +135,7 @@ Given parsed fields `folder`, `category`, `attribute[]` per entry, route as foll
 | `sms.units.armor.misc.<x>` | `category = "Armor"` AND none of the above match |
 | `sms.units.air_defence.sam.<x>` | `category = "Air Defence"` AND attributes include any of `"SAM LL"`, `"SAM SR"`, `"SAM TR"`, `"AA_missile"`, `"LR SAM"`, `"SR SAM"` AND not `"AAA"`, not `"MANPADS"` |
 | `sms.units.air_defence.aaa.<x>` | `category = "Air Defence"` AND attributes include `"AAA"` or `"AA_flak"` |
-| `sms.units.air_defence.radar.<x>` | `category = "Air Defence"` AND attributes include `"EWR"`, or the `Name` field starts with `"EWR "` (covers radar-only entries that have no shooting attribute) |
+| `sms.units.air_defence.radar.<x>` | `category = "Air Defence"` AND attributes include `"EWR"` |
 | `sms.units.air_defence.manpads.<x>` | `category = "Air Defence"` AND attributes include `"MANPADS"` or `"MANPADS AUX"` |
 | `sms.units.air_defence.misc.<x>` | `category = "Air Defence"` AND none of the above (catch-all for command vehicles, generators) |
 | `sms.units.artillery.<x>` | `category = "Artillery"` |
@@ -143,6 +143,8 @@ Given parsed fields `folder`, `category`, `attribute[]` per entry, route as foll
 | `sms.units.unarmed.<x>` | `category = "Unarmed"` |
 | `sms.units.missiles.<x>` | `category = "MissilesSS"` |
 | `sms.units.trains.<x>` | `category = "Carriage"` or `"Locomotive"` or `"Train"` |
+
+> Note: an earlier draft of this rule also matched on `Name` starting with `"EWR "` to catch radar-only entries lacking the `"EWR"` attribute. Verification against the dcs-lua-datamine shows every real radar entry carries the `"EWR"` attribute, so the `Name`-fallback was dropped to keep the classifier purely attribute-driven.
 
 **Ships (folder = `Ships`):** rules evaluate in table order; first match wins.
 

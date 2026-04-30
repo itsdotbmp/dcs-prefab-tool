@@ -16,7 +16,17 @@ type Bucket struct {
 func (b Bucket) IsZero() bool { return b == Bucket{} }
 
 // Classify routes an Entry into a Bucket per spec D8. Returns the zero
-// Bucket for entries that should be skipped (e.g. files under GT_t/).
+// Bucket in two cases:
+//
+//   - Explicit skip: entries from folders the catalog deliberately omits
+//     (currently only "GT_t", which is internal/generic table data).
+//   - Unrecognized folder: entries whose Folder doesn't match any known
+//     case. The orchestrator (genunits.Run) is expected to log a warning
+//     to stderr when this happens so future DCS additions surface clearly.
+//
+// The two cases are not currently distinguished in the return value;
+// callers that need to differentiate should check Folder against the
+// explicit-skip set first.
 func Classify(e Entry) Bucket {
 	switch e.Folder {
 	case "Planes":
