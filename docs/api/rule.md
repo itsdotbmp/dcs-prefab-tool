@@ -43,7 +43,7 @@ sms.rule("convoy_in_kz", {
   type      = sms.rule.TYPE.ONCE,
   interval  = 2,
   condition = function()
-    return sms.area("kill_zone"):contains_any_unit(sms.group("convoy"))
+    return sms.area("kill_zone"):is_any_of_group_in(sms.group("convoy"))
   end,
   action = function()
     sms.group("ambush_armor"):activate()
@@ -168,7 +168,7 @@ sms.rule("helicopter_height", {
   dev_condition = function() return MIZ.helicopter_height end,
   condition = function()
     for _, grp in ipairs(choppers) do
-      if grp:is_alive() and kz:contains_any_unit(grp) then
+      if grp:is_alive() and kz:is_any_of_group_in(grp) then
         for _, unit in ipairs(grp:get_units()) do
           if unit:get_altitude(true) > sms.utils.feet_to_meters(200) then
             return true
