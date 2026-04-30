@@ -11,61 +11,156 @@
 // complete design including classification rules (D8) and origin labels (D7).
 package genunits
 
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"time"
+)
+
 // Entry is one parsed datamine record — a single spawnable DCS type.
-// All fields except Type may be empty if the source file did not declare them;
-// classification rules are responsible for handling those gracefully.
 type Entry struct {
-	// Type is the verbatim DCS type-string used by coalition.addGroup
-	// (e.g. "F-16C_50", "T-72B", "Bunker"). Required.
-	Type string
-
-	// Category is the per-unit category field from the datamine
-	// (e.g. "Armor", "Air Defence", "Infantry", "Carriage").
-	// Empty for planes/helicopters/ships/statics — only ground entries set it.
-	Category string
-
-	// Attributes is the attribute array from the datamine (mixed-type;
-	// we keep only the string entries — numeric IDs at the front are dropped).
+	Type       string
+	Category   string
 	Attributes []string
-
-	// Origin is the _origin field, used to derive the comment label.
-	// Empty for base-game entries.
-	Origin string
-
-	// Folder is the top-level folder under _G/db/Units/ where the file lived
-	// (e.g. "Planes", "Cars", "Helicopters", "Ships", "Fortifications").
-	// Drives top-level routing in the classifier.
-	Folder string
-
-	// SourcePath is the absolute path of the datamine file the entry came
-	// from. Diagnostic-only — used in error messages.
+	Origin     string
+	Folder     string
 	SourcePath string
 }
 
 // Options configures a generator run.
 type Options struct {
-	// DatamineRoot is the path to the dcs-lua-datamine repo root
-	// (the directory that contains _G/).
-	DatamineRoot string
-
-	// OutDir is where framework/units.lua and framework/statics.lua are
-	// written. Typically <repo>/framework.
-	OutDir string
-
-	// Now is injected for deterministic test output. Production callers
-	// can leave it zero — Run will substitute time.Now().
-	Now string
-
-	// DatamineCommit is the dcs-lua-datamine git SHA for the header banner.
-	// May be empty.
-	DatamineCommit string
+	DatamineRoot   string // path to the dcs-lua-datamine repo root
+	OutDir         string // where framework/units.lua + statics.lua are written
+	Now            string // injected for test determinism; production: leave empty
+	DatamineCommit string // optional git SHA for the header banner
 }
 
-// Run executes the full pipeline. Returns the number of entries emitted to
-// each file (units, statics) and any error.
+// Run executes the full pipeline. Returns the count of entries written to
+// units.lua, statics.lua, and any error. Skipped entries (zero Bucket from
+// Classify) are not counted. Errors include unwritable output paths and any
+// I/O error from parsing.
 func Run(opts Options) (units, statics int, err error) {
-	// Implementation lands in Task 7 once parser, classifier, sanitizer,
-	// origin mapper, and emitter are in place. Stub for now so the package
-	// compiles and tests can import it.
-	return 0, 0, nil
+	if opts.DatamineRoot == "" {
+		return 0, 0, fmt.Errorf("genunits: DatamineRoot is required")
+	}
+	if opts.OutDir == "" {
+		return 0, 0, fmt.Errorf("genunits: OutDir is required")
+	}
+	now := opts.Now
+	if now == "" {
+		now = time.Now().UTC().Format(time.RFC3339)
+	}
+
+	entries, err := Walk(opts.DatamineRoot)
+	if err != nil {
+		return 0, 0, fmt.Errorf("genunits: walk: %w", err)
+	}
+
+	// Track unrecognized folders so we can warn once per folder rather than
+	// per-entry (a future DCS folder we haven't classified would otherwise
+	// produce hundreds of identical warnings).
+	unknownFolders := map[string]int{}
+	knownSkippedFolders := map[string]bool{
+		"GT_t": true, // explicit per spec D8 / classify.go
+	}
+
+	// Classify each entry. Skip zero-bucket entries; track unknown-folder
+	// occurrences for the post-walk warning.
+	type pending struct {
+		entry  Entry
+		bucket Bucket
+	}
+	var keep []pending
+	for _, e := range entries {
+		b := Classify(e)
+		if b.IsZero() {
+			if !knownSkippedFolders[e.Folder] {
+				unknownFolders[e.Folder]++
+			}
+			continue
+		}
+		keep = append(keep, pending{entry: e, bucket: b})
+	}
+
+	// Warn about unrecognized folders. Sort for deterministic output.
+	if len(unknownFolders) > 0 {
+		names := make([]string, 0, len(unknownFolders))
+		for name := range unknownFolders {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			fmt.Fprintf(os.Stderr,
+				"genunits: warning: skipped %d entries from unrecognized folder %q "+
+					"(add a Classify case for it in classify.go)\n",
+				unknownFolders[name], name)
+		}
+	}
+
+	// Resolve identifiers with collision handling. We sanitize within each
+	// (Top, Cat, Sub) bucket independently — a "T_72B" tank and a
+	// hypothetical "T-72B" something-else in another bucket can coexist.
+	bucketKey := func(b Bucket) string { return b.Top + "/" + b.Cat + "/" + b.Sub }
+	byBucket := map[string][]string{}
+	for _, p := range keep {
+		k := bucketKey(p.bucket)
+		byBucket[k] = append(byBucket[k], p.entry.Type)
+	}
+	identByTypeInBucket := map[string]map[string]string{}
+	for k, types := range byBucket {
+		sort.Strings(types)
+		identByTypeInBucket[k] = ResolveCollisions(types)
+	}
+
+	// Build the ClassifiedEntry slice for the emitter.
+	var classified []ClassifiedEntry
+	for _, p := range keep {
+		k := bucketKey(p.bucket)
+		ident := identByTypeInBucket[k][p.entry.Type]
+		classified = append(classified, ClassifiedEntry{
+			Bucket:      p.bucket,
+			Type:        p.entry.Type,
+			Identifier:  ident,
+			OriginLabel: OriginLabel(p.entry.Origin),
+		})
+	}
+
+	// Count + emit.
+	for _, c := range classified {
+		switch c.Bucket.Top {
+		case "units":
+			units++
+		case "statics":
+			statics++
+		}
+	}
+
+	if err := writeFile(filepath.Join(opts.OutDir, "units.lua"), func(w *os.File) error {
+		return EmitUnits(w, classified, opts.DatamineCommit, now)
+	}); err != nil {
+		return 0, 0, fmt.Errorf("genunits: write units.lua: %w", err)
+	}
+	if err := writeFile(filepath.Join(opts.OutDir, "statics.lua"), func(w *os.File) error {
+		return EmitStatics(w, classified, opts.DatamineCommit, now)
+	}); err != nil {
+		return 0, 0, fmt.Errorf("genunits: write statics.lua: %w", err)
+	}
+	return units, statics, nil
+}
+
+// writeFile creates the file at path and invokes write to fill it. The file
+// is closed before returning even if write returns an error.
+func writeFile(path string, write func(*os.File) error) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	werr := write(f)
+	cerr := f.Close()
+	if werr != nil {
+		return werr
+	}
+	return cerr
 }
