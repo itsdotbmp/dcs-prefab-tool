@@ -67,7 +67,7 @@ Top-level buckets are flat where the DCS taxonomy is flat (planes, helicopters, 
 - Replace every non-alphanumeric character with `_`.
 - Collapse runs of `_` to a single `_`.
 - If the result starts with a digit, prefix `_`.
-- If two entries sanitize to the same identifier, append `_2`, `_3`, etc. in source-file lexical order (deterministic).
+- If two entries sanitize to the same identifier, append `_2`, `_3`, etc. in lexical order of the raw DCS type-string (deterministic; independent of where the source files live in `dcs-lua-datamine`).
 
 Examples (verified against the data):
 
