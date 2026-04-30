@@ -76,7 +76,11 @@ end)
 local range  = sms.area.from_drawing("PracticeRange")
 local target = sms.static("Range-Target-Bullseye")
 
-sms.events.connect(sms.events.SHOT, function(evt)
+-- Defining the handler as a named local function (rather than inline
+-- inside `connect`) keeps the connect call readable and lets the
+-- handler be re-used or unit-tested independently. `range` and
+-- `target` are captured as upvalues.
+local function on_shot(evt)
   local weapon = evt.weapon
   if not weapon or not weapon:is_bomb() then return end
 
@@ -99,7 +103,9 @@ sms.events.connect(sms.events.SHOT, function(evt)
   end)
 
   weapon:start_tracking({rate = 30})
-end)
+end
+
+sms.events.connect(sms.events.SHOT, on_shot)
 ```
 
 `sms.events` upgrades `evt.weapon` to a tracking-capable handle automatically. `start_tracking` is idempotent, so this is safe even if the same weapon is somehow re-emitted.
@@ -196,7 +202,9 @@ local escort_task = sms.task.escort(strike, {
 cap:set_task(escort_task)
 
 -- Re-task the CAP to engage the shooter the moment the strike takes a hit.
-strike:connect(sms.events.HIT, function(evt)
+-- Pulling the handler out as a named function (with `cap` as an upvalue)
+-- reads more naturally than nesting it inside the `connect` call.
+local function on_strike_hit(evt)
   local shooter = evt.initiator
   if not shooter then return end
   local shooter_group = shooter:get_group()
@@ -204,7 +212,9 @@ strike:connect(sms.events.HIT, function(evt)
 
   sms.log.warn("[cap] strike hit by " .. shooter:get_name() .. " — engaging")
   cap:set_task(sms.task.attack(shooter_group, {weapon_type = "Auto"}))
-end)
+end
+
+strike:connect(sms.events.HIT, on_strike_hit)
 ```
 
 Note that `:set_task` *replaces* the active task — the CAP drops its escort the instant the new attack task is dispatched. Use [`:push_task`](task.md#grouppush_tasktask--bool) instead if you want the CAP to resume the escort after the engagement, but be aware of the LIFO caveats documented on `task.md`.
