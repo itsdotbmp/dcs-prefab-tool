@@ -113,6 +113,8 @@ The generator maps `_origin` raw values to human-readable labels:
 | `Mirage F1 Assets by Aerges` | `Mirage F1 Assets` | Drop author |
 | `Animals` | `Animals` | Stays as-is (separate addon) |
 | `NS430` | `NS430` | Stays |
+| `WWII Units` | `WWII Assets` | Older datamine alias for the same WWII content |
+| `TAVKR 1143 High Detail` | `TAVKR 1143` | Drop the "High Detail" suffix |
 
 Anything else (per-aircraft AI mods like `F-14B AI by Heatblur Simulations`, `Mi-24P AI by Eagle Dynamics`, the dozen+ similar entries) is treated as **base-equivalent** — no comment, not surfaced in `origin_of`. Rationale: these AI variants ship with the corresponding flyable module, which most users own; treating them as a dependency adds noise without value.
 

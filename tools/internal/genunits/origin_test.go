@@ -26,6 +26,8 @@ func TestOriginLabel(t *testing.T) {
 		{"Mirage F1 Assets by Aerges", "Mirage F1 Assets"},
 		{"Animals", "Animals"},
 		{"NS430", "NS430"},
+		{"WWII Units", "WWII Assets"},
+		{"TAVKR 1143 High Detail", "TAVKR 1143"},
 
 		// Per-aircraft AI mods → no label (treated as base-equivalent per D7)
 		{"F-14B AI by Heatblur Simulations", ""},
