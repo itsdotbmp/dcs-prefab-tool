@@ -69,11 +69,14 @@ func Walk(datamineRoot string) ([]Entry, error) {
 // only — so nested tables (deeper indentation) are ignored. The datamine
 // uses tabs consistently; if a file ever shows up with spaces, fall through
 // to the alternative pattern.
+//
+// The trailing comma is optional: when a field is the LAST entry in the
+// table the datamine omits it (e.g. `\ttype = "Bunker"` followed by `}`).
 var (
-	typeRe    = regexp.MustCompile(`^[\t ]?type = "(.*?)",`)
-	categoryRe = regexp.MustCompile(`^[\t ]?category = "(.*?)",`)
-	attrRe     = regexp.MustCompile(`^[\t ]?attribute = \{(.*)\},`)
-	originRe   = regexp.MustCompile(`^[\t ]?_origin = "(.*?)",`)
+	typeRe     = regexp.MustCompile(`^[\t ]?type = "(.*?)",?\s*$`)
+	categoryRe = regexp.MustCompile(`^[\t ]?category = "(.*?)",?\s*$`)
+	attrRe     = regexp.MustCompile(`^[\t ]?attribute = \{(.*)\},?\s*$`)
+	originRe   = regexp.MustCompile(`^[\t ]?_origin = "(.*?)",?\s*$`)
 
 	// Inside an attribute array, pull out every quoted string. Numeric IDs
 	// at the front are ignored.
