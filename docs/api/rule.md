@@ -46,20 +46,22 @@ sms.rule("convoy_in_kz", {
     return sms.area("kill_zone"):is_any_of_group_in(sms.group("convoy"))
   end,
   action = function()
-    sms.group("ambush_armor"):activate()
+    sms.group("ambush_armor"):set_option(sms.options.alarm_state("red"))
   end,
 })
 
--- CONTINUOUS with cooldown: nag the player every 30 sim-seconds while bingo.
-sms.rule("bingo_nag", {
+-- CONTINUOUS with cooldown: warn the player every 30 sim-seconds while
+-- they're loitering low over hostile terrain.
+sms.rule("low_altitude_warning", {
   type      = sms.rule.TYPE.CONTINUOUS,
   interval  = 5,
   cooldown  = 30,
   condition = function()
-    return sms.unit("Player"):get_fuel_fraction() < 0.10
+    local agl = sms.unit("Player"):get_altitude(true)
+    return agl ~= nil and agl < 100
   end,
   action = function()
-    trigger.action.outText("BINGO — RTB recommended", 10)
+    trigger.action.outText("ALTITUDE — pull up", 10)
   end,
 })
 
@@ -70,11 +72,11 @@ sms.rule("apache_unmasked", {
   interval  = 1,
   sustain   = 10,
   condition = function()
-    local apache = sms.unit("apache_lead")
-    return apache:get_altitude(true) > sms.utils.feet_to_meters(200)
+    local agl = sms.unit("apache_lead"):get_altitude(true)
+    return agl ~= nil and agl > sms.utils.feet_to_meters(200)
   end,
   action = function()
-    sms.group("manpads"):activate()
+    sms.group("manpads_team"):set_option(sms.options.alarm_state("red"))
   end,
 })
 ```
@@ -183,8 +185,9 @@ sms.rule("helicopter_height", {
       local roe_opt = sms.options.roe("weapon_free")
       sms.group(name):set_option(roe_opt)
     end
-    sms.group("sa5"):activate()
-    sms.group("manpads"):activate()
+    local alarm_red = sms.options.alarm_state("red")
+    sms.group("sa5"):set_option(alarm_red)
+    sms.group("manpads"):set_option(alarm_red)
   end,
 })
 ```
