@@ -219,8 +219,8 @@ end
 -- entity-meaningful event names.
 ---@param self sms.unit
 ---@param name string  # event name (see sms.events)
----@param fn fun(evt: table)
----@return table|nil  # connection handle
+---@param fn fun(evt: sms.events.event)
+---@return sms.events.connection|nil
 sms.unit.connect = function(self, name, fn)
   if not sms._is_handle_of(self, sms.unit) then
     log.warn("unit:connect: self must be an sms.unit handle")

@@ -74,9 +74,20 @@ local log = sms.log.module("sms.events")
 ---@field _entity_scoped         table<string, boolean>
 sms.events = sms.events or {}
 
+---@class sms.events.event
+---@field id                    integer        # raw DCS event id (world.event.S_EVENT_*); use `name` for the lowercase string key.
+---@field name                  string         # normalized lowercase event name (e.g. "shot", "hit", "dead").
+---@field time                  number         # sim time in seconds at event creation.
+---@field initiator?            sms.unit       # the unit that caused the event (shooter, dier, etc.). Use :is_alive() — death-shaped events leave the handle present-but-dead.
+---@field initiator_group_name? string         # parent group name captured at event time. Set even when `initiator:is_alive()` is false.
+---@field target?               sms.unit       # the targeted unit (HIT/KILL events).
+---@field weapon_type?          string         # DCS weapon type name (e.g. "weapons.bombs.Mk_82"). Always set when raw.weapon was present.
+---@field weapon?               sms.weapon     # tracking-capable wrapped handle. Only populated when `sms.weapon` is loaded.
+---@field place_name?           string         # airbase / place name (TAKEOFF, LAND, REFUELING).
+
 ---@class sms.events.connection
 ---@field name   string
----@field fn     fun(evt: table)
+---@field fn     fun(evt: sms.events.event)
 ---@field active boolean
 
 -- Module-level state (file-local).
@@ -188,7 +199,7 @@ local function _ensure_world_handler()
 end
 
 ---@param name string  # event name (see sms.events constants)
----@param fn fun(evt: table)
+---@param fn fun(evt: sms.events.event)
 ---@return sms.events.connection|nil
 sms.events.connect = function(name, fn)
   if type(name) ~= "string" then

@@ -80,6 +80,13 @@ local target = sms.static("Range-Target-Bullseye")
 -- inside `connect`) keeps the connect call readable and lets the
 -- handler be re-used or unit-tested independently. `range` and
 -- `target` are captured as upvalues.
+--
+-- The `---@param evt sms.events.event` annotation gives `evt` full
+-- autocomplete in editors with LuaLS. Inline lambdas passed straight
+-- to `connect` get this for free; named handlers need the explicit
+-- annotation since the language server can't trace it back from the
+-- connect call site.
+---@param evt sms.events.event
 local function on_shot(evt)
   local weapon = evt.weapon
   if not weapon or not weapon:is_bomb() then return end
@@ -203,7 +210,10 @@ cap:set_task(escort_task)
 
 -- Re-task the CAP to engage the shooter the moment the strike takes a hit.
 -- Pulling the handler out as a named function (with `cap` as an upvalue)
--- reads more naturally than nesting it inside the `connect` call.
+-- reads more naturally than nesting it inside the `connect` call. The
+-- `---@param` annotation gives `evt` full autocomplete in LuaLS-aware
+-- editors — see the `on_shot` example above for the rationale.
+---@param evt sms.events.event
 local function on_strike_hit(evt)
   local shooter = evt.initiator
   if not shooter then return end

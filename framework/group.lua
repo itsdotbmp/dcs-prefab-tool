@@ -164,8 +164,8 @@ end
 -- — a "group hit" or "group takeoff" has no sensible aggregate meaning.
 ---@param self sms.group
 ---@param name string  # event name (see sms.events)
----@param fn fun(evt: table)
----@return table|nil  # connection handle
+---@param fn fun(evt: sms.events.event)
+---@return sms.events.connection|nil
 sms.group.connect = function(self, name, fn)
   if not sms._is_handle_of(self, sms.group) then
     log.warn("group:connect: self must be an sms.group handle")
