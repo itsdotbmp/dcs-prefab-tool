@@ -115,6 +115,27 @@ Four private flags on a payload (task / command / option) mark category restrict
 | **Auto-suffix on collision** | Spawning with a name already taken yields `name-1`, `name-2`, ... Always trust the returned handle's `:get_name()` over the input string. |
 | **Log tags** | Each module logs as `[sms.<module>]` via `sms.log.module("sms.<module>")`. Top-level untagged calls log as `[sms]`. |
 
+### Style: split multi-line builder calls
+
+When a `sms.task.*` / `sms.commands.*` / `sms.options.*` builder spans multiple lines, bind it to a local first and apply on a separate line. Do not nest the builder directly inside `set_task` / `push_task` / `set_command` / `set_option`:
+
+```lua
+-- Preferred — easy to scan, the trailing `})` is one place not two.
+local move_task = sms.task.move_to({x = 12000, y = 4500, z = -3500}, {
+  speed = 180,
+})
+cas:set_task(move_task)
+
+-- Avoid for multi-line builders — the closing `}))` is hard to track.
+cas:set_task(sms.task.move_to({x = 12000, y = 4500, z = -3500}, {
+  speed = 180,
+}))
+```
+
+Single-line builders are fine inline (`cap:set_option(sms.options.rtb_on_bingo(true))`). The split is for readability of the multi-line case; don't add a named indirection for a trivial value. Conventional names: `local <verb>_task` for tasks, `local plan` for `sms.task.combo`, `local opt` / `local cmd` for options / commands.
+
+This style applies to docs, examples, and smoke tests.
+
 ---
 
 ## 5. Entity handles — the universal pattern

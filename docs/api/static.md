@@ -27,9 +27,9 @@ See also: [`AGENTS.md` §3 failure model](../../AGENTS.md#3-failure-model-log--n
 **Example**
 
 ```lua
-local s = sms.static("RangeHangar-1")
-if s then
-  sms.log.info("found " .. s:get_type() .. " for " .. s:get_coalition())
+local hangar = sms.static("RangeHangar-1")
+if hangar then
+  sms.log.info("found " .. hangar:get_type() .. " for " .. hangar:get_coalition())
 end
 ```
 
@@ -48,8 +48,8 @@ end
 **Example**
 
 ```lua
-local s = sms.static("FuelDepot-A")
-if s and s:is_alive() then
+local depot = sms.static("FuelDepot-A")
+if depot and depot:is_alive() then
   sms.log.info("depot still standing")
 end
 ```
@@ -63,13 +63,13 @@ end
 **Example**
 
 ```lua
-local s = sms.static.create({
+local fuel_tank = sms.static.create({
   name     = "fuel-tank",
   type     = "FARP Fuel Depot",
   position = anchor,
   country  = "USA",
 })
-sms.log.info("spawned as " .. s:get_name())   -- may be "fuel-tank-1" on collision
+sms.log.info("spawned as " .. fuel_tank:get_name())   -- may be "fuel-tank-1" on collision
 ```
 
 ### `sms.static:get_coalition(s) → "red" | "blue" | "neutral" | nil`
@@ -81,8 +81,8 @@ sms.log.info("spawned as " .. s:get_name())   -- may be "fuel-tank-1" on collisi
 **Example**
 
 ```lua
-local s = sms.static("RangeHangar-1")
-if s:get_coalition() == "red" then
+local hangar = sms.static("RangeHangar-1")
+if hangar:get_coalition() == "red" then
   -- enemy infrastructure
 end
 ```
@@ -96,8 +96,8 @@ end
 **Example**
 
 ```lua
-local s = sms.static("Cargo-7")
-sms.log.info("owned by " .. (s:get_country() or "?"))
+local cargo = sms.static("Cargo-7")
+sms.log.info("owned by " .. (cargo:get_country() or "?"))
 ```
 
 ### `sms.static:get_position(s) → vec3 | nil`
@@ -109,8 +109,8 @@ sms.log.info("owned by " .. (s:get_country() or "?"))
 **Example**
 
 ```lua
-local s = sms.static("FuelDepot-A")
-local pos = s:get_position()
+local depot = sms.static("FuelDepot-A")
+local pos = depot:get_position()
 if pos then
   sms.log.info(string.format("at %.0f, %.0f", pos.x, pos.z))
 end
@@ -125,8 +125,8 @@ end
 **Example**
 
 ```lua
-local s = sms.static("RangeHangar-1")
-if s:get_type() == "Hangar B" then
+local hangar = sms.static("RangeHangar-1")
+if hangar:get_type() == "Hangar B" then
   -- destroy with a 500-pounder
 end
 ```
@@ -140,8 +140,8 @@ end
 **Example**
 
 ```lua
-local s = sms.static("OldWreckage")
-if s then s:destroy() end
+local wreckage = sms.static("OldWreckage")
+if wreckage then wreckage:destroy() end
 ```
 
 **Notes** — DCS does not reflect `destroy()` within the same frame: `StaticObject.getByName` may still return the object until the next frame. The `is_alive` gate fires correctly across frames; if you need synchronous "is it gone" checks within the same `exec` call, that's a DCS quirk, not a framework one.

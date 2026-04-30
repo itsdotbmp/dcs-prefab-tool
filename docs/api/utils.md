@@ -89,8 +89,8 @@ local deg = sms.utils.rad_to_deg(math.pi)  -- 180
 **Example**
 
 ```lua
-local g = sms.group("blue-cap-1")
-sms.task.orbit(g, {
+local cap = sms.group("blue-cap-1")
+sms.task.orbit(cap, {
   pattern  = "Circle",
   altitude = sms.utils.feet_to_meters(25000),  -- FL250 → ~7620 m
   speed    = 220,
@@ -114,9 +114,9 @@ sms.task.orbit(g, {
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-sms.log.info(u:get_name() .. " at " ..
-             string.format("%.0f", sms.utils.meters_to_feet(u:get_altitude())) ..
+local bandit = sms.unit("Bandit-1")
+sms.log.info(bandit:get_name() .. " at " ..
+             string.format("%.0f", sms.utils.meters_to_feet(bandit:get_altitude())) ..
              " ft ASL")
 ```
 
@@ -182,10 +182,10 @@ local speed_mps = sms.utils.vec3_length(velocity)  -- ~141.42
 **Example**
 
 ```lua
-local u  = sms.unit("Bandit-1")
-local tg = sms.unit("CAP-1")
-local d  = sms.utils.vec3_distance(u:get_position(), tg:get_position())
-sms.log.info("separation: " .. string.format("%.0f", d) .. " m")
+local bandit = sms.unit("Bandit-1")
+local target = sms.unit("CAP-1")
+local distance = sms.utils.vec3_distance(bandit:get_position(), target:get_position())
+sms.log.info("separation: " .. string.format("%.0f", distance) .. " m")
 ```
 
 ---
@@ -228,10 +228,10 @@ sms.utils.normalize_heading(360)   -- 0
 **Example**
 
 ```lua
-local me   = sms.unit("CAP-1")
+local me    = sms.unit("CAP-1")
 local bogey = sms.unit("Bandit-1")
-local brg  = sms.utils.bearing_to(me:get_position(), bogey:get_position())
-sms.log.info(string.format("bandit bears %03.0f", brg))
+local bearing = sms.utils.bearing_to(me:get_position(), bogey:get_position())
+sms.log.info(string.format("bandit bears %03.0f", bearing))
 ```
 
 ---

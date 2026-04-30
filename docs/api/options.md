@@ -150,9 +150,10 @@ Each builder below stamps the option with `_sms_air_only = true`; applying any o
 
 ```lua
 local cap = sms.group("blue-cap-1")
-cap:set_option(sms.options.reaction_on_threat(
+local opt = sms.options.reaction_on_threat(
   sms.options.REACTION_ON_THREAT.EVADE_FIRE
-))
+)
+cap:set_option(opt)
 ```
 
 ---
@@ -174,9 +175,10 @@ cap:set_option(sms.options.reaction_on_threat(
 ```lua
 -- Silent CAP — only emit when committing to a kill.
 local cap = sms.group("blue-cap-stealth")
-cap:set_option(sms.options.radar_using(
+local opt = sms.options.radar_using(
   sms.options.RADAR_USING.FOR_ATTACK_ONLY
-))
+)
+cap:set_option(opt)
 ```
 
 ---
@@ -197,9 +199,10 @@ cap:set_option(sms.options.radar_using(
 
 ```lua
 local strike = sms.group("blue-strike-1")
-strike:set_option(sms.options.flare_using(
+local opt = sms.options.flare_using(
   sms.options.FLARE_USING.AGAINST_FIRED_MISSILE
-))
+)
+strike:set_option(opt)
 ```
 
 ---

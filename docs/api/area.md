@@ -131,8 +131,8 @@ The methods below are callable both as `area:method(...)` and as `sms.area.metho
 **Example**
 
 ```lua
-local a = sms.area.create_circular({x=0,y=0,z=0}, 500, "rt")
-sms.log.info(a:get_name())  -- "rt"
+local area = sms.area.create_circular({x=0,y=0,z=0}, 500, "rt")
+sms.log.info(area:get_name())  -- "rt"
 
 local anon = sms.area.create_circular({x=0,y=0,z=0}, 500)
 sms.log.info(tostring(anon:get_name()))  -- "nil"
@@ -147,11 +147,11 @@ sms.log.info(tostring(anon:get_name()))  -- "nil"
 **Example**
 
 ```lua
-local a = sms.area("RangeBox")
-if a:get_kind() == "circle" then
-  sms.log.info("radius: " .. a:get_radius())
+local range_box = sms.area("RangeBox")
+if range_box:get_kind() == "circle" then
+  sms.log.info("radius: " .. range_box:get_radius())
 else
-  sms.log.info("vertices: " .. #a:get_vertices())
+  sms.log.info("vertices: " .. #range_box:get_vertices())
 end
 ```
 
@@ -165,8 +165,8 @@ end
 
 ```lua
 local zone = sms.area("BombingRange")
-local p    = zone:get_position()
-sms.log.info(string.format("zone center: x=%.1f z=%.1f", p.x, p.z))
+local pos  = zone:get_position()
+sms.log.info(string.format("zone center: x=%.1f z=%.1f", pos.x, pos.z))
 ```
 
 ### `area:get_radius() → number | nil`
@@ -178,9 +178,9 @@ sms.log.info(string.format("zone center: x=%.1f z=%.1f", p.x, p.z))
 **Example**
 
 ```lua
-local a = sms.area("BombingRange")
-if a:get_kind() == "circle" then
-  sms.log.info("radius (m): " .. a:get_radius())
+local bombing_range = sms.area("BombingRange")
+if bombing_range:get_kind() == "circle" then
+  sms.log.info("radius (m): " .. bombing_range:get_radius())
 end
 ```
 
@@ -214,9 +214,9 @@ end
 **Example**
 
 ```lua
-local a = sms.area("BombingRange")
+local bombing_range = sms.area("BombingRange")
 local impact = {x = 1234, y = 0, z = 5678}
-if a:is_vec3_in(impact) then
+if bombing_range:is_vec3_in(impact) then
   sms.log.info("impact inside range")
 end
 ```
@@ -326,8 +326,8 @@ For circles, the returned `y` matches the center's `y`. For polygons, it matches
 -- Spawn 5 ground units at random positions inside a polygon area.
 local box = sms.area("SpawnBox")
 for i = 1, 5 do
-  local p = box:get_random_point()
-  sms.log.info(string.format("unit %d: x=%.1f z=%.1f", i, p.x, p.z))
+  local point = box:get_random_point()
+  sms.log.info(string.format("unit %d: x=%.1f z=%.1f", i, point.x, point.z))
 end
 ```
 

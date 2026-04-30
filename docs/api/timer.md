@@ -102,9 +102,9 @@ The handle returned by `after` / `every` exposes three methods. Method-style and
 **Example**
 
 ```lua
-local h = sms.timer.every(1, function() sms.log.info("tick") end)
+local ticker = sms.timer.every(1, function() sms.log.info("tick") end)
 sms.timer.after(5, function()
-  if h:stop() then
+  if ticker:stop() then
     sms.log.info("stopped the ticker")
   end
 end)
@@ -119,10 +119,10 @@ end)
 **Example**
 
 ```lua
-local h = sms.timer.after(60, function() end)
+local timer_handle = sms.timer.after(60, function() end)
 -- ...later...
-if h:is_active() then
-  sms.log.info("timer still pending: " .. h:get_remaining() .. "s left")
+if timer_handle:is_active() then
+  sms.log.info("timer still pending: " .. timer_handle:get_remaining() .. "s left")
 end
 ```
 
@@ -135,8 +135,8 @@ end
 **Example**
 
 ```lua
-local h = sms.timer.after(120, function() sms.log.info("two minutes up") end)
-sms.log.info("remaining: " .. h:get_remaining() .. "s")  -- ~120
+local timer_handle = sms.timer.after(120, function() sms.log.info("two minutes up") end)
+sms.log.info("remaining: " .. timer_handle:get_remaining() .. "s")  -- ~120
 ```
 
 **See also** — [`sms.events`](events.md) for event-driven scheduling (fire on `kill` / `land` / custom signals), [`sms.group`](group.md) for entity-scoped polling targets.

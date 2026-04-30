@@ -33,12 +33,15 @@ local red_cap = sms.group.create({
 })
 
 -- Send each side to orbit a point 30 km in front of itself.
-blue_cap:set_task(sms.task.orbit({x = 30000, y = 0, z = 0}, {
+local blue_orbit = sms.task.orbit({x = 30000, y = 0, z = 0}, {
   altitude = 7500, speed = 220, pattern = "Circle",
-}))
-red_cap:set_task(sms.task.orbit({x = 50000, y = 0, z = 0}, {
+})
+blue_cap:set_task(blue_orbit)
+
+local red_orbit = sms.task.orbit({x = 50000, y = 0, z = 0}, {
   altitude = 7500, speed = 220, pattern = "Circle",
-}))
+})
+red_cap:set_task(red_orbit)
 
 -- Both sides start with weapons hold.
 blue_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
@@ -52,10 +55,10 @@ sms.timer.every(1.0, function()
   if triggered then return false end                          -- self-cancel after flip
   if not (blue_cap:is_alive() and red_cap:is_alive()) then return false end
 
-  local d = sms.utils.vec3_distance(blue_cap:get_position(), red_cap:get_position())
-  if d and d <= TRIGGER_RANGE_M then
+  local distance = sms.utils.vec3_distance(blue_cap:get_position(), red_cap:get_position())
+  if distance and distance <= TRIGGER_RANGE_M then
     blue_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_FREE))
-    sms.log.info(string.format("blue cleared hot at %.0f m", d))
+    sms.log.info(string.format("blue cleared hot at %.0f m", distance))
     triggered = true
   end
 end)
@@ -74,28 +77,28 @@ local range  = sms.area.from_drawing("PracticeRange")
 local target = sms.static("Range-Target-Bullseye")
 
 sms.events.connect(sms.events.SHOT, function(evt)
-  local w = evt.weapon
-  if not w or not w:is_bomb() then return end
+  local weapon = evt.weapon
+  if not weapon or not weapon:is_bomb() then return end
 
   -- Only score weapons released inside the range polygon.
-  local rel = w:get_release_position()
-  if not rel or not range:is_vec3_in(rel) then return end
+  local release_pos = weapon:get_release_position()
+  if not release_pos or not range:is_vec3_in(release_pos) then return end
 
   -- Tail the weapon and score on impact.
-  w:on_impact(function(weapon)
-    local dist = weapon:get_impact_distance_from(target:get_position())
-    if dist then
+  weapon:on_impact(function(weapon)
+    local distance = weapon:get_impact_distance_from(target:get_position())
+    if distance then
       sms.log.info(string.format(
         "[range] %s scored %.1f m from bullseye (released by %s at %.0f m AGL)",
         weapon:get_type(),
-        dist,
+        distance,
         evt.initiator and evt.initiator:get_name() or "unknown",
         weapon:get_release_altitude_agl() or 0
       ))
     end
   end)
 
-  w:start_tracking({rate = 30})
+  weapon:start_tracking({rate = 30})
 end)
 ```
 
@@ -177,18 +180,20 @@ local cap = sms.group.create({
 local target_pt = {x = 60000, y = 0, z = 0}
 
 -- Strike: bomb the target.
-strike:set_task(sms.task.bomb(target_pt, {
+local bomb_task = sms.task.bomb(target_pt, {
   altitude    = 5000,
   weapon_type = "Bombs",
   expend      = "All",
   group_attack = true,
-}))
+})
+strike:set_task(bomb_task)
 
 -- CAP: escort the strike with a generous engagement bubble.
-cap:set_task(sms.task.escort(strike, {
+local escort_task = sms.task.escort(strike, {
   offset             = {x = -1500, y = 500, z = 1500},
   engagement_dist_max = 12000,
-}))
+})
+cap:set_task(escort_task)
 
 -- Re-task the CAP to engage the shooter the moment the strike takes a hit.
 strike:connect(sms.events.HIT, function(evt)
@@ -217,37 +222,38 @@ local FOB   = {x = 0,     y = 0, z = 0}
 local TRACK = {x = 50000, y = 0, z = 30000}
 
 local function spawn_awacs()
-  local g = sms.group.create({
+  local awacs = sms.group.create({
     name     = "blue-awacs",
     position = {x = FOB.x - 5000, y = 0, z = FOB.z},
     country  = "USA",
     category = "airplane",
     units    = { {type = "E-3A", alt = sms.utils.feet_to_meters(30000), heading = 90, speed = 200} },
   })
-  if not g then return end
+  if not awacs then return end
 
-  g:set_task(sms.task.combo({
+  local plan = sms.task.combo({
     sms.task.orbit(FOB, {
       altitude = sms.utils.feet_to_meters(30000),
       speed    = 200,
       pattern  = "Circle",
     }),
     sms.task.awacs({priority = 1}),
-  }))
-  return g
+  })
+  awacs:set_task(plan)
+  return awacs
 end
 
 local function spawn_tanker()
-  local g = sms.group.create({
+  local tanker = sms.group.create({
     name     = "blue-tanker",
     position = {x = TRACK.x, y = 0, z = TRACK.z - 5000},
     country  = "USA",
     category = "airplane",
     units    = { {type = "KC-135", alt = sms.utils.feet_to_meters(22000), heading = 0, speed = 180} },
   })
-  if not g then return end
+  if not tanker then return end
 
-  g:set_task(sms.task.combo({
+  local plan = sms.task.combo({
     sms.task.orbit(TRACK, {
       altitude        = sms.utils.feet_to_meters(22000),
       speed           = 180,
@@ -258,15 +264,16 @@ local function spawn_tanker()
       clockwise       = true,
     }),
     sms.task.tanker({priority = 1}),
-  }))
-  return g
+  })
+  tanker:set_task(plan)
+  return tanker
 end
 
 local function rearm(spawn_fn)
-  local g = spawn_fn()
-  if not g then return end
-  g:connect(sms.events.DEAD, function()
-    sms.log.info("[support] " .. g:get_name() .. " gone — replacement in 30 min")
+  local group = spawn_fn()
+  if not group then return end
+  group:connect(sms.events.DEAD, function()
+    sms.log.info("[support] " .. group:get_name() .. " gone — replacement in 30 min")
     sms.timer.after(30 * 60, function() rearm(spawn_fn) end)
   end)
 end

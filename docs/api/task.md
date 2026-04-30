@@ -53,9 +53,10 @@ These apply to **every** builder; they are not repeated in each row.
 ```lua
 -- Move a CAS flight to a vec3 reference point at 350 kt (~180 m/s).
 local cas = sms.group("blue-cas-1")
-cas:set_task(sms.task.move_to({x = 12000, y = 4500, z = -3500}, {
+local move_task = sms.task.move_to({x = 12000, y = 4500, z = -3500}, {
   speed = 180,
-}))
+})
+cas:set_task(move_task)
 
 -- Drive a convoy to a named ME drawing. The drawing's centroid is the destination.
 local convoy = sms.group("red-convoy")
@@ -115,9 +116,10 @@ end)
 -- Wingman holds 100m astern, 30m below, 50m right of the lead F-15.
 local lead = sms.group("blue-f15-lead")
 local wing = sms.group("blue-f15-wing")
-wing:set_task(sms.task.follow(lead, {
+local follow_task = sms.task.follow(lead, {
   offset = {x = -100, y = -30, z = 50},
-}))
+})
+wing:set_task(follow_task)
 ```
 
 **See also** — [`sms.task.escort`](#smstaskescorttarget-opts--task) (follow + permission to engage).
@@ -157,15 +159,16 @@ Anchored-only keys (silently ignored when `pattern == "Circle"`):
 ```lua
 -- Simple CAP wheel over a forward area.
 local cap = sms.group("blue-f18-cap")
-cap:set_task(sms.task.orbit({x = 25000, y = 0, z = -8000}, {
+local orbit_task = sms.task.orbit({x = 25000, y = 0, z = -8000}, {
   altitude = 7500,         -- 25k ft
   speed    = 220,
   pattern  = "Circle",
-}))
+})
+cap:set_task(orbit_task)
 
 -- Tanker racetrack on a 270° hot leg, clockwise.
 local tex = sms.group("blue-tanker-1")
-tex:set_task(sms.task.combo({
+local plan = sms.task.combo({
   sms.task.orbit({x = 50000, y = 0, z = 30000}, {
     altitude        = 6700,
     speed           = 180,
@@ -176,7 +179,8 @@ tex:set_task(sms.task.combo({
     clockwise       = true,
   }),
   sms.task.tanker(),
-}))
+})
+tex:set_task(plan)
 ```
 
 **See also** — [`sms.task.tanker`](#smstasktankeropts--task), [`sms.task.awacs`](#smstaskawacsopts--task), [`sms.task.combo`](#smstaskcombotasks--task).
@@ -208,19 +212,21 @@ tex:set_task(sms.task.combo({
 -- Hornet bombs a SAM site group, max two passes, all bombs each pass.
 local strike  = sms.group("blue-strike-1")
 local sa6     = sms.group("red-sa6-2")
-strike:set_task(sms.task.attack(sa6, {
+local attack_task = sms.task.attack(sa6, {
   weapon_type = "Bombs",
   expend      = "All",
   attack_qty  = 2,
-}))
+})
+strike:set_task(attack_task)
 
 -- Strafe a single hostile unit with guns.
 local hog = sms.group("blue-a10-1")
 local apc = sms.unit("red-bmp-3")
-hog:set_task(sms.task.attack(apc, {
+local strafe_task = sms.task.attack(apc, {
   weapon_type = "Guns",
   expend      = "Auto",
-}))
+})
+hog:set_task(strafe_task)
 ```
 
 **See also** — [`sms.task.bomb`](#smstaskbombtarget-opts--task), [`sms.task.engage_en_route_group`](#smstaskengage_en_route_grouptarget-opts--task), [`sms.task.attack_in_area`](#smstaskattack_in_areaarea-opts--task).
@@ -256,7 +262,7 @@ hog:set_task(sms.task.attack(apc, {
 local strike = sms.group("blue-mud-mover-1")
 local box    = sms.area("KillBox-Alpha")
 
-strike:set_task(sms.task.combo({
+local plan = sms.task.combo({
   sms.task.move_to(box),
   sms.task.attack_in_area(box, {
     weapon_type   = "Bombs",
@@ -264,7 +270,8 @@ strike:set_task(sms.task.combo({
     altitude_max  = 7500,
     priority      = 1,
   }),
-}))
+})
+strike:set_task(plan)
 ```
 
 **See also** — [`sms.task.engage_en_route_targets`](#smstaskengage_en_route_targetsopts--task).
@@ -300,13 +307,14 @@ strike:set_task(sms.task.combo({
 local bones = sms.group("blue-bone-flight")
 local depot = sms.static("red-fuel-depot-1")
 
-bones:set_task(sms.task.bomb(depot, {
+local bomb_task = sms.task.bomb(depot, {
   altitude     = 8000,
   weapon_type  = "Bombs",
   expend       = "All",
   direction    = 180,        -- run in heading south (target lies south)
   group_attack = true,
-}))
+})
+bones:set_task(bomb_task)
 ```
 
 **See also** — [`sms.task.attack`](#smstaskattacktarget-opts--task), [`sms.task.attack_map_object`](#smstaskattack_map_objectpoint-opts--task), [`sms.task.bomb_runway`](#smstaskbomb_runwayairdrome_id-opts--task).
@@ -338,11 +346,12 @@ local heli   = sms.group("blue-uh60-csar")
 local lz     = sms.area("CSAR-LZ")
 local home   = sms.area("FOB-Bravo")
 
-heli:set_task(sms.task.combo({
+local plan = sms.task.combo({
   sms.task.move_to(lz),
   sms.task.land(lz, {duration = 90}),
   sms.task.move_to(home),
-}))
+})
+heli:set_task(plan)
 ```
 
 ---
@@ -364,7 +373,7 @@ heli:set_task(sms.task.combo({
 ```lua
 -- AWACS station: orbit + AWACS role.
 local awacs = sms.group("blue-e3-1")
-awacs:set_task(sms.task.combo({
+local plan = sms.task.combo({
   sms.task.orbit({x = 60000, y = 0, z = 0}, {
     altitude = 9000,
     speed    = 200,
@@ -374,7 +383,8 @@ awacs:set_task(sms.task.combo({
     width           = 18500,
   }),
   sms.task.awacs({priority = 1}),
-}))
+})
+awacs:set_task(plan)
 ```
 
 **Notes** — Combos do not introduce sequencing; for "do A, then B" use [`push_task`](#grouppush_tasktask--bool) on a short-lived task or chain via [`sms.timer.after`](timer.md) / events.
@@ -442,12 +452,13 @@ cap:push_task(sms.task.refuel())
 ```lua
 -- Hit a bridge from the south. Bridge is at the given vec3.
 local bombers = sms.group("blue-strike-2")
-bombers:set_task(sms.task.attack_map_object({x = 18500, y = 0, z = -22300}, {
+local attack_task = sms.task.attack_map_object({x = 18500, y = 0, z = -22300}, {
   weapon_type  = "Bombs",
   attack_qty   = 1,
   direction    = 180,
   group_attack = true,
-}))
+})
+bombers:set_task(attack_task)
 ```
 
 **See also** — [`sms.task.bomb`](#smstaskbombtarget-opts--task), [`sms.task.bomb_runway`](#smstaskbomb_runwayairdrome_id-opts--task).
@@ -480,13 +491,14 @@ bombers:set_task(sms.task.attack_map_object({x = 18500, y = 0, z = -22300}, {
 ```lua
 -- Crater the runway at airdrome ID 12 (Krymsk on Caucasus, for example).
 local strike = sms.group("blue-strike-3")
-strike:set_task(sms.task.bomb_runway(12, {
+local bomb_task = sms.task.bomb_runway(12, {
   weapon_type = "Bombs",
   expend      = "All",
   attack_qty  = 1,
   direction   = 90,         -- run east-bound along the runway axis
   group_attack = true,
-}))
+})
+strike:set_task(bomb_task)
 ```
 
 ---
@@ -513,9 +525,10 @@ strike:set_task(sms.task.bomb_runway(12, {
 ```lua
 -- MLRS battery saturates a 200m circle around an FLOT reference.
 local mlrs = sms.group("red-mlrs-bty-1")
-mlrs:set_task(sms.task.fire_at_point({x = -8500, y = 0, z = 14500}, {
+local fire_task = sms.task.fire_at_point({x = -8500, y = 0, z = 14500}, {
   radius = 200,
-}))
+})
+mlrs:set_task(fire_task)
 ```
 
 ---
@@ -547,12 +560,13 @@ mlrs:set_task(sms.task.fire_at_point({x = -8500, y = 0, z = 14500}, {
 local lead   = sms.group("blue-strike-lead")
 local escort = sms.group("blue-f15-escort")
 
-escort:set_task(sms.task.escort(lead, {
+local escort_task = sms.task.escort(lead, {
   offset              = {x = -200, y = 100, z = 200},   -- aft, above, right
   engagement_dist_max = 15000,
   target_types        = {sms.targets.AIR},
   last_waypoint_index = 5,
-}))
+})
+escort:set_task(escort_task)
 ```
 
 **See also** — [`sms.task.follow`](#smstaskfollowtarget-opts--task), [`sms.targets`](constants.md).
@@ -585,11 +599,12 @@ escort:set_task(sms.task.escort(lead, {
 local fac     = sms.group("blue-fac-a10")
 local hostile = sms.group("red-armor-1")
 
-fac:set_task(sms.task.fac_attack_group(hostile, {
+local fac_task = sms.task.fac_attack_group(hostile, {
   weapon_type = "Auto",
   designation = sms.designations.WP,
   datalink    = true,
-}))
+})
+fac:set_task(fac_task)
 ```
 
 **See also** — [`sms.task.fac`](#smstaskfacopts--task), [`sms.task.fac_engage_group`](#smstaskfac_engage_grouptarget-opts--task), [`sms.designations`](constants.md).
@@ -618,10 +633,11 @@ fac:set_task(sms.task.fac_attack_group(hostile, {
 ```lua
 -- An OH-58D scout runs an area FAC over a 10 km radius.
 local scout = sms.group("blue-oh58-1")
-scout:set_task(sms.task.combo({
+local plan = sms.task.combo({
   sms.task.orbit(scout:get_position(), {altitude = 600, speed = 50, pattern = "Circle"}),
   sms.task.fac({radius = 10000, priority = 1}),
-}))
+})
+scout:set_task(plan)
 ```
 
 ---
@@ -651,10 +667,11 @@ scout:set_task(sms.task.combo({
 ```lua
 local fac     = sms.group("blue-fac-flight")
 local hostile = sms.group("red-mech-coy-1")
-fac:push_task(sms.task.fac_engage_group(hostile, {
+local fac_task = sms.task.fac_engage_group(hostile, {
   designation = sms.designations.LASER,
   priority    = 1,
-}))
+})
+fac:push_task(fac_task)
 ```
 
 ---
@@ -682,14 +699,15 @@ fac:push_task(sms.task.fac_engage_group(hostile, {
 ```lua
 -- F-16 sweep: fly the route AND engage any planes within 50 km.
 local sweep = sms.group("blue-f16-sweep")
-sweep:set_task(sms.task.combo({
+local plan = sms.task.combo({
   sms.task.move_to({x = 80000, y = 7500, z = 0}),
   sms.task.engage_en_route_targets({
     target_types = {sms.targets.PLANES, sms.targets.HELICOPTERS},
     max_dist     = 50000,
     priority     = 1,
   }),
-}))
+})
+sweep:set_task(plan)
 ```
 
 **See also** — [`sms.targets`](constants.md), [`sms.task.engage_en_route_group`](#smstaskengage_en_route_grouptarget-opts--task).
@@ -724,11 +742,12 @@ sweep:set_task(sms.task.combo({
 -- group if it bumps into them, but only with anti-radiation missiles.
 local strike = sms.group("blue-wild-weasel-1")
 local sa10   = sms.group("red-sa10-1")
-strike:push_task(sms.task.engage_en_route_group(sa10, {
+local engage_task = sms.task.engage_en_route_group(sa10, {
   weapon_type = "Missiles",
   attack_qty  = 1,
   priority    = 1,
-}))
+})
+strike:push_task(engage_task)
 ```
 
 ---
@@ -761,7 +780,7 @@ strike:push_task(sms.task.engage_en_route_group(sa10, {
 -- Hunt one specific high-value target (HVT named in the ME).
 local hunters = sms.group("blue-f15e-1")
 local hvt     = sms.unit("red-command-truck")
-hunters:set_task(sms.task.combo({
+local plan = sms.task.combo({
   sms.task.move_to({x = 30000, y = 5000, z = -10000}),
   sms.task.engage_en_route_unit(hvt, {
     weapon_type  = "Missiles",
@@ -769,7 +788,8 @@ hunters:set_task(sms.task.combo({
     group_attack = true,
     priority     = 1,
   }),
-}))
+})
+hunters:set_task(plan)
 ```
 
 ---
@@ -795,7 +815,7 @@ hunters:set_task(sms.task.combo({
 ```lua
 -- E-3 on station: orbit + AWACS role.
 local awacs = sms.group("blue-awacs-1")
-awacs:set_task(sms.task.combo({
+local plan = sms.task.combo({
   sms.task.orbit({x = 100000, y = 0, z = 50000}, {
     altitude        = 9000,
     speed           = 200,
@@ -805,7 +825,8 @@ awacs:set_task(sms.task.combo({
     width           = 18500,
   }),
   sms.task.awacs({priority = 1}),
-}))
+})
+awacs:set_task(plan)
 ```
 
 ---
@@ -832,7 +853,7 @@ awacs:set_task(sms.task.combo({
 -- KC-135 racetrack with tanker role at priority 2 (a higher-priority
 -- AWACS task is on the same group).
 local boom = sms.group("blue-tanker-1")
-boom:set_task(sms.task.combo({
+local plan = sms.task.combo({
   sms.task.orbit({x = 50000, y = 0, z = 30000}, {
     altitude        = 6700,
     speed           = 180,
@@ -844,7 +865,8 @@ boom:set_task(sms.task.combo({
   }),
   sms.task.awacs({priority = 1}),
   sms.task.tanker({priority = 2}),
-}))
+})
+boom:set_task(plan)
 ```
 
 ---

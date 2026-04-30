@@ -153,14 +153,14 @@ because they're commonly used as filter predicates in event handlers.
 
 ```lua
 sms.events.connect(sms.events.SHOT, function(evt)
-  local w = evt.weapon
-  if not w or not w:is_bomb() then return end
+  local weapon = evt.weapon
+  if not weapon or not weapon:is_bomb() then return end
   sms.log.info(string.format(
     "%s dropped a %s from %dm AGL at heading %d deg",
-    w:get_launcher():get_name(),
-    w:get_type(),
-    w:get_release_altitude_agl() or -1,
-    w:get_release_heading()       or -1
+    weapon:get_launcher():get_name(),
+    weapon:get_type(),
+    weapon:get_release_altitude_agl() or -1,
+    weapon:get_release_heading()       or -1
   ))
 end)
 ```
@@ -199,9 +199,9 @@ the underlying `sms.timer.every` failed to schedule.
 
 ```lua
 sms.events.connect(sms.events.SHOT, function(evt)
-  local w = evt.weapon
-  if not w or not w:is_missile() then return end
-  w:start_tracking({ rate = 30, ip_distance = 100 })
+  local weapon = evt.weapon
+  if not weapon or not weapon:is_missile() then return end
+  weapon:start_tracking({ rate = 30, ip_distance = 100 })
 end)
 ```
 
@@ -248,19 +248,19 @@ Single-slot, last-write-wins. No return value.
 
 ```lua
 sms.events.connect(sms.events.SHOT, function(evt)
-  local w = evt.weapon
-  if not w or not w:is_bomb() then return end
-  w:on_tick(function(weapon)
+  local weapon = evt.weapon
+  if not weapon or not weapon:is_bomb() then return end
+  weapon:on_tick(function(weapon)
     -- Cheap per-tick logging — keep this light, it runs at the poll rate.
-    local p = weapon:get_position()
-    if p then
-      sms.log.debug(string.format("bomb at %.0f, %.0f m AGL %.0f", p.x, p.z, p.y))
+    local pos = weapon:get_position()
+    if pos then
+      sms.log.debug(string.format("bomb at %.0f, %.0f m AGL %.0f", pos.x, pos.z, pos.y))
     end
   end)
-  w:on_impact(function(weapon)
+  weapon:on_impact(function(weapon)
     sms.log.info("bomb impact at " .. tostring(weapon:get_impact_position()))
   end)
-  w:start_tracking({ rate = 30 })
+  weapon:start_tracking({ rate = 30 })
 end)
 ```
 
@@ -308,9 +308,9 @@ still in the air); spamming logs there would be noise.
 
 ```lua
 sms.events.connect(sms.events.SHOT, function(evt)
-  local w = evt.weapon
-  if not w or not w:is_missile() then return end
-  w:on_tick(function(weapon)
+  local weapon = evt.weapon
+  if not weapon or not weapon:is_missile() then return end
+  weapon:on_tick(function(weapon)
     local target = weapon:get_target()
     if not target then return end  -- silent-nil; not an error
     local speed  = weapon:get_speed() or 0
@@ -319,7 +319,7 @@ sms.events.connect(sms.events.SHOT, function(evt)
       weapon:get_name(), target:get_name(), speed
     ))
   end)
-  w:start_tracking()
+  weapon:start_tracking()
 end)
 ```
 
@@ -359,16 +359,16 @@ vec3 nor a handle exposing `:get_position()`.
 
 ```lua
 sms.events.connect(sms.events.SHOT, function(evt)
-  local w = evt.weapon
-  if not w or not w:is_bomb() then return end
+  local weapon = evt.weapon
+  if not weapon or not weapon:is_bomb() then return end
   local target = sms.unit("Bandit-1")
-  w:on_impact(function(weapon)
-    local d = weapon:get_impact_distance_from(target)
-    if d then
-      sms.log.info(string.format("CEP this drop: %.1f m", d))
+  weapon:on_impact(function(weapon)
+    local distance = weapon:get_impact_distance_from(target)
+    if distance then
+      sms.log.info(string.format("CEP this drop: %.1f m", distance))
     end
   end)
-  w:start_tracking()
+  weapon:start_tracking()
 end)
 ```
 
@@ -394,10 +394,10 @@ If you need an impact-style event from a programmatic abort, capture
 ```lua
 -- Abort an unwanted shot mid-flight.
 sms.events.connect(sms.events.SHOT, function(evt)
-  local w = evt.weapon
-  if not w then return end
-  if w:get_coalition() == "red" and friendly_zone:is_vec3_in(w:get_release_position()) then
-    w:destroy()
+  local weapon = evt.weapon
+  if not weapon then return end
+  if weapon:get_coalition() == "red" and friendly_zone:is_vec3_in(weapon:get_release_position()) then
+    weapon:destroy()
   end
 end)
 ```
@@ -446,33 +446,33 @@ local range  = sms.area("Bombing-Range-Alpha")
 local target = sms.unit("Range-Target-1")
 
 sms.events.connect(sms.events.SHOT, function(evt)
-  local w = evt.weapon
-  if not w or not w:is_bomb() then return end
+  local weapon = evt.weapon
+  if not weapon or not weapon:is_bomb() then return end
 
   -- Only score drops released inside the range area.
-  local release = w:get_release_position()
-  if not release or not range:is_vec3_in(release) then return end
+  local release_pos = weapon:get_release_position()
+  if not release_pos or not range:is_vec3_in(release_pos) then return end
 
   sms.log.info(string.format(
     "scoring drop: %s by %s, release alt %dm AGL",
-    w:get_type(),
-    w:get_launcher() and w:get_launcher():get_name() or "?",
-    w:get_release_altitude_agl() or -1
+    weapon:get_type(),
+    weapon:get_launcher() and weapon:get_launcher():get_name() or "?",
+    weapon:get_release_altitude_agl() or -1
   ))
 
-  w:on_impact(function(weapon)
-    local d = weapon:get_impact_distance_from(target)
-    if d then
+  weapon:on_impact(function(weapon)
+    local distance = weapon:get_impact_distance_from(target)
+    if distance then
       sms.log.info(string.format(
         "[score] %s impact %.1f m from %s",
-        weapon:get_type(), d, target:get_name()
+        weapon:get_type(), distance, target:get_name()
       ))
     else
       sms.log.warn("[score] impact distance unavailable")
     end
   end)
 
-  w:start_tracking({ rate = 30, ip_distance = 100 })
+  weapon:start_tracking({ rate = 30, ip_distance = 100 })
 end)
 ```
 

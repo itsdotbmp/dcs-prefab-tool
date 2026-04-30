@@ -39,8 +39,8 @@ local log = sms.log.module("sms.foo")
 
 -- warn: the caller named a non-existent group. They can fix it by
 -- spelling the group name correctly or checking :is_alive() first.
-local g = sms.group("typo-grup")  -- mistyped
-if not g then
+local group = sms.group("typo-grup")  -- mistyped
+if not group then
   log.warn("get_position: group 'typo-grup' not found")
   return nil
 end

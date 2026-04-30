@@ -83,8 +83,8 @@ Mention silent-nil paths explicitly when they exist.
 \`\`\`lua
 -- Realistic, runnable snippet. Multi-line is fine — for sms.task in
 -- particular, prefer larger examples that show the call in context.
-local g = sms.group("red-cas-1")
-sms.task.bomb(g, {x = 1234, y = 0, z = 5678}, {
+local group = sms.group("red-cas-1")
+sms.task.bomb(group, {x = 1234, y = 0, z = 5678}, {
   altitude    = 4000,
   weapon_type = "Bombs",
   expend      = "All",

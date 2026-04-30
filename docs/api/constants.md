@@ -96,10 +96,10 @@ As with `sms.targets`, builders accept either these constants (recommended) or r
 
 ```lua
 -- A JTAC marks an enemy convoy with a laser for a CAS flight to attack.
-local jtac     = sms.group("blue-jtac-1")
-local target_g = sms.group("red-convoy-1")
+local jtac   = sms.group("blue-jtac-1")
+local target = sms.group("red-convoy-1")
 
-sms.task.fac_attack_group(jtac, target_g, {
+sms.task.fac_attack_group(jtac, target, {
   designation = sms.designations.LASER,
   frequency   = 30,         -- MHz
   modulation  = "AM",

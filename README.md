@@ -42,9 +42,10 @@ local cap = sms.group.create({
   units = { {type = "FA-18C_hornet", alt = 6000, heading = 90} },
 })
 
-cap:set_task(sms.task.orbit({x = 50000, y = 0, z = 0}, {
+local orbit_task = sms.task.orbit({x = 50000, y = 0, z = 0}, {
   altitude = 6000, speed = 200, pattern = "Circle",
-}))
+})
+cap:set_task(orbit_task)
 
 cap:connect(sms.events.DEAD, function(evt)
   sms.log.info("CAP wiped at " .. evt.time)

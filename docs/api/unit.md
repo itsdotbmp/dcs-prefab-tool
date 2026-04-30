@@ -27,9 +27,9 @@ Look up an existing DCS unit by name.
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-if u then
-  sms.log.info(u:get_name() .. " at " .. u:get_altitude() .. "m ASL")
+local bandit = sms.unit("Bandit-1")
+if bandit then
+  sms.log.info(bandit:get_name() .. " at " .. bandit:get_altitude() .. "m ASL")
 end
 ```
 
@@ -44,8 +44,8 @@ end
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-if not u:is_alive() then
+local bandit = sms.unit("Bandit-1")
+if not bandit:is_alive() then
   sms.log.info("Bandit-1 is gone")
 end
 ```
@@ -59,8 +59,8 @@ end
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-sms.log.info("tracking " .. u:get_name())
+local bandit = sms.unit("Bandit-1")
+sms.log.info("tracking " .. bandit:get_name())
 ```
 
 ### `u:get_coalition() → "red" | "blue" | "neutral"`
@@ -72,8 +72,8 @@ sms.log.info("tracking " .. u:get_name())
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-if u:get_coalition() == "red" then
+local bandit = sms.unit("Bandit-1")
+if bandit:get_coalition() == "red" then
   sms.log.info("hostile inbound")
 end
 ```
@@ -87,10 +87,10 @@ end
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-local p = u:get_position()
-if p then
-  sms.log.info(string.format("pos: x=%.0f y=%.0f z=%.0f", p.x, p.y, p.z))
+local bandit = sms.unit("Bandit-1")
+local pos = bandit:get_position()
+if pos then
+  sms.log.info(string.format("pos: x=%.0f y=%.0f z=%.0f", pos.x, pos.y, pos.z))
 end
 ```
 
@@ -103,8 +103,8 @@ end
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-if u:get_type() == "FA-18C_hornet" then
+local bandit = sms.unit("Bandit-1")
+if bandit:get_type() == "FA-18C_hornet" then
   sms.log.info("it's a hornet")
 end
 ```
@@ -118,10 +118,10 @@ end
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-local g = u:get_group()
-if g then
-  sms.log.info("part of group " .. g:get_name())
+local bandit = sms.unit("Bandit-1")
+local parent_group = bandit:get_group()
+if parent_group then
+  sms.log.info("part of group " .. parent_group:get_name())
 end
 ```
 
@@ -134,10 +134,10 @@ end
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-local hdg = u:get_heading()
-if hdg then
-  sms.log.info(string.format("heading %03d", math.floor(hdg + 0.5)))
+local bandit = sms.unit("Bandit-1")
+local heading = bandit:get_heading()
+if heading then
+  sms.log.info(string.format("heading %03d", math.floor(heading + 0.5)))
 end
 ```
 
@@ -150,8 +150,8 @@ end
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-local pitch = u:get_pitch()
+local bandit = sms.unit("Bandit-1")
+local pitch = bandit:get_pitch()
 if pitch and pitch > 30 then
   sms.log.info("nose-high — climbing or merging")
 end
@@ -172,9 +172,9 @@ end
 **Example**
 
 ```lua
-local u = sms.unit("Bandit-1")
-local asl = u:get_altitude()
-local agl = u:get_altitude(true)
+local bandit = sms.unit("Bandit-1")
+local asl = bandit:get_altitude()
+local agl = bandit:get_altitude(true)
 if asl and agl then
   sms.log.info(string.format("alt: %.0fm ASL / %.0fm AGL", asl, agl))
 end
@@ -205,8 +205,8 @@ sms.unit("Bandit-1"):destroy()
 
 ```lua
 -- Trigger end-of-mission scoring as if the unit had died in combat.
-local g = sms.group("red-cas-1")
-g:connect(sms.events.DEAD, function(evt)
+local cas = sms.group("red-cas-1")
+cas:connect(sms.events.DEAD, function(evt)
   sms.log.info("red CAS down at " .. evt.time)
 end)
 
@@ -232,9 +232,9 @@ sms.unit("Bandit-1"):destroy({emit_event = true})
 **Example — react when this unit gets hit:**
 
 ```lua
-local u = sms.unit("Bandit-1")
-u:connect(sms.events.HIT, function(evt)
-  sms.log.info(u:get_name() .. " hit by " .. (evt.weapon_type or "?"))
+local bandit = sms.unit("Bandit-1")
+bandit:connect(sms.events.HIT, function(evt)
+  sms.log.info(bandit:get_name() .. " hit by " .. (evt.weapon_type or "?"))
 end)
 ```
 

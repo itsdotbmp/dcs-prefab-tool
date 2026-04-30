@@ -25,9 +25,9 @@ All methods follow the framework's [failure model](../../AGENTS.md#3-failure-mod
 **Example**
 
 ```lua
-local g = sms.group("red-armor-1")
-if g then
-  sms.log.info(g:get_name() .. " is at " .. g:get_position().x)
+local armor = sms.group("red-armor-1")
+if armor then
+  sms.log.info(armor:get_name() .. " is at " .. armor:get_position().x)
 end
 ```
 
@@ -44,9 +44,9 @@ end
 **Example**
 
 ```lua
-local g = sms.group("convoy-1")
+local convoy = sms.group("convoy-1")
 sms.timer.every(1.0, function()
-  if not g:is_alive() then return false end   -- self-cancel when group dies
+  if not convoy:is_alive() then return false end   -- self-cancel when group dies
   sms.log.info("convoy still rolling")
 end)
 ```
@@ -60,8 +60,8 @@ end)
 **Example**
 
 ```lua
-local g = sms.group.create({...})           -- auto-suffix may rename
-sms.log.info("spawned as " .. g:get_name()) -- always trust this over the input
+local group = sms.group.create({...})           -- auto-suffix may rename
+sms.log.info("spawned as " .. group:get_name()) -- always trust this over the input
 ```
 
 ### `g:get_coalition() → "red" | "blue" | "neutral"`
@@ -87,9 +87,9 @@ end
 **Example**
 
 ```lua
-local g = sms.group("patrol-1")
-if g:get_category() == "airplane" then
-  g:set_task(sms.task.orbit(orbit_pt, {altitude = 6000, pattern = "Anchored"}))
+local patrol = sms.group("patrol-1")
+if patrol:get_category() == "airplane" then
+  patrol:set_task(sms.task.orbit(orbit_pt, {altitude = 6000, pattern = "Anchored"}))
 end
 ```
 
@@ -117,8 +117,8 @@ end
 **Example**
 
 ```lua
-for i, u in ipairs(sms.group("flight-1"):get_units() or {}) do
-  sms.log.info(i .. ": " .. u:get_type() .. " at " .. u:get_altitude() .. "m")
+for i, unit in ipairs(sms.group("flight-1"):get_units() or {}) do
+  sms.log.info(i .. ": " .. unit:get_type() .. " at " .. unit:get_altitude() .. "m")
 end
 ```
 
@@ -131,8 +131,8 @@ end
 **Example**
 
 ```lua
-local g = sms.group("scratch-spawn")
-if g then g:destroy() end
+local scratch = sms.group("scratch-spawn")
+if scratch then scratch:destroy() end
 ```
 
 ### `g:connect(event_name, fn) → Connection`
@@ -153,12 +153,12 @@ For `sms.events.DEAD` specifically, the callback fires **once** when the *last* 
 **Example**
 
 ```lua
-local g = sms.group("red-armor")
-g:connect(sms.events.DEAD, function(evt)
+local armor = sms.group("red-armor")
+armor:connect(sms.events.DEAD, function(evt)
   sms.log.info("red armor wiped at t=" .. evt.time)
 end)
 
-g:connect(sms.events.HIT, function(evt)
+armor:connect(sms.events.HIT, function(evt)
   -- fires per-unit-hit; evt.initiator is the unit that took the hit
   sms.log.info(evt.initiator:get_name() .. " hit by " .. (evt.weapon_type or "?"))
 end)
@@ -232,7 +232,7 @@ Any extra unit keys are passed through verbatim.
 **Example — ground**
 
 ```lua
-local g = sms.group.create({
+local tanks = sms.group.create({
   name     = "tank-section",
   position = {x = 0, y = 0, z = 0},
   country  = "USA",
@@ -243,7 +243,7 @@ local g = sms.group.create({
     { type = "M-1 Abrams", offset = {x = 0, y = 0, z = 40}, heading = 90 },
   },
 })
-sms.log.info("spawned as " .. g:get_name())   -- e.g. "tank-section" or "tank-section-1"
+sms.log.info("spawned as " .. tanks:get_name())   -- e.g. "tank-section" or "tank-section-1"
 ```
 
 **Example — aircraft**

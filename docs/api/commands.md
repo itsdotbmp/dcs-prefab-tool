@@ -35,14 +35,14 @@ All builders follow the framework's [failure model](../../AGENTS.md#3-failure-mo
 **Example**
 
 ```lua
-local g   = sms.group("red-strike-1")
-local cmd = sms.commands.set_invisible(true)
-g:set_command(cmd)              -- true; group is now invisible to AI sensors
+local strike = sms.group("red-strike-1")
+local cmd    = sms.commands.set_invisible(true)
+strike:set_command(cmd)              -- true; group is now invisible to AI sensors
 ```
 
 **Notes**
 
-- Manually-built tables are rejected on purpose: `g:set_command({id = "NoAction", params = {}})` logs a warning and returns `false`. Always go through a builder so the framework can tag the command.
+- Manually-built tables are rejected on purpose: `group:set_command({id = "NoAction", params = {}})` logs a warning and returns `false`. Always go through a builder so the framework can tag the command.
 - Commands have no observed same-frame race, so `set_command` dispatches synchronously (unlike [`set_task`](group.md#gset_tasktask--bool), which defers).
 
 ---
@@ -80,10 +80,10 @@ sms.group("convoy-1"):set_command(sms.commands.no_action())
 **Example**
 
 ```lua
-local g = sms.group("recon-1")
-g:set_command(sms.commands.set_invisible(true))    -- hide
+local recon = sms.group("recon-1")
+recon:set_command(sms.commands.set_invisible(true))    -- hide
 sms.timer.after(60, function()
-  g:set_command(sms.commands.set_invisible(false)) -- reveal a minute later
+  recon:set_command(sms.commands.set_invisible(false)) -- reveal a minute later
 end)
 ```
 
@@ -120,10 +120,10 @@ sms.group("vip-convoy"):set_command(sms.commands.set_immortal(true))
 **Example**
 
 ```lua
-local g = sms.group("red-armor-1")
-g:set_command(sms.commands.stop_route(true))   -- hold position
+local armor = sms.group("red-armor-1")
+armor:set_command(sms.commands.stop_route(true))   -- hold position
 sms.timer.after(120, function()
-  g:set_command(sms.commands.stop_route(false)) -- resume after 2 min
+  armor:set_command(sms.commands.stop_route(false)) -- resume after 2 min
 end)
 ```
 
@@ -203,8 +203,8 @@ sms.group("blue-strike-1"):set_command(sms.commands.eplrs(true))
 **Example**
 
 ```lua
-local g = sms.group("blue-cap-1")
-g:set_command(sms.commands.set_frequency(251000000, sms.commands.MODULATION.AM, 100))
+local cap = sms.group("blue-cap-1")
+cap:set_command(sms.commands.set_frequency(251000000, sms.commands.MODULATION.AM, 100))
 ```
 
 #### `sms.commands.set_frequency_for_unit(hz, modulation, power, unit_id) → cmd`
@@ -314,7 +314,7 @@ sms.group("blue-cap-1"):set_command(
 
 ```lua
 local tex = sms.group("texaco-1")
-tex:set_command(sms.commands.activate_beacon({
+local cmd = sms.commands.activate_beacon({
   type         = sms.commands.BEACON.TYPE.TACAN,
   system       = sms.commands.BEACON.SYSTEM.TACAN_TANKER_Y,
   frequency    = 1088000000,    -- TACAN ch 25Y
@@ -323,7 +323,8 @@ tex:set_command(sms.commands.activate_beacon({
   callsign     = "TEX",
   aa           = true,
   bearing      = true,
-}))
+})
+tex:set_command(cmd)
 ```
 
 #### `sms.commands.deactivate_beacon() → cmd` *(air-only)*
