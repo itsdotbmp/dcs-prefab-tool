@@ -141,6 +141,7 @@ Given parsed fields `folder`, `category`, `attribute[]` per entry, route as foll
 | `sms.units.artillery.<x>` | `category = "Artillery"` |
 | `sms.units.infantry.<x>` | `category = "Infantry"` |
 | `sms.units.unarmed.<x>` | `category = "Unarmed"` |
+| `sms.units.fortifications.<x>` | `category = "Fortification"` (entries in `Cars/Car/` with this category — Bunker, outpost, etc. — are group-spawnable obstacles, not statics) |
 | `sms.units.missiles.<x>` | `category = "MissilesSS"` |
 | `sms.units.trains.<x>` | `category = "Carriage"` or `"Locomotive"` or `"Train"` |
 

@@ -112,10 +112,11 @@ func classifyGround(e Entry) Bucket {
 		return Bucket{Top: "units", Cat: "trains"}
 	case "Fortification":
 		// Datamine ships a handful of Fortification-category entries inside
-		// Cars/Car/ (e.g. Bunker, Sandbox, outpost). They are statics from
-		// the user's point of view, so route them alongside the dedicated
-		// Fortifications/ folder rather than into a Cars sub-bucket.
-		return Bucket{Top: "statics", Cat: "fortifications"}
+		// Cars/Car/ (e.g. Bunker, Sandbox, outpost). Despite the "static"
+		// feel, they carry the "Ground Units" attribute and are spawned via
+		// coalition.addGroup — not coalition.addStaticObject — so they
+		// belong on the units side, parallel to unarmed/infantry.
+		return Bucket{Top: "units", Cat: "fortifications"}
 	}
 	return Bucket{}
 }

@@ -37,6 +37,7 @@ func TestClassify_routing(t *testing.T) {
 		{"artillery", Entry{Type: "M-109", Folder: "Cars", Category: "Artillery", Attributes: []string{"Artillery"}}, Bucket{Top: "units", Cat: "artillery"}},
 		{"infantry", Entry{Type: "Soldier M4", Folder: "Cars", Category: "Infantry", Attributes: []string{"Infantry"}}, Bucket{Top: "units", Cat: "infantry"}},
 		{"unarmed", Entry{Type: "Hummer", Folder: "Cars", Category: "Unarmed", Attributes: []string{"APC"}}, Bucket{Top: "units", Cat: "unarmed"}},
+		{"fortifications (Cars/Fortification)", Entry{Type: "Bunker", Folder: "Cars", Category: "Fortification", Attributes: []string{"Fortifications", "Ground Units"}}, Bucket{Top: "units", Cat: "fortifications"}},
 		{"missiles", Entry{Type: "Scud_B", Folder: "Cars", Category: "MissilesSS", Attributes: []string{"SS_missile"}}, Bucket{Top: "units", Cat: "missiles"}},
 
 		// Trains
