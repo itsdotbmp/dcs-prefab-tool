@@ -163,6 +163,8 @@ For one-shot (re)loading of the whole framework in a mission, use [`framework/lo
 | `sms` (root) | `sms.lua` | — | Single global namespace; idempotent on reload. Internal handle factories. |
 | `sms.log` | `log.lua` | [`docs/api/log.md`](docs/api/log.md) | Tagged logger; four levels with runtime threshold. |
 | `sms.utils` | `utils.lua` | [`docs/api/utils.md`](docs/api/utils.md) | Cross-cutting helpers: unit conversions, vec3 maths, coalition/country lookup. |
+| `sms.units` | `units.lua` | [`docs/api/units.md`](docs/api/units.md) | Generated catalog of every group-spawnable DCS type, organized by category; includes `origin_of` for asset-pack lookup. |
+| `sms.statics` | `statics.lua` | [`docs/api/statics.md`](docs/api/statics.md) | Generated catalog of every static-spawnable DCS type, parallel to `sms.units`. |
 | `sms.targets` | `targets.lua` | [`docs/api/constants.md`](docs/api/constants.md) | Target attribute string constants for engagement tasks. |
 | `sms.designations` | `designations.lua` | [`docs/api/constants.md`](docs/api/constants.md) | FAC designation enum constants. |
 | `sms.group` | `group.lua` (+ `group_spawn.lua`, `events.lua`) | [`docs/api/group.md`](docs/api/group.md) | Group entity wrapper; `create` / `clone` factories; `:connect` event sugar; apply API for tasks / commands / options. |

@@ -32,7 +32,7 @@ local log = sms.log.module("sms.spawn")
 -- ============================================================
 
 ---@class sms.group.unit_spec
----@field type string  # DCS unit type (e.g. "M-1 Abrams", "F-16C_50")
+---@field type sms.GroupSpawnType  # DCS unit type (e.g. "M-1 Abrams", "F-16C_50"); autocompleted via sms.units.*
 ---@field name? string  # optional unit name; auto-suffixed on collision
 ---@field offset? {x: number, y: number, z: number}  # per-unit offset from group anchor (meters)
 ---@field heading? number  # heading in degrees (default 0)
