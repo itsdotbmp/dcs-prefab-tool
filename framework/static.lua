@@ -49,7 +49,7 @@ sms.static = sms.static or {}
 ---@field name       string                       # static object name (auto-suffixed if taken)
 ---@field type       sms.StaticSpawnType          # DCS type-name (e.g. "Hangar A"); autocompleted via sms.statics.*
 ---@field position   {x: number, y: number, z: number}  # DCS world coords (x=north, y=alt, z=east)
----@field country sms.Country|string  # country name (resolved via sms.utils.resolve_country); pass sms.countries.<KEY> for autocomplete or any case-folded string
+---@field country    sms.Country|string           # country name (resolved via sms.utils.resolve_country); pass sms.countries.<KEY> for autocomplete or any case-folded string
 ---@field heading?   number                       # heading in degrees (default 0)
 ---@field category?  string                       # DCS static category override
 ---@field dead?      boolean                      # spawn as wreckage

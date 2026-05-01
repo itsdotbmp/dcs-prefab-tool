@@ -19,7 +19,7 @@ For per-module reference see the [API index](README.md). For the dense surface m
 local blue_cap = sms.group.create({
   name     = "blue-cap",
   position = {x = 0,      y = 0, z = 0},
-  country  = "USA",
+  country  = sms.countries.USA,
   category = "airplane",
   units    = { {type = sms.units.planes.FA_18C_hornet, alt = 7500, heading = 90, speed = 220} },
 })
@@ -27,7 +27,7 @@ local blue_cap = sms.group.create({
 local red_cap = sms.group.create({
   name     = "red-cap",
   position = {x = 80000, y = 0, z = 0},   -- ~43 nm east
-  country  = "RUSSIA",
+  country  = sms.countries.RUSSIA,
   category = "airplane",
   units    = { {type = sms.units.planes.Su_27, alt = 7500, heading = 270, speed = 220} },
 })
@@ -171,7 +171,7 @@ arm_respawn(current)
 local strike = sms.group.create({
   name     = "blue-strike",
   position = {x = 0, y = 0, z = 0},
-  country  = "USA",
+  country  = sms.countries.USA,
   category = "airplane",
   units    = {
     {type = sms.units.planes.F_16C_50, alt = 6000, heading = 90, speed = 220},
@@ -182,7 +182,7 @@ local strike = sms.group.create({
 local cap = sms.group.create({
   name     = "blue-cap",
   position = {x = -2000, y = 0, z = 1000},
-  country  = "USA",
+  country  = sms.countries.USA,
   category = "airplane",
   units    = {
     {type = sms.units.planes.F_15C, alt = 7000, heading = 90, speed = 240},
@@ -245,7 +245,7 @@ local function spawn_awacs()
   local awacs = sms.group.create({
     name     = "blue-awacs",
     position = {x = FOB.x - 5000, y = 0, z = FOB.z},
-    country  = "USA",
+    country  = sms.countries.USA,
     category = "airplane",
     units    = { {type = sms.units.planes.E_3A, alt = sms.utils.feet_to_meters(30000), heading = 90, speed = 200} },
   })
@@ -267,7 +267,7 @@ local function spawn_tanker()
   local tanker = sms.group.create({
     name     = "blue-tanker",
     position = {x = TRACK.x, y = 0, z = TRACK.z - 5000},
-    country  = "USA",
+    country  = sms.countries.USA,
     category = "airplane",
     units    = { {type = sms.units.planes.KC_135, alt = sms.utils.feet_to_meters(22000), heading = 0, speed = 180} },
   })
