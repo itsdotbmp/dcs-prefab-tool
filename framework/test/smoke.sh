@@ -106,6 +106,51 @@ n=$(echo "${result}" | sed -n 's/.*"return_value":\([0-9]*\).*/\1/p')
 [ -n "${n}" ] && [ "${n}" -ge 80 ] \
   || { echo "FAIL: expected >=80 entries, got: ${result}"; exit 1; }
 
+echo "==> load framework/skill.lua, framework/alt_type.lua, framework/waypoint.lua"
+"${DCSSMS}" exec --file skill.lua >/dev/null
+"${DCSSMS}" exec --file alt_type.lua >/dev/null
+"${DCSSMS}" exec --file waypoint.lua >/dev/null
+
+echo "==> sms.skill.AVERAGE == 'Average'"
+result=$("${DCSSMS}" exec --code "return sms.skill.AVERAGE")
+echo "${result}" | grep -q '"return_value":"Average"' \
+  || { echo "FAIL: expected Average, got: ${result}"; exit 1; }
+
+echo "==> sms.skill.PLAYER == 'Player' (player-slot marker)"
+result=$("${DCSSMS}" exec --code "return sms.skill.PLAYER")
+echo "${result}" | grep -q '"return_value":"Player"' \
+  || { echo "FAIL: expected Player, got: ${result}"; exit 1; }
+
+echo "==> sms.alt_type.BARO == 'BARO'"
+result=$("${DCSSMS}" exec --code "return sms.alt_type.BARO")
+echo "${result}" | grep -q '"return_value":"BARO"' \
+  || { echo "FAIL: expected BARO, got: ${result}"; exit 1; }
+
+echo "==> sms.alt_type.RADIO == 'RADIO'"
+result=$("${DCSSMS}" exec --code "return sms.alt_type.RADIO")
+echo "${result}" | grep -q '"return_value":"RADIO"' \
+  || { echo "FAIL: expected RADIO, got: ${result}"; exit 1; }
+
+echo "==> sms.waypoint.TYPE.TURNING_POINT == 'Turning Point'"
+result=$("${DCSSMS}" exec --code "return sms.waypoint.TYPE.TURNING_POINT")
+echo "${result}" | grep -q '"return_value":"Turning Point"' \
+  || { echo "FAIL: expected 'Turning Point', got: ${result}"; exit 1; }
+
+echo "==> sms.waypoint.ACTION.OFF_ROAD == 'Off Road'"
+result=$("${DCSSMS}" exec --code "return sms.waypoint.ACTION.OFF_ROAD")
+echo "${result}" | grep -q '"return_value":"Off Road"' \
+  || { echo "FAIL: expected 'Off Road', got: ${result}"; exit 1; }
+
+echo "==> sms.waypoint.TYPE.LANDING_REFUEL_REARM == 'LandingReFuAr' (contracted casing guard)"
+result=$("${DCSSMS}" exec --code "return sms.waypoint.TYPE.LANDING_REFUEL_REARM")
+echo "${result}" | grep -q '"return_value":"LandingReFuAr"' \
+  || { echo "FAIL: expected 'LandingReFuAr', got: ${result}"; exit 1; }
+
+echo "==> sms.waypoint.ACTION.LANDING_REFUEL_REARM == 'LandingReFuAr' (contracted casing guard)"
+result=$("${DCSSMS}" exec --code "return sms.waypoint.ACTION.LANDING_REFUEL_REARM")
+echo "${result}" | grep -q '"return_value":"LandingReFuAr"' \
+  || { echo "FAIL: expected 'LandingReFuAr', got: ${result}"; exit 1; }
+
 echo "==> sms.utils.coalition_int_to_str(1) == 'red'"
 result=$("${DCSSMS}" exec --code "return sms.utils.coalition_int_to_str(1)")
 echo "${result}" | grep -q '"return_value":"red"' \

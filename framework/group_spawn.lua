@@ -36,11 +36,11 @@ local log = sms.log.module("sms.spawn")
 ---@field name? string  # optional unit name; auto-suffixed on collision
 ---@field offset? {x: number, y: number, z: number}  # per-unit offset from group anchor (meters)
 ---@field heading? number  # heading in degrees (default 0)
----@field skill? string  # "Average" | "Good" | "High" | "Excellent" | "Random" (default "Average")
+---@field skill? sms.Skill|string  # AI skill level; pass sms.skill.<KEY> for autocomplete (default "Average")
 ---@field livery_id? string
 ---@field onboard_num? string
 ---@field alt? number  # altitude in meters (required for airplane/helicopter)
----@field alt_type? string  # "BARO" | "RADIO" (default "BARO" for air)
+---@field alt_type? sms.AltType|string  # altitude reference; pass sms.alt_type.<KEY> for autocomplete (default "BARO" for air)
 ---@field speed? number  # initial speed (m/s); airplanes default to 200 if unset
 ---@field payload? table
 ---@field callsign? table|string
