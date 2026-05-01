@@ -21,7 +21,7 @@ local blue_cap = sms.group.create({
   position = {x = 0,      y = 0, z = 0},
   country  = "USA",
   category = "airplane",
-  units    = { {type = "FA-18C_hornet", alt = 7500, heading = 90, speed = 220} },
+  units    = { {type = sms.units.planes.FA_18C_hornet, alt = 7500, heading = 90, speed = 220} },
 })
 
 local red_cap = sms.group.create({
@@ -29,7 +29,7 @@ local red_cap = sms.group.create({
   position = {x = 80000, y = 0, z = 0},   -- ~43 nm east
   country  = "RUSSIA",
   category = "airplane",
-  units    = { {type = "Su-27", alt = 7500, heading = 270, speed = 220} },
+  units    = { {type = sms.units.planes.Su_27, alt = 7500, heading = 270, speed = 220} },
 })
 
 -- Send each side to orbit a point 30 km in front of itself.
@@ -174,8 +174,8 @@ local strike = sms.group.create({
   country  = "USA",
   category = "airplane",
   units    = {
-    {type = "F-16C_50", alt = 6000, heading = 90, speed = 220},
-    {type = "F-16C_50", alt = 6000, heading = 90, speed = 220, offset = {x = -50, y = 0, z = 50}},
+    {type = sms.units.planes.F_16C_50, alt = 6000, heading = 90, speed = 220},
+    {type = sms.units.planes.F_16C_50, alt = 6000, heading = 90, speed = 220, offset = {x = -50, y = 0, z = 50}},
   },
 })
 
@@ -185,8 +185,8 @@ local cap = sms.group.create({
   country  = "USA",
   category = "airplane",
   units    = {
-    {type = "F-15C", alt = 7000, heading = 90, speed = 240},
-    {type = "F-15C", alt = 7000, heading = 90, speed = 240, offset = {x = -50, y = 0, z = 50}},
+    {type = sms.units.planes.F_15C, alt = 7000, heading = 90, speed = 240},
+    {type = sms.units.planes.F_15C, alt = 7000, heading = 90, speed = 240, offset = {x = -50, y = 0, z = 50}},
   },
 })
 
@@ -247,7 +247,7 @@ local function spawn_awacs()
     position = {x = FOB.x - 5000, y = 0, z = FOB.z},
     country  = "USA",
     category = "airplane",
-    units    = { {type = "E-3A", alt = sms.utils.feet_to_meters(30000), heading = 90, speed = 200} },
+    units    = { {type = sms.units.planes.E_3A, alt = sms.utils.feet_to_meters(30000), heading = 90, speed = 200} },
   })
   if not awacs then return end
 
@@ -269,7 +269,7 @@ local function spawn_tanker()
     position = {x = TRACK.x, y = 0, z = TRACK.z - 5000},
     country  = "USA",
     category = "airplane",
-    units    = { {type = "KC-135", alt = sms.utils.feet_to_meters(22000), heading = 0, speed = 180} },
+    units    = { {type = sms.units.planes.KC_135, alt = sms.utils.feet_to_meters(22000), heading = 0, speed = 180} },
   })
   if not tanker then return end
 
@@ -303,6 +303,120 @@ rearm(spawn_tanker)
 ```
 
 `sms.task.combo` runs both sub-tasks in parallel; the AWACS / Tanker enroute verbs need an `Orbit` mission underneath them or DCS has nothing to fly the aircraft through.
+
+---
+
+## 6. Convoy ambush — `ONCE` rule with a dev-flag escape hatch
+
+**Scenario** — A red supply convoy is rolling toward an FOB. A blue ambush force is sitting on overwatch with `weapon_hold` and `green` alarm. As soon as any vehicle in the convoy crosses into the kill-zone drawing, the ambush flips to `weapon_free` + `red` alarm — once. A `MIZ.ambush_now` flag short-circuits the condition so the mission designer can verify the action without driving the convoy across the map.
+
+**Modules used** — [`sms.area`](area.md), [`sms.group`](group.md), [`sms.options`](options.md), [`sms.rule`](rule.md), [`sms.log`](log.md).
+
+```lua
+MIZ = MIZ or {}
+
+local kill_zone = sms.area.from_drawing("convoy_kill_box")
+local convoy    = sms.group("red_supply_convoy")
+local ambush    = {
+  sms.group("ambush_armor"),
+  sms.group("ambush_atgm"),
+  sms.group("ambush_infantry"),
+}
+
+sms.rule("convoy_ambush", {
+  type          = sms.rule.TYPE.ONCE,
+  interval      = 2,
+  dev_condition = function() return MIZ.ambush_now end,
+  condition = function()
+    return convoy:is_alive() and kill_zone:is_any_of_group_in(convoy)
+  end,
+  action = function()
+    sms.log.info("[ambush] convoy in kill box — going hot")
+    local roe       = sms.options.roe(sms.options.ROE.WEAPON_FREE)
+    local alarm_red = sms.options.alarm_state(sms.options.ALARM_STATE.RED)
+    for _, grp in ipairs(ambush) do
+      grp:set_option(roe)
+      grp:set_option(alarm_red)
+    end
+  end,
+})
+```
+
+To validate the action without the convoy ever moving, set `MIZ.ambush_now = true` from a chat command, F10 menu, or the live-exec bridge. The next `dev_condition` poll (within `interval` seconds) fires the action — and because `ONCE` rules unregister on first fire, you can flip the flag back to `false` immediately afterwards without worrying about a re-fire. See [`sms.rule`](rule.md) for the full dev-vs-natural-fire semantics.
+
+---
+
+## 7. No-fly-zone nag — `CONTINUOUS` rule with `cooldown`
+
+**Scenario** — The mission has a clearly-marked no-fly polygon over a friendly civilian zone. While the player is inside it, a chat warning appears every 20 sim-seconds reminding them to leave; the moment they exit the zone, the warnings stop. No fixed timer — the warning cadence is gated by the rule's cooldown.
+
+**Modules used** — [`sms.area`](area.md), [`sms.unit`](unit.md), [`sms.rule`](rule.md).
+
+```lua
+local nfz    = sms.area.from_drawing("civilian_no_fly_zone")
+local player = sms.unit("Player")
+
+sms.rule("nfz_warning", {
+  type     = sms.rule.TYPE.CONTINUOUS,
+  interval = 2,
+  cooldown = 20,
+  condition = function()
+    return player:is_alive() and nfz:is_unit_in(player)
+  end,
+  action = function()
+    trigger.action.outText("LEAVE THE NO-FLY ZONE", 8)
+  end,
+})
+```
+
+`CONTINUOUS` would otherwise fire on every poll while the condition is true; `cooldown = 20` collapses that into one warning per 20 sim-seconds. As soon as the player crosses back out, the condition goes false and the cooldown is moot — the next warning only happens if they re-enter and the cooldown has elapsed.
+
+**Framework gap** — `trigger.action.outText` is the vanilla DCS message API; the framework doesn't yet wrap it. If chat-message recipes start showing up in 2-3 places, that's the signal to add `sms.message.to_all(...)` / `sms.message.to_group(...)` and update [`AGENTS.md`](../../AGENTS.md) §7.
+
+---
+
+## 8. QRF on sustained capture — `TOGGLE` rule with `sustain`
+
+**Scenario** — Red infantry has to *hold* a capture zone, not just dip in. If any red unit is inside the capture polygon for **30 continuous sim-seconds**, a blue QRF spawns from a template and is tasked to retake the zone. If red leaves before 30s elapse, the sustain timer resets and nothing happens. After the QRF launches, the rule re-arms only when the zone clears, so a second sustained push later in the mission triggers a second QRF.
+
+**Modules used** — [`sms.area`](area.md), [`sms.group`](group.md), [`sms.task`](task.md), [`sms.rule`](rule.md), [`sms.log`](log.md).
+
+```lua
+local capture_zone = sms.area.from_drawing("capture_zone_alpha")
+local red_assault  = {
+  sms.group("red_inf_01"),
+  sms.group("red_inf_02"),
+  sms.group("red_btr_01"),
+}
+local qrf_count = 0
+
+sms.rule("qrf_dispatch", {
+  type     = sms.rule.TYPE.TOGGLE,
+  interval = 2,
+  sustain  = 30,
+  condition = function()
+    for _, grp in ipairs(red_assault) do
+      if grp:is_alive() and capture_zone:is_any_of_group_in(grp) then
+        return true
+      end
+    end
+  end,
+  action = function()
+    qrf_count = qrf_count + 1
+    local spawn_pt = capture_zone:get_position()
+    local qrf = sms.group.clone("BLUE_QRF_TEMPLATE", {
+      name     = "blue_qrf_" .. qrf_count,
+      position = {x = spawn_pt.x - 4000, y = 0, z = spawn_pt.z - 4000},
+    })
+    if not qrf then return end
+
+    sms.log.info(string.format("[qrf] dispatch %d — red holding capture zone", qrf_count))
+    qrf:set_task(sms.task.attack(red_assault[1], {weapon_type = "Auto"}))
+  end,
+})
+```
+
+`TOGGLE` only fires on the rising edge — the moment the condition is sustained-true after being false. Once it fires, the rule sits in its `active` state and *will not fire again* until the condition flips back to false (red has fully left the zone or been killed). That falling edge re-arms the rule for the next sustained push. `sustain = 30` is measured between condition evaluations, so with `interval = 2` red has to be in the zone across at least ~15 polls before the action runs.
 
 ---
 
