@@ -28,7 +28,7 @@ func EmitUnits(w io.Writer, entries []ClassifiedEntry, datamineCommit, generated
 // entries (those with Bucket.Top == "statics") to w.
 func EmitStatics(w io.Writer, entries []ClassifiedEntry, datamineCommit, generatedAt string) error {
 	return emit(w, entries, "statics",
-		"sms.statics", "sms.StaticSpawnType",
+		"sms.constants.statics", "sms.StaticSpawnType",
 		datamineCommit, generatedAt)
 }
 

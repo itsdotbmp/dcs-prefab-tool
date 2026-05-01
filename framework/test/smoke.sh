@@ -440,4 +440,33 @@ result=$("${DCSSMS}" exec --code "return tostring(sms.units)")
 echo "${result}" | grep -q '"return_value":"nil"' \
   || { echo "FAIL: expected sms.units to be nil, got: ${result}"; exit 1; }
 
+# ------------------------------------------------------------------
+# Task 6: sms.K.statics catalog under sms.constants.statics
+# ------------------------------------------------------------------
+
+echo "==> type(sms.K.statics.cargos) == 'table'"
+result=$("${DCSSMS}" exec --code "return type(sms.K.statics.cargos)")
+echo "${result}" | grep -q '"return_value":"table"' \
+  || { echo "FAIL: expected table, got: ${result}"; exit 1; }
+
+echo "==> type(sms.K.statics.fortifications) == 'table'"
+result=$("${DCSSMS}" exec --code "return type(sms.K.statics.fortifications)")
+echo "${result}" | grep -q '"return_value":"table"' \
+  || { echo "FAIL: expected table, got: ${result}"; exit 1; }
+
+echo "==> type(sms.K.statics.origin_of) == 'function'"
+result=$("${DCSSMS}" exec --code "return type(sms.K.statics.origin_of)")
+echo "${result}" | grep -q '"return_value":"function"' \
+  || { echo "FAIL: expected function, got: ${result}"; exit 1; }
+
+echo "==> sms.K.statics.fortifications.Airshow_Cone == 'Airshow_Cone' (identity key-value)"
+result=$("${DCSSMS}" exec --code "return sms.K.statics.fortifications.Airshow_Cone")
+echo "${result}" | grep -q '"return_value":"Airshow_Cone"' \
+  || { echo "FAIL: expected Airshow_Cone, got: ${result}"; exit 1; }
+
+echo "==> old sms.statics surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.statics)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.statics to be nil, got: ${result}"; exit 1; }
+
 echo "smoke ok"

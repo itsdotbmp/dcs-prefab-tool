@@ -118,12 +118,12 @@ func TestEmitStatics_outputShape(t *testing.T) {
 		`---@alias sms.StaticSpawnType`,
 		`---| "Bunker"`,
 		`---| "Cow"`,
-		`sms.statics = sms.statics or {}`,
-		`sms.statics.fortifications = {`,
+		`sms.constants.statics = sms.constants.statics or {}`,
+		`sms.constants.statics.fortifications = {`,
 		`Bunker = "Bunker",`,
-		`sms.statics.animals = {`,
+		`sms.constants.statics.animals = {`,
 		`Cow = "Cow",`,
-		`sms.statics.origin_of = function`,
+		`sms.constants.statics.origin_of = function`,
 	}
 	for _, want := range mustContain {
 		if !strings.Contains(out, want) {

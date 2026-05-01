@@ -45,6 +45,7 @@ local topics = {
   "reaction_on_threat.lua",
   "roe.lua",
   "skill.lua",
+  "statics.lua",
   "targets.lua",
   "units.lua",
   "waypoint.lua",

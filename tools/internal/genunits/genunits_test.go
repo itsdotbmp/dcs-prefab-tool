@@ -59,16 +59,16 @@ func TestRun_endToEnd(t *testing.T) {
 		}
 	}
 
-	staticsBytes, err := os.ReadFile(filepath.Join(out, "statics.lua"))
+	staticsBytes, err := os.ReadFile(filepath.Join(out, "constants", "statics.lua"))
 	if err != nil {
-		t.Fatalf("read statics.lua: %v", err)
+		t.Fatalf("read constants/statics.lua: %v", err)
 	}
 	statics := string(staticsBytes)
 	for _, want := range []string{
 		`---@alias sms.StaticSpawnType`,
 		`Bunker = "Bunker"`,
-		`sms.statics.fortifications = {`,
-		`sms.statics.origin_of = function`,
+		`sms.constants.statics.fortifications = {`,
+		`sms.constants.statics.origin_of = function`,
 	} {
 		if !strings.Contains(statics, want) {
 			t.Errorf("statics.lua missing %q", want)
