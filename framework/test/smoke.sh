@@ -77,6 +77,35 @@ result=$("${DCSSMS}" exec --code "return sms.utils.resolve_country('united kingd
 echo "${result}" | grep -q '"return_value":true' \
   || { echo "FAIL: expected return_value:true, got: ${result}"; exit 1; }
 
+echo "==> load framework/countries.lua"
+"${DCSSMS}" exec --file countries.lua >/dev/null
+
+echo "==> sms.countries.USA == 'USA' (key/value identity)"
+result=$("${DCSSMS}" exec --code "return sms.countries.USA")
+echo "${result}" | grep -q '"return_value":"USA"' \
+  || { echo "FAIL: expected USA, got: ${result}"; exit 1; }
+
+echo "==> sms.countries.RUSSIA == 'RUSSIA'"
+result=$("${DCSSMS}" exec --code "return sms.countries.RUSSIA")
+echo "${result}" | grep -q '"return_value":"RUSSIA"' \
+  || { echo "FAIL: expected RUSSIA, got: ${result}"; exit 1; }
+
+echo "==> sms.countries.THE_NETHERLANDS round-trips through resolve_country"
+result=$("${DCSSMS}" exec --code "return type(sms.utils.resolve_country(sms.countries.THE_NETHERLANDS))")
+echo "${result}" | grep -q '"return_value":"number"' \
+  || { echo "FAIL: expected number, got: ${result}"; exit 1; }
+
+echo "==> sms.countries.UNKNOWN_COUNTRY is nil (typo guard)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.countries.UNKNOWN_COUNTRY)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected nil, got: ${result}"; exit 1; }
+
+echo "==> sms.countries has at least 80 entries (sanity)"
+result=$("${DCSSMS}" exec --code "local n = 0; for _ in pairs(sms.countries) do n = n + 1 end; return n")
+n=$(echo "${result}" | sed -n 's/.*"return_value":\([0-9]*\).*/\1/p')
+[ -n "${n}" ] && [ "${n}" -ge 80 ] \
+  || { echo "FAIL: expected >=80 entries, got: ${result}"; exit 1; }
+
 echo "==> sms.utils.coalition_int_to_str(1) == 'red'"
 result=$("${DCSSMS}" exec --code "return sms.utils.coalition_int_to_str(1)")
 echo "${result}" | grep -q '"return_value":"red"' \
