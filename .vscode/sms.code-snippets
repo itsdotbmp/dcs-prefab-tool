@@ -1,70 +1,68 @@
 {
-	// Place your dcs-sms workspace snippets here. Each snippet is defined under a snippet name and has a scope, prefix, body and 
-	// description. Add comma separated ids of the languages where the snippet is applicable in the scope field. If scope 
-	// is left empty or omitted, the snippet gets applied to all languages. The prefix is what is 
-	// used to trigger the snippet and the body will be expanded and inserted. Possible variables are: 
-	// $1, $2 for tab stops, $0 for the final cursor position, and ${1:label}, ${2:another} for placeholders. 
-	// Placeholders with the same ids are connected.
-	// Example:
-	// "Print to console": {
-	// 	"scope": "javascript,typescript",
-	// 	"prefix": "log",
-	// 	"body": [
-	// 		"console.log('$1');",
-	// 		"$2"
-	// 	],
-	// 	"description": "Log output to console"
-	// }
-	//
-	// You can also restrict snippets to specific files using include/exclude patterns:
-	// "Test snippet": {
-	// 	"scope": "javascript,typescript",
-	// 	"prefix": "test",
-	// 	"body": "test('$1', () => {\n\t$0\n});",
-	// 	"include": ["**/*.test.ts", "*.spec.ts"],
-	// 	"exclude": ["**/temp/*.ts"],
-	// 	"description": "Insert test block"
-	// }
-
-	"SMS Rule": {
-		"scope": "lua",
-		"prefix": "sms--rule",
-		"body": [
-			"sms.rule(\"${1:rule_name}\", {",
-			"  type          = sms.rule.TYPE.${2|ONCE,CONTINUOUS,TOGGLE|},",
-			"  interval      = ${3:1},",
-			"  cooldown      = ${4:0},",
-			"  sustain       = ${5:0},",
-			"  condition = function()",
-			"    return ${6:condition}",
-			"  end,",
-			"  dev_condition = function()",
-			"    return ${7:false}",
-			"  end,",
-			"  action = function()",
-			"    ${8:-- action}",
-			"  end,",
-			"})",
-			"$0"
-		],
-		"description": "Skeleton for an sms.rule (all options: type, interval, cooldown, sustain, condition, dev_condition, action)"
-	},
-
-	"SMS Group Create": {
-		"scope": "lua",
-		"prefix": "sms--group",
-		"body": [
-			"sms.group.create({",
-			"  name     = \"${1:group_name}\",",
-			"  position = {x = ${2:0}, y = ${3:0}, z = ${4:0}},",
-			"  country  = \"${5:USA}\",",
-			"  category = \"${6|ground,airplane,helicopter,ship,train|}\",",
-			"  units    = {",
-			"    { type = \"${7:M-1 Abrams}\" },",
-			"  },",
-			"})",
-			"$0"
-		],
-		"description": "Skeleton for sms.group.create (ground 1-unit default; add units / overrides by hand)"
-	}
+    // Place your dcs-sms workspace snippets here. Each snippet is defined under a snippet name and has a scope, prefix, body and 
+    // description. Add comma separated ids of the languages where the snippet is applicable in the scope field. If scope 
+    // is left empty or omitted, the snippet gets applied to all languages. The prefix is what is 
+    // used to trigger the snippet and the body will be expanded and inserted. Possible variables are: 
+    // $1, $2 for tab stops, $0 for the final cursor position, and ${1:label}, ${2:another} for placeholders. 
+    // Placeholders with the same ids are connected.
+    // Example:
+    // "Print to console": {
+    // 	"scope": "javascript,typescript",
+    // 	"prefix": "log",
+    // 	"body": [
+    // 		"console.log('$1');",
+    // 		"$2"
+    // 	],
+    // 	"description": "Log output to console"
+    // }
+    //
+    // You can also restrict snippets to specific files using include/exclude patterns:
+    // "Test snippet": {
+    // 	"scope": "javascript,typescript",
+    // 	"prefix": "test",
+    // 	"body": "test('$1', () => {\n\t$0\n});",
+    // 	"include": ["**/*.test.ts", "*.spec.ts"],
+    // 	"exclude": ["**/temp/*.ts"],
+    // 	"description": "Insert test block"
+    // }
+    "SMS Rule": {
+        "scope": "lua",
+        "prefix": "sms--rule",
+        "body": [
+            "sms.rule(\"${1:rule_name}\", {",
+            "  type          = sms.rule.TYPE.${2|ONCE,CONTINUOUS,TOGGLE|},",
+            "  interval      = ${3:1},",
+            "  cooldown      = ${4:0},",
+            "  sustain       = ${5:0},",
+            "  condition = function()",
+            "    return ${6:condition}",
+            "  end,",
+            "  dev_condition = function()",
+            "    return ${7:false}",
+            "  end,",
+            "  action = function()",
+            "    ${8:-- action}",
+            "  end,",
+            "})",
+            "$0"
+        ],
+        "description": "Skeleton for an sms.rule (all options: type, interval, cooldown, sustain, condition, dev_condition, action)"
+    },
+    "SMS Group Create": {
+        "scope": "lua",
+        "prefix": "sms--group",
+        "body": [
+            "sms.group.create({",
+            "  name     = \"${1:group_name}\",",
+            "  position = {x = ${2:0}, y = ${3:0}, z = ${4:0}},",
+            "  country  = \"${5:USA}\",",
+            "  category = \"${6|ground,airplane,helicopter,ship,train|}\",",
+            "  units    = {",
+            "    { type = \"${7:sms.units.planes.A_10C_2}\" },",
+            "  },",
+            "})",
+            "$0"
+        ],
+        "description": "Skeleton for sms.group.create (ground 1-unit default; add units / overrides by hand)"
+    }
 }
