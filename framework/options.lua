@@ -159,7 +159,7 @@ end
 -- ROE builder (special: id resolved at apply time via _sms_roe marker)
 -- ============================================================
 
----@param value string  # sms.options.ROE.* enum string
+---@param value string  # sms.K.roe.* enum string
 ---@return sms.options.option|nil
 sms.options.roe = function(value)
   if type(value) ~= "string" then
@@ -181,7 +181,7 @@ end
 -- Air-only enum builders
 -- ============================================================
 
----@param value string  # sms.options.REACTION_ON_THREAT.* enum string
+---@param value string  # sms.K.reaction_on_threat.* enum string
 ---@return sms.options.option|nil
 sms.options.reaction_on_threat = function(value)
   if type(value) ~= "string" or _reaction_on_threat[value] == nil then
@@ -194,7 +194,7 @@ sms.options.reaction_on_threat = function(value)
   }, "reaction_on_threat", true)
 end
 
----@param value string  # sms.options.RADAR_USING.* enum string
+---@param value string  # sms.K.radar_using.* enum string
 ---@return sms.options.option|nil
 sms.options.radar_using = function(value)
   if type(value) ~= "string" or _radar_using[value] == nil then
@@ -207,7 +207,7 @@ sms.options.radar_using = function(value)
   }, "radar_using", true)
 end
 
----@param value string  # sms.options.FLARE_USING.* enum string
+---@param value string  # sms.K.flare_using.* enum string
 ---@return sms.options.option|nil
 sms.options.flare_using = function(value)
   if type(value) ~= "string" or _flare_using[value] == nil then
@@ -224,9 +224,9 @@ end
 -- Formation builders (air-only)
 -- ============================================================
 
--- formation accepts either a sms.options.FORMATION string preset or a raw
+-- formation accepts either a sms.K.formation.* string preset or a raw
 -- DCS packed integer (escape hatch for formations not in the preset list).
----@param value string|integer  # sms.options.FORMATION.* preset or DCS packed integer
+---@param value string|integer  # sms.K.formation.* preset or DCS packed integer
 ---@return sms.options.option|nil
 sms.options.formation = function(value)
   local packed
@@ -338,7 +338,7 @@ sms.options.radio_kill    = _make_radio_option("radio_kill",    AI.Option.Air.id
 -- Ground-only builders
 -- ============================================================
 
----@param value string  # sms.options.ALARM_STATE.* enum string
+---@param value string  # sms.K.alarm_state.* enum string
 ---@return sms.options.option|nil
 sms.options.alarm_state = function(value)
   if type(value) ~= "string" or _alarm_state[value] == nil then
