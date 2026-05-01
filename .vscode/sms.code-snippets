@@ -58,7 +58,7 @@
             "  country  = \"${5:USA}\",",
             "  category = \"${6|ground,airplane,helicopter,ship,train|}\",",
             "  units    = {",
-            "    { type = \"${7:sms.units.planes.A_10C_2}\" },",
+            "    { type = ${7:sms.units.planes.A_10C_2} },",
             "  },",
             "})",
             "$0"
@@ -70,7 +70,7 @@
         "prefix": "sms--unit",
         "body": [
             "{",
-            "  type        = \"${1:sms.units.planes.A_10C_2}\",",
+            "  type        = ${1:sms.units.planes.A_10C_2},",
             "  name        = \"${2:unit_name}\",",
             "  offset      = {x = ${3:0}, y = ${4:0}, z = ${5:0}},",
             "  heading     = ${6:0},",
