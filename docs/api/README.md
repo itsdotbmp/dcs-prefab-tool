@@ -27,6 +27,9 @@ After this, every `sms.*` symbol below is available.
 | [`unit.md`](unit.md) | `sms.unit` | Unit entity wrapper. Position, heading, altitude, group lookup, event sugar, programmatic destroy. |
 | [`static.md`](static.md) | `sms.static` | Static-object wrapper plus `create` / `clone` factories. |
 | [`countries.md`](countries.md) | `sms.countries` | Hand-maintained enum of DCS `country.id` keys; provides autocomplete on `country = sms.countries.<KEY>` spawn configs. |
+| [`skill.md`](skill.md) | `sms.skill` | Hand-maintained enum of DCS unit skill levels; autocomplete on the `skill` field of unit specs. |
+| [`alt_type.md`](alt_type.md) | `sms.alt_type` | Two-entry enum (`BARO` / `RADIO`) for the waypoint altitude reference. |
+| [`waypoint.md`](waypoint.md) | `sms.waypoint` | Two enum sub-tables (`TYPE` and `ACTION`) for hand-built route waypoints. |
 | [`area.md`](area.md) | `sms.area` | Unified zone / drawing / runtime-circle / runtime-polygon abstraction with containment tests. |
 | [`weapon.md`](weapon.md) | `sms.weapon` | Weapon-from-event wrapper with tracking lifecycle and impact extrapolation. |
 | [`events.md`](events.md) | `sms.events` | DCS world-event bus, normalized payloads, entity-scoped `:connect`. |
