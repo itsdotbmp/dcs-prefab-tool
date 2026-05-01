@@ -109,8 +109,8 @@ Four private flags on a payload (task / command / option) mark category restrict
 | **Coordinates** | `vec3 = {x = north, y = altitude, z = east}` (DCS-native). DCS-2D uses `{x = north, y = east}` (no altitude). Conversion: 2D `y` ↔ 3D `z` (both are east). Verified by spawning a unit and observing F10 movement. |
 | **Headings** | **Public API: degrees**, 0=north, 90=east, clockwise. Internal: radians (DCS native). Use `sms.utils.deg_to_rad` / `rad_to_deg` to cross the boundary. |
 | **Altitudes** | **Public API: meters** (DCS native). Pilot-facing helpers: `sms.utils.feet_to_meters` / `meters_to_feet`. |
-| **Coalition strings** | Lowercase: `"red"`, `"blue"`, `"neutral"`. (DCS internally uses `0/1/2` — never expose these.) |
-| **Categories** | Lowercase: `"ground"`, `"airplane"`, `"helicopter"`, `"ship"`, `"train"`. |
+| **Coalition strings** | DCS wire format is lowercase `"red"` / `"blue"` / `"neutral"` — exposed as `sms.K.coalition.RED` / `BLUE` / `NEUTRAL` for authoring. (DCS internally uses `0/1/2` — never expose these.) |
+| **Categories** | DCS wire format is lowercase `"airplane"` / `"helicopter"` / `"ground"` / `"ship"` / `"train"` — exposed as `sms.K.category.AIRPLANE` / `HELICOPTER` / `GROUND` / `SHIP` / `TRAIN`. |
 | **Naming** | snake_case for everything public (`get_position`, `is_alive`, `from_drawing`). Internal helpers: `_leading_underscore`. |
 | **Auto-suffix on collision** | Spawning with a name already taken yields `name-1`, `name-2`, ... Always trust the returned handle's `:get_name()` over the input string. |
 | **Log tags** | Each module logs as `[sms.<module>]` via `sms.log.module("sms.<module>")`. Top-level untagged calls log as `[sms]`. |
@@ -185,7 +185,7 @@ A handle is a small `{name = "..."}` table with a metatable whose `__index` poin
 The bridge currently loads framework files via `net.dostring_in` in this order:
 
 ```
-sms.lua → log.lua → utils.lua → targets.lua → designations.lua → group.lua → unit.lua → area.lua → timer.lua → group_spawn.lua → static.lua → events.lua → weapon.lua → task.lua → commands.lua → options.lua
+sms.lua → log.lua → utils.lua → constants.lua (which dofiles every framework/constants/*.lua) → group.lua → unit.lua → area.lua → timer.lua → rule.lua → group_spawn.lua → static.lua → events.lua → weapon.lua → task.lua → commands.lua → options.lua
 ```
 
 Each module asserts the dependencies it actually uses. When adding a new module, decide where it slots in based on what it needs and append the assert.
@@ -207,14 +207,7 @@ For one-shot (re)loading of the whole framework in a mission, use [`framework/lo
 | `sms` (root) | `sms.lua` | — | Single global namespace; idempotent on reload. Internal handle factories. |
 | `sms.log` | `log.lua` | [`docs/api/log.md`](docs/api/log.md) | Tagged logger; four levels with runtime threshold. |
 | `sms.utils` | `utils.lua` | [`docs/api/utils.md`](docs/api/utils.md) | Cross-cutting helpers: unit conversions, vec3 maths, coalition/country lookup. |
-| `sms.units` | `units.lua` | [`docs/api/units.md`](docs/api/units.md) | Generated catalog of every group-spawnable DCS type, organized by category; includes `origin_of` for asset-pack lookup. |
-| `sms.statics` | `statics.lua` | [`docs/api/statics.md`](docs/api/statics.md) | Generated catalog of every static-spawnable DCS type, parallel to `sms.units`. |
-| `sms.countries` | `countries.lua` | [`docs/api/countries.md`](docs/api/countries.md) | Hand-maintained enum of DCS `country.id` keys; provides autocomplete on `country = sms.countries.<KEY>` spawn configs and a `sms.Country` LuaCATS alias for raw-string usage. |
-| `sms.skill` | `skill.lua` | [`docs/api/skill.md`](docs/api/skill.md) | Hand-maintained enum of DCS unit skill levels (`AVERAGE` / `GOOD` / `HIGH` / `EXCELLENT` / `RANDOM` / `PLAYER` / `CLIENT`); provides autocomplete on `unit_spec.skill` and a `sms.Skill` LuaCATS alias for raw-string usage. |
-| `sms.alt_type` | `alt_type.lua` | [`docs/api/alt_type.md`](docs/api/alt_type.md) | Two-entry enum (`BARO` / `RADIO`) for the waypoint altitude-reference field; provides autocomplete and a `sms.AltType` LuaCATS alias. |
-| `sms.waypoint` | `waypoint.lua` | [`docs/api/waypoint.md`](docs/api/waypoint.md) | Two enum sub-tables for hand-built route waypoints: `sms.waypoint.TYPE` (7 entries) and `sms.waypoint.ACTION` (11 entries), with `sms.WaypointType` / `sms.WaypointAction` LuaCATS aliases. |
-| `sms.targets` | `targets.lua` | [`docs/api/constants.md`](docs/api/constants.md) | Target attribute string constants for engagement tasks. |
-| `sms.designations` | `designations.lua` | [`docs/api/constants.md`](docs/api/constants.md) | FAC designation enum constants. |
+| `sms.constants` (alias `sms.K`) | `constants.lua` + `constants/*.lua` | [`docs/api/constants.md`](docs/api/constants.md) | Single namespace for every wire-format constant: `sms.K.coalition`, `sms.K.category`, `sms.K.countries`, `sms.K.skill`, `sms.K.alt_type`, `sms.K.waypoint.type` / `.action`, `sms.K.targets`, `sms.K.designations`, `sms.K.roe` / `alarm_state` / `formation` / `reaction_on_threat` / `radar_using` / `flare_using`, plus the auto-generated `sms.K.units` and `sms.K.statics` catalogs (`origin_of` helpers preserved). |
 | `sms.group` | `group.lua` (+ `group_spawn.lua`, `events.lua`) | [`docs/api/group.md`](docs/api/group.md) | Group entity wrapper; `create` / `clone` factories; `:connect` event sugar; apply API for tasks / commands / options. |
 | `sms.unit` | `unit.lua` (+ `events.lua`) | [`docs/api/unit.md`](docs/api/unit.md) | Unit entity wrapper; `:connect` event sugar. |
 | `sms.area` | `area.lua` | [`docs/api/area.md`](docs/api/area.md) | Unified circle/polygon abstraction; ME zones, drawings, runtime construction. |
