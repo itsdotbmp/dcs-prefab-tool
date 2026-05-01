@@ -9,7 +9,8 @@ tools/**/*.out
 
 # IDE
 .idea/
-.vscode/
+.vscode/*
+!.vscode/sms.code-snippets
 *.swp
 
 # OS
