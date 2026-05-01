@@ -77,6 +77,19 @@ result=$("${DCSSMS}" exec --code "return sms.utils.resolve_country('united kingd
 echo "${result}" | grep -q '"return_value":true' \
   || { echo "FAIL: expected return_value:true, got: ${result}"; exit 1; }
 
+echo "==> load framework/constants.lua"
+"${DCSSMS}" exec --file constants.lua >/dev/null
+
+echo "==> sms.K is sms.constants alias"
+result=$("${DCSSMS}" exec --code "return type(sms.K) == 'table' and sms.K == sms.constants")
+echo "${result}" | grep -q '"return_value":true' \
+  || { echo "FAIL: sms.K is not the sms.constants alias, got: ${result}"; exit 1; }
+
+echo "==> sms.constants is initialized"
+result=$("${DCSSMS}" exec --code "return type(sms.constants)")
+echo "${result}" | grep -q '"return_value":"table"' \
+  || { echo "FAIL: sms.constants is not a table, got: ${result}"; exit 1; }
+
 echo "==> load framework/countries.lua"
 "${DCSSMS}" exec --file countries.lua >/dev/null
 

@@ -27,6 +27,7 @@ local modules = {
   "sms.lua",
   "log.lua",
   "utils.lua",
+  "constants.lua",
   "countries.lua",
   "skill.lua",
   "alt_type.lua",
