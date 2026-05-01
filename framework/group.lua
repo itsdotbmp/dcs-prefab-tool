@@ -364,7 +364,7 @@ local function _adapt_task_for_category(task, category, g)
   local is_air = (category == "airplane" or category == "helicopter")
   if is_air then
     pt.action            = "Turning Point"
-    pt.alt_type          = pt.alt_type or "BARO"
+    pt.alt_type          = pt.alt_type or sms.K.alt_type.BARO
     task.params.airborne = true
   else
     pt.action = "Off Road"
