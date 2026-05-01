@@ -68,7 +68,7 @@ spawn_response=$("${DCSSMS}" exec --code '
       x = fixture_x,
       y = fixture_y,
       heading = 0,
-      skill = "Average",
+      skill = sms.K.skill.AVERAGE,
     }},
   }
   coalition.addGroup(country.id.USA, Group.Category.GROUND, group_def)

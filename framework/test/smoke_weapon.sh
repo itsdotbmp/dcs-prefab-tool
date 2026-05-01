@@ -114,8 +114,8 @@ echo "==> live DCS SHOT round-trip — spawn artillery and fire a shell"
   local g = sms.group.create({
     name = "smoke_weapon_arty",
     position = {x = -50000, y = 0, z = -50000},
-    country = "USA",
-    category = "ground",
+    country = sms.K.countries.USA,
+    category = sms.K.category.GROUND,
     units = {{ type = "M-109", offset = {x = 0, y = 0, z = 0}, heading = 90 }},
   })
   if g then
@@ -274,8 +274,8 @@ echo "==> destroy() — silent abort (no impact event)"
   local g = sms.group.create({
     name = "smoke_weapon_arty_destroy",
     position = {x = -40000, y = 0, z = -40000},
-    country = "USA",
-    category = "ground",
+    country = sms.K.countries.USA,
+    category = sms.K.category.GROUND,
     units = {{ type = "M-109", offset = {x = 0, y = 0, z = 0}, heading = 90 }},
   })
   if g then
