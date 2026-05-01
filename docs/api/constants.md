@@ -600,6 +600,8 @@ cap:set_option(sms.options.formation(131073))
 
 Auto-generated catalog of every group-spawnable DCS type, organized by nested category sub-tables. This section is a navigation pointer — the catalog is not exhaustively listed here; use editor autocomplete.
 
+**LuaCATS alias:** `sms.GroupSpawnType` (top-level literal-union of every spawnable group type-string).
+
 **Categories:**
 
 | Namespace | Contains |
@@ -635,6 +637,8 @@ See [`units.md`](units.md) for navigation patterns, identifier sanitization rule
 ## `sms.K.statics`
 
 Auto-generated catalog of every static-spawnable DCS type. Same shape as `sms.K.units` — navigation pointer only.
+
+**LuaCATS alias:** `sms.StaticSpawnType` (top-level literal-union of every spawnable static type-string).
 
 **Categories:**
 
