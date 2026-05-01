@@ -2,8 +2,9 @@
 -- Source: dcs-lua-datamine @   (regenerated 2026-04-30T15:53:55Z)
 -- See docs/api/units.md for usage.
 
-assert(type(sms) == "table", "framework/sms.lua must be loaded first")
-local log = sms.log.module("sms.units")
+assert(type(sms) == "table",           "framework/sms.lua must be loaded first")
+assert(type(sms.constants) == "table", "framework/constants.lua must be loaded first")
+local log = sms.log.module("sms.constants.units")
 
 ---@alias sms.GroupSpawnType
 ---| "1L13 EWR"
@@ -582,10 +583,10 @@ local log = sms.log.module("sms.units")
 ---| "v1_launcher"
 ---| "zil-131_civil"
 
----@class sms.units
-sms.units = sms.units or {}
+---@class sms.constants.units
+sms.constants.units = sms.constants.units or {}
 
-sms.units.air_defence = {
+sms.constants.units.air_defence = {
   aaa = {
     Allies_Director = "Allies_Director",                     -- WWII Assets
     CHAP_PantsirS1 = "CHAP_PantsirS1",                       -- Currenthill Assets
@@ -708,7 +709,7 @@ sms.units.air_defence = {
   },
 }
 
-sms.units.armor = {
+sms.constants.units.armor = {
   apc = {
     AAV7 = "AAV7",
     BRDM_2 = "BRDM-2",                                       -- Cold War Asset Pack
@@ -807,7 +808,7 @@ sms.units.armor = {
   },
 }
 
-sms.units.artillery = {
+sms.constants.units.artillery = {
   CHAP_M142_ATACMS_M39A1 = "CHAP_M142_ATACMS_M39A1",         -- Currenthill Assets
   CHAP_M142_ATACMS_M48 = "CHAP_M142_ATACMS_M48",             -- Currenthill Assets
   CHAP_M142_GMLRS_M30 = "CHAP_M142_GMLRS_M30",               -- Currenthill Assets
@@ -839,7 +840,7 @@ sms.units.artillery = {
   tt_B8M1 = "tt_B8M1",                                       -- Tech Weapon Pack
 }
 
-sms.units.fortifications = {
+sms.constants.units.fortifications = {
   Bunker = "Bunker",
   SK_C_28_naval_gun = "SK_C_28_naval_gun",                   -- WWII Assets
   Sandbox = "Sandbox",
@@ -854,7 +855,7 @@ sms.units.fortifications = {
   outpost_road_r = "outpost_road_r",
 }
 
-sms.units.helicopters = {
+sms.constants.units.helicopters = {
   AH_1W = "AH-1W",
   AH_64A = "AH-64A",
   AH_64D = "AH-64D",
@@ -883,7 +884,7 @@ sms.units.helicopters = {
   UH_60A = "UH-60A",
 }
 
-sms.units.infantry = {
+sms.constants.units.infantry = {
   Infantry_AK = "Infantry AK",
   Infantry_AK_Ins = "Infantry AK Ins",
   Infantry_AK_ver2 = "Infantry AK ver2",
@@ -901,7 +902,7 @@ sms.units.infantry = {
   soldier_wwii_us = "soldier_wwii_us",                       -- WWII Assets
 }
 
-sms.units.missiles = {
+sms.constants.units.missiles = {
   CHAP_9K720_Cluster = "CHAP_9K720_Cluster",                 -- Currenthill Assets
   CHAP_9K720_HE = "CHAP_9K720_HE",                           -- Currenthill Assets
   PL5EII_Loadout = "PL5EII Loadout",                         -- China Asset Pack
@@ -913,7 +914,7 @@ sms.units.missiles = {
   v1_launcher = "v1_launcher",                               -- WWII Assets
 }
 
-sms.units.planes = {
+sms.constants.units.planes = {
   A6E = "A6E",
   AJS37 = "AJS37",
   AV8BNA = "AV8BNA",
@@ -1057,7 +1058,7 @@ sms.units.planes = {
   Yak_52 = "Yak-52",
 }
 
-sms.units.ships = {
+sms.constants.units.ships = {
   carriers = {
     CVN_71 = "CVN_71",                                       -- Supercarrier
     CVN_72 = "CVN_72",                                       -- Supercarrier
@@ -1125,7 +1126,7 @@ sms.units.ships = {
   },
 }
 
-sms.units.trains = {
+sms.constants.units.trains = {
   Boxcartrinity = "Boxcartrinity",                           -- Tech Weapon Pack
   Coach_a_passenger = "Coach a passenger",                   -- Railway Objects
   Coach_a_platform = "Coach a platform",                     -- Railway Objects
@@ -1145,7 +1146,7 @@ sms.units.trains = {
   Wellcarnsc = "Wellcarnsc",                                 -- Tech Weapon Pack
 }
 
-sms.units.unarmed = {
+sms.constants.units.unarmed = {
   AA8 = "AA8",                                               -- Tech Weapon Pack
   ATMZ_5 = "ATMZ-5",
   ATZ_10 = "ATZ-10",
@@ -1527,7 +1528,7 @@ local _origin = {
 
 ---@param type_string string  DCS type-string to look up
 ---@return string|nil  asset-pack label if non-base, nil otherwise
-sms.units.origin_of = function(type_string)
+sms.constants.units.origin_of = function(type_string)
   if type(type_string) ~= "string" then return nil end
   return _origin[type_string]
 end

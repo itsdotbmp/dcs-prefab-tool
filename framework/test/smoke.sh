@@ -401,4 +401,43 @@ echo "${log_window}" | grep -q '\[sms\] hello from smoke test' \
 echo "${log_window}" | grep -q '\[sms\] boom from smoke test' \
   || { echo "FAIL: missing [sms] boom line in dcs.log"; echo "${log_window}"; exit 1; }
 
+# ------------------------------------------------------------------
+# Task 5: sms.K.units catalog under sms.constants.units
+# ------------------------------------------------------------------
+
+echo "==> sms.K.units.armor.apc.AAV7 == 'AAV7' (identity key-value)"
+result=$("${DCSSMS}" exec --code "return sms.K.units.armor.apc.AAV7")
+echo "${result}" | grep -q '"return_value":"AAV7"' \
+  || { echo "FAIL: expected AAV7, got: ${result}"; exit 1; }
+
+echo "==> type(sms.K.units.air_defence) == 'table'"
+result=$("${DCSSMS}" exec --code "return type(sms.K.units.air_defence)")
+echo "${result}" | grep -q '"return_value":"table"' \
+  || { echo "FAIL: expected table, got: ${result}"; exit 1; }
+
+echo "==> type(sms.K.units.planes) == 'table'"
+result=$("${DCSSMS}" exec --code "return type(sms.K.units.planes)")
+echo "${result}" | grep -q '"return_value":"table"' \
+  || { echo "FAIL: expected table, got: ${result}"; exit 1; }
+
+echo "==> type(sms.K.units.origin_of) == 'function'"
+result=$("${DCSSMS}" exec --code "return type(sms.K.units.origin_of)")
+echo "${result}" | grep -q '"return_value":"function"' \
+  || { echo "FAIL: expected function, got: ${result}"; exit 1; }
+
+echo "==> sms.K.units.origin_of('AAV7') == nil (base-game unit)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.K.units.origin_of('AAV7'))")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected nil, got: ${result}"; exit 1; }
+
+echo "==> type(sms.K.units.origin_of('Tiger_I')) == 'string' (WWII Assets pack)"
+result=$("${DCSSMS}" exec --code "return type(sms.K.units.origin_of('Tiger_I'))")
+echo "${result}" | grep -q '"return_value":"string"' \
+  || { echo "FAIL: expected string, got: ${result}"; exit 1; }
+
+echo "==> old sms.units surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.units)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.units to be nil, got: ${result}"; exit 1; }
+
 echo "smoke ok"

@@ -28,7 +28,6 @@ local modules = {
   "log.lua",
   "utils.lua",
   "constants.lua",
-  "units.lua",
   "statics.lua",
   "group.lua",
   "unit.lua",

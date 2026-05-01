@@ -20,7 +20,7 @@ type ClassifiedEntry struct {
 // entries (those with Bucket.Top == "units") to w.
 func EmitUnits(w io.Writer, entries []ClassifiedEntry, datamineCommit, generatedAt string) error {
 	return emit(w, entries, "units",
-		"sms.units", "sms.GroupSpawnType",
+		"sms.constants.units", "sms.GroupSpawnType",
 		datamineCommit, generatedAt)
 }
 

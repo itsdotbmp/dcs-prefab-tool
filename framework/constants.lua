@@ -30,9 +30,8 @@ local CONSTANTS_DIR = (function()
   return dir and (dir .. "constants/") or CONSTANTS_DIR_FALLBACK
 end)()
 
--- Topic files are added by subsequent tasks. List is alphabetical so a
--- diff between commits shows exactly which topic was added without
--- reordering noise. No file means no dofile — Task 1 has none yet.
+-- Topic files are listed alphabetically so a diff between commits shows
+-- exactly which topic was added without reordering noise.
 local topics = {
   "alarm_state.lua",
   "alt_type.lua",
@@ -47,6 +46,7 @@ local topics = {
   "roe.lua",
   "skill.lua",
   "targets.lua",
+  "units.lua",
   "waypoint.lua",
 }
 

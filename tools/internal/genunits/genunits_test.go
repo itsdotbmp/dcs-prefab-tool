@@ -34,9 +34,9 @@ func TestRun_endToEnd(t *testing.T) {
 		t.Errorf("statics count: got %d, want 1", s)
 	}
 
-	unitsBytes, err := os.ReadFile(filepath.Join(out, "units.lua"))
+	unitsBytes, err := os.ReadFile(filepath.Join(out, "constants", "units.lua"))
 	if err != nil {
-		t.Fatalf("read units.lua: %v", err)
+		t.Fatalf("read constants/units.lua: %v", err)
 	}
 	units := string(unitsBytes)
 
@@ -50,7 +50,7 @@ func TestRun_endToEnd(t *testing.T) {
 		`Soldier_M4 = "Soldier M4"`,
 		`T_80B = "T-80B"`,
 		`-- Cold War Asset Pack`,
-		`sms.units.origin_of = function`,
+		`sms.constants.units.origin_of = function`,
 		`["T-80B"]`,
 	}
 	for _, want := range mustContain {
