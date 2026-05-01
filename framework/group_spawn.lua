@@ -51,7 +51,7 @@ local log = sms.log.module("sms.spawn")
 ---@class sms.group.create_cfg
 ---@field name string  # group name; auto-suffixed on collision
 ---@field position {x: number, y: number, z: number}  # group anchor (vec3, DCS world coords)
----@field country string  # country name (resolved via sms.utils.resolve_country)
+---@field country sms.Country|string  # country name (resolved via sms.utils.resolve_country); pass sms.countries.<KEY> for autocomplete or any case-folded string
 ---@field category? string  # "ground" | "airplane" | "helicopter" | "ship" | "train" (default "ground")
 ---@field task? string  # group-level task string (default per category)
 ---@field route? table  # DCS route table; auto-generated for aircraft if omitted
