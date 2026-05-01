@@ -27,6 +27,7 @@ local modules = {
   "sms.lua",
   "log.lua",
   "utils.lua",
+  "countries.lua",
   "units.lua",
   "statics.lua",
   "targets.lua",
