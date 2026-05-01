@@ -4,7 +4,10 @@ Hand-maintained enum of the seven DCS strings accepted on the `skill` field of u
 
 ```lua
 sms.group.create({
-  name = "blue-cap", country = sms.countries.USA, category = "airplane",
+  name = "blue-cap",
+  position = {x = 0, y = 0, z = 0},
+  country = sms.countries.USA,
+  category = "airplane",
   units = {
     {type = sms.units.planes.F_16C_50, alt = 6000, heading = 90,
      skill = sms.skill.AVERAGE},
@@ -40,7 +43,7 @@ Requires `sms.lua` and `log.lua`. Loaded automatically by `framework/load_all.lu
 
 - `skill = sms.skill.AVERAGE` — autocompleted, type-safe.
 - `skill = "Average"` — accepted, autocompleted from the alias.
-- `skill = "average"` — accepted as `string`; **DCS skill strings are case-sensitive**, so this likely silently falls back to a default.
+- `skill = "average"` — accepted as `string`; **DCS skill strings are case-sensitive**, so DCS receives the literal `"average"` and falls back to its own default for an unrecognized skill string.
 
 The `|string` half exists so authors can pass arbitrary strings (including any new skill DCS introduces) without editor red squiggles.
 
