@@ -24,9 +24,7 @@
 
 assert(type(sms) == "table",          "framework/sms.lua must be loaded first")
 assert(type(sms.log) == "table",      "framework/log.lua must be loaded first")
-assert(type(sms.constants) == "table","framework/constants.lua must be loaded first")
-
-local log = sms.log.module("sms.constants.skill")
+assert(type(sms.constants) == "table", "framework/constants.lua must be loaded first")
 
 ---@class sms.constants.skill
 ---@field AVERAGE   "Average"

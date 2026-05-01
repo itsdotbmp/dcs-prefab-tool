@@ -9,7 +9,7 @@
 -- framework/constants/designations.lua.
 
 assert(type(sms) == "table",          "framework/sms.lua must be loaded first")
-assert(type(sms.constants) == "table","framework/constants.lua must be loaded first")
+assert(type(sms.constants) == "table", "framework/constants.lua must be loaded first")
 
 ---@class sms.constants.designations
 ---@field NO         string  # "No"          — no designation

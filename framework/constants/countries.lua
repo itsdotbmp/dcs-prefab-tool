@@ -17,13 +17,14 @@
 -- introduces a country we haven't catalogued — and surfaces the gap so
 -- the static list can be updated to keep editor autocomplete in sync.
 --
--- Loading order: sms.lua -> log.lua -> utils.lua -> constants.lua -> framework/constants/countries.lua.
+-- Loading order: sms.lua -> log.lua -> utils.lua -> constants.lua ->
+-- framework/constants/countries.lua.
 --
 -- See docs/superpowers/specs/2026-05-01-sms-countries.md.
 
 assert(type(sms) == "table",          "framework/sms.lua must be loaded first")
 assert(type(sms.log) == "table",      "framework/log.lua must be loaded first")
-assert(type(sms.constants) == "table","framework/constants.lua must be loaded first")
+assert(type(sms.constants) == "table", "framework/constants.lua must be loaded first")
 
 local log = sms.log.module("sms.constants.countries")
 
