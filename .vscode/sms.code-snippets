@@ -28,7 +28,7 @@
 
 	"SMS Rule": {
 		"scope": "lua",
-		"prefix": "sms-rule",
+		"prefix": "sms--rule",
 		"body": [
 			"sms.rule(\"${1:rule_name}\", {",
 			"  type          = sms.rule.TYPE.${2|ONCE,CONTINUOUS,TOGGLE|},",
@@ -52,7 +52,7 @@
 
 	"SMS Group Create": {
 		"scope": "lua",
-		"prefix": "sms-group",
+		"prefix": "sms--group",
 		"body": [
 			"sms.group.create({",
 			"  name     = \"${1:group_name}\",",
