@@ -196,6 +196,100 @@ result=$("${DCSSMS}" exec --code "return tostring(sms.designations)")
 echo "${result}" | grep -q '"return_value":"nil"' \
   || { echo "FAIL: expected sms.designations to be nil, got: ${result}"; exit 1; }
 
+# ------------------------------------------------------------------
+# Task 3: sms.K option enum tables (roe / alarm_state / formation / etc.)
+# ------------------------------------------------------------------
+
+echo "==> sms.K.roe.WEAPON_FREE == 'weapon_free'"
+result=$("${DCSSMS}" exec --code "return sms.K.roe.WEAPON_FREE")
+echo "${result}" | grep -q '"return_value":"weapon_free"' \
+  || { echo "FAIL: expected weapon_free, got: ${result}"; exit 1; }
+
+echo "==> sms.K.roe.WEAPON_HOLD == 'weapon_hold'"
+result=$("${DCSSMS}" exec --code "return sms.K.roe.WEAPON_HOLD")
+echo "${result}" | grep -q '"return_value":"weapon_hold"' \
+  || { echo "FAIL: expected weapon_hold, got: ${result}"; exit 1; }
+
+echo "==> sms.K.alarm_state.RED == 'red'"
+result=$("${DCSSMS}" exec --code "return sms.K.alarm_state.RED")
+echo "${result}" | grep -q '"return_value":"red"' \
+  || { echo "FAIL: expected red, got: ${result}"; exit 1; }
+
+echo "==> sms.K.alarm_state.AUTO == 'auto'"
+result=$("${DCSSMS}" exec --code "return sms.K.alarm_state.AUTO")
+echo "${result}" | grep -q '"return_value":"auto"' \
+  || { echo "FAIL: expected auto, got: ${result}"; exit 1; }
+
+echo "==> sms.K.formation.WEDGE == 'wedge'"
+result=$("${DCSSMS}" exec --code "return sms.K.formation.WEDGE")
+echo "${result}" | grep -q '"return_value":"wedge"' \
+  || { echo "FAIL: expected wedge, got: ${result}"; exit 1; }
+
+echo "==> sms.K.formation.FINGER_FOUR == 'finger_four'"
+result=$("${DCSSMS}" exec --code "return sms.K.formation.FINGER_FOUR")
+echo "${result}" | grep -q '"return_value":"finger_four"' \
+  || { echo "FAIL: expected finger_four, got: ${result}"; exit 1; }
+
+echo "==> sms.K.reaction_on_threat.EVADE_FIRE == 'evade_fire'"
+result=$("${DCSSMS}" exec --code "return sms.K.reaction_on_threat.EVADE_FIRE")
+echo "${result}" | grep -q '"return_value":"evade_fire"' \
+  || { echo "FAIL: expected evade_fire, got: ${result}"; exit 1; }
+
+echo "==> sms.K.radar_using.NEVER == 'never'"
+result=$("${DCSSMS}" exec --code "return sms.K.radar_using.NEVER")
+echo "${result}" | grep -q '"return_value":"never"' \
+  || { echo "FAIL: expected never, got: ${result}"; exit 1; }
+
+echo "==> sms.K.flare_using.AGAINST_FIRED_MISSILE == 'against_fired_missile'"
+result=$("${DCSSMS}" exec --code "return sms.K.flare_using.AGAINST_FIRED_MISSILE")
+echo "${result}" | grep -q '"return_value":"against_fired_missile"' \
+  || { echo "FAIL: expected against_fired_missile, got: ${result}"; exit 1; }
+
+echo "==> old sms.options.ROE surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.options.ROE)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.options.ROE to be nil, got: ${result}"; exit 1; }
+
+echo "==> old sms.options.ALARM_STATE surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.options.ALARM_STATE)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.options.ALARM_STATE to be nil, got: ${result}"; exit 1; }
+
+echo "==> old sms.options.FORMATION surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.options.FORMATION)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.options.FORMATION to be nil, got: ${result}"; exit 1; }
+
+echo "==> old sms.options.REACTION_ON_THREAT surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.options.REACTION_ON_THREAT)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.options.REACTION_ON_THREAT to be nil, got: ${result}"; exit 1; }
+
+echo "==> old sms.options.RADAR_USING surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.options.RADAR_USING)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.options.RADAR_USING to be nil, got: ${result}"; exit 1; }
+
+echo "==> old sms.options.FLARE_USING surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.options.FLARE_USING)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.options.FLARE_USING to be nil, got: ${result}"; exit 1; }
+
+echo "==> sms.options.roe is still a function (builder present)"
+result=$("${DCSSMS}" exec --code "return type(sms.options.roe)")
+echo "${result}" | grep -q '"return_value":"function"' \
+  || { echo "FAIL: expected sms.options.roe to be a function, got: ${result}"; exit 1; }
+
+echo "==> sms.options.alarm_state is still a function (builder present)"
+result=$("${DCSSMS}" exec --code "return type(sms.options.alarm_state)")
+echo "${result}" | grep -q '"return_value":"function"' \
+  || { echo "FAIL: expected sms.options.alarm_state to be a function, got: ${result}"; exit 1; }
+
+echo "==> sms.options.formation is still a function (builder present)"
+result=$("${DCSSMS}" exec --code "return type(sms.options.formation)")
+echo "${result}" | grep -q '"return_value":"function"' \
+  || { echo "FAIL: expected sms.options.formation to be a function, got: ${result}"; exit 1; }
+
 echo "==> sms.utils.coalition_int_to_str(1) == 'red'"
 result=$("${DCSSMS}" exec --code "return sms.utils.coalition_int_to_str(1)")
 echo "${result}" | grep -q '"return_value":"red"' \

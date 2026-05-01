@@ -44,52 +44,12 @@ local function _stamp(t, verb, air_only, ground_only, naval_only)
 end
 
 -- ============================================================
--- Enum tables (lowercase strings; builders accept either constant or string)
+-- Enum strings consumed by the builders below live on sms.K (see
+-- framework/constants/{roe,reaction_on_threat,radar_using,flare_using,
+-- alarm_state,formation}.lua). The private lookup tables in this file
+-- (_roe_air, _alarm_state, _formation_dcs, etc.) map those strings to
+-- the DCS-side numeric values and stay private.
 -- ============================================================
-
-sms.options.ROE = {
-  WEAPON_FREE           = "weapon_free",
-  OPEN_FIRE_WEAPON_FREE = "open_fire_weapon_free",
-  OPEN_FIRE             = "open_fire",
-  RETURN_FIRE           = "return_fire",
-  WEAPON_HOLD           = "weapon_hold",
-}
-
-sms.options.REACTION_ON_THREAT = {
-  NO_REACTION         = "no_reaction",
-  PASSIVE_DEFENCE     = "passive_defence",
-  EVADE_FIRE          = "evade_fire",
-  BYPASS_AND_ESCAPE   = "bypass_and_escape",
-  ALLOW_ABORT_MISSION = "allow_abort_mission",
-}
-
-sms.options.RADAR_USING = {
-  NEVER                  = "never",
-  FOR_ATTACK_ONLY        = "for_attack_only",
-  FOR_SEARCH_IF_REQUIRED = "for_search_if_required",
-  FOR_CONTINUOUS_SEARCH  = "for_continuous_search",
-}
-
-sms.options.FLARE_USING = {
-  NEVER                    = "never",
-  AGAINST_FIRED_MISSILE    = "against_fired_missile",
-  WHEN_FLYING_IN_SAM_WEZ   = "when_flying_in_sam_wez",
-  WHEN_FLYING_NEAR_ENEMIES = "when_flying_near_enemies",
-}
-
-sms.options.ALARM_STATE = { AUTO = "auto", GREEN = "green", RED = "red" }
-
--- Air formation presets — strings here; builder maps to DCS packed integers.
--- Builder also accepts a raw integer for unknown formations.
-sms.options.FORMATION = {
-  LINE_ABREAST  = "line_abreast",
-  TRAIL         = "trail",
-  WEDGE         = "wedge",
-  ECHELON_RIGHT = "echelon_right",
-  ECHELON_LEFT  = "echelon_left",
-  FINGER_FOUR   = "finger_four",
-  SPREAD        = "spread",
-}
 
 -- ============================================================
 -- Internal lookup tables

@@ -34,9 +34,15 @@ end)()
 -- diff between commits shows exactly which topic was added without
 -- reordering noise. No file means no dofile — Task 1 has none yet.
 local topics = {
+  "alarm_state.lua",
   "alt_type.lua",
   "countries.lua",
   "designations.lua",
+  "flare_using.lua",
+  "formation.lua",
+  "radar_using.lua",
+  "reaction_on_threat.lua",
+  "roe.lua",
   "skill.lua",
   "targets.lua",
   "waypoint.lua",
