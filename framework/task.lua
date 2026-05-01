@@ -771,12 +771,12 @@ end
 -- opts:
 --   offset                 vec3?    relative to target leader, default {-50, 0, -50}
 --   engagement_dist_max    number?  meters, default 5000
---   target_types           table?   array of attribute strings (sms.targets.* recommended)
+--   target_types           table?   array of attribute strings (sms.K.targets.* recommended)
 --   last_waypoint_index    number?  detach when target reaches this waypoint
 ---@class sms.task.escort_opts
 ---@field offset {x: number, y: number, z: number}?  # default {-50, 0, -50}
 ---@field engagement_dist_max number?                # meters, default 5000
----@field target_types string[]?                     # attribute strings (sms.targets.* recommended)
+---@field target_types string[]?                     # attribute strings (sms.K.targets.* recommended)
 ---@field last_waypoint_index number?
 ---@param target sms.unit|sms.group
 ---@param opts sms.task.escort_opts?
@@ -827,7 +827,7 @@ end
 -- FAC builders (Task v1.1 additions)
 -- ============================================================
 
--- Validate a designation string. Accepts sms.designations.* values or
+-- Validate a designation string. Accepts sms.K.designations.* values or
 -- the raw string equivalents. Returns the resolved string or nil + warn.
 local function _validate_designation(verb, raw)
   if raw == nil then return "Auto" end
@@ -840,7 +840,7 @@ end
 
 -- FAC for a specific target group (immediate). Air or ground.
 ---@class sms.task.fac_attack_group_opts
----@field designation string?  # sms.designations.* value (or raw DCS string)
+---@field designation string?  # sms.K.designations.* value (or raw DCS string)
 ---@field datalink boolean?    # default true
 ---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
 ---@param target sms.group
@@ -904,7 +904,7 @@ end
 
 -- Enroute FAC for a specific target group. Air or ground.
 ---@class sms.task.fac_engage_group_opts
----@field designation string?  # sms.designations.* value (or raw DCS string)
+---@field designation string?  # sms.K.designations.* value (or raw DCS string)
 ---@field datalink boolean?    # default true
 ---@field priority number?     # default 1
 ---@field weapon_type (number|"Auto"|"Guns"|"Rockets"|"Missiles"|"Bombs")?
@@ -953,7 +953,7 @@ end
 
 -- Engage anything matching target_types. Air only.
 ---@class sms.task.engage_en_route_targets_opts
----@field target_types string[]  # required, attribute strings (sms.targets.* recommended)
+---@field target_types string[]  # required, attribute strings (sms.K.targets.* recommended)
 ---@field max_dist number?       # meters
 ---@field priority number?       # default 1
 ---@param opts sms.task.engage_en_route_targets_opts

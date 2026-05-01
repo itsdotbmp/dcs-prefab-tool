@@ -90,79 +90,111 @@ result=$("${DCSSMS}" exec --code "return type(sms.constants)")
 echo "${result}" | grep -q '"return_value":"table"' \
   || { echo "FAIL: sms.constants is not a table, got: ${result}"; exit 1; }
 
-echo "==> load framework/countries.lua"
-"${DCSSMS}" exec --file countries.lua >/dev/null
-
-echo "==> sms.countries.USA == 'USA' (key/value identity)"
-result=$("${DCSSMS}" exec --code "return sms.countries.USA")
+echo "==> sms.K.countries.USA == 'USA' (key/value identity)"
+result=$("${DCSSMS}" exec --code "return sms.K.countries.USA")
 echo "${result}" | grep -q '"return_value":"USA"' \
   || { echo "FAIL: expected USA, got: ${result}"; exit 1; }
 
-echo "==> sms.countries.RUSSIA == 'RUSSIA'"
-result=$("${DCSSMS}" exec --code "return sms.countries.RUSSIA")
+echo "==> sms.K.countries.RUSSIA == 'RUSSIA'"
+result=$("${DCSSMS}" exec --code "return sms.K.countries.RUSSIA")
 echo "${result}" | grep -q '"return_value":"RUSSIA"' \
   || { echo "FAIL: expected RUSSIA, got: ${result}"; exit 1; }
 
-echo "==> sms.countries.THE_NETHERLANDS round-trips through resolve_country"
-result=$("${DCSSMS}" exec --code "return type(sms.utils.resolve_country(sms.countries.THE_NETHERLANDS))")
+echo "==> sms.K.countries.THE_NETHERLANDS round-trips through resolve_country"
+result=$("${DCSSMS}" exec --code "return type(sms.utils.resolve_country(sms.K.countries.THE_NETHERLANDS))")
 echo "${result}" | grep -q '"return_value":"number"' \
   || { echo "FAIL: expected number, got: ${result}"; exit 1; }
 
-echo "==> sms.countries.UNKNOWN_COUNTRY is nil (typo guard)"
-result=$("${DCSSMS}" exec --code "return tostring(sms.countries.UNKNOWN_COUNTRY)")
+echo "==> sms.K.countries.UNKNOWN_COUNTRY is nil (typo guard)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.K.countries.UNKNOWN_COUNTRY)")
 echo "${result}" | grep -q '"return_value":"nil"' \
   || { echo "FAIL: expected nil, got: ${result}"; exit 1; }
 
-echo "==> sms.countries has at least 80 entries (sanity)"
-result=$("${DCSSMS}" exec --code "local n = 0; for _ in pairs(sms.countries) do n = n + 1 end; return n")
+echo "==> sms.K.countries has at least 80 entries (sanity)"
+result=$("${DCSSMS}" exec --code "local n = 0; for _ in pairs(sms.K.countries) do n = n + 1 end; return n")
 n=$(echo "${result}" | sed -n 's/.*"return_value":\([0-9]*\).*/\1/p')
 [ -n "${n}" ] && [ "${n}" -ge 80 ] \
   || { echo "FAIL: expected >=80 entries, got: ${result}"; exit 1; }
 
-echo "==> load framework/skill.lua, framework/alt_type.lua, framework/waypoint.lua"
-"${DCSSMS}" exec --file skill.lua >/dev/null
-"${DCSSMS}" exec --file alt_type.lua >/dev/null
-"${DCSSMS}" exec --file waypoint.lua >/dev/null
-
-echo "==> sms.skill.AVERAGE == 'Average'"
-result=$("${DCSSMS}" exec --code "return sms.skill.AVERAGE")
+echo "==> sms.K.skill.AVERAGE == 'Average'"
+result=$("${DCSSMS}" exec --code "return sms.K.skill.AVERAGE")
 echo "${result}" | grep -q '"return_value":"Average"' \
   || { echo "FAIL: expected Average, got: ${result}"; exit 1; }
 
-echo "==> sms.skill.PLAYER == 'Player' (player-slot marker)"
-result=$("${DCSSMS}" exec --code "return sms.skill.PLAYER")
+echo "==> sms.K.skill.PLAYER == 'Player' (player-slot marker)"
+result=$("${DCSSMS}" exec --code "return sms.K.skill.PLAYER")
 echo "${result}" | grep -q '"return_value":"Player"' \
   || { echo "FAIL: expected Player, got: ${result}"; exit 1; }
 
-echo "==> sms.alt_type.BARO == 'BARO'"
-result=$("${DCSSMS}" exec --code "return sms.alt_type.BARO")
+echo "==> sms.K.alt_type.BARO == 'BARO'"
+result=$("${DCSSMS}" exec --code "return sms.K.alt_type.BARO")
 echo "${result}" | grep -q '"return_value":"BARO"' \
   || { echo "FAIL: expected BARO, got: ${result}"; exit 1; }
 
-echo "==> sms.alt_type.RADIO == 'RADIO'"
-result=$("${DCSSMS}" exec --code "return sms.alt_type.RADIO")
+echo "==> sms.K.alt_type.RADIO == 'RADIO'"
+result=$("${DCSSMS}" exec --code "return sms.K.alt_type.RADIO")
 echo "${result}" | grep -q '"return_value":"RADIO"' \
   || { echo "FAIL: expected RADIO, got: ${result}"; exit 1; }
 
-echo "==> sms.waypoint.TYPE.TURNING_POINT == 'Turning Point'"
-result=$("${DCSSMS}" exec --code "return sms.waypoint.TYPE.TURNING_POINT")
+echo "==> sms.K.waypoint.type.TURNING_POINT == 'Turning Point'"
+result=$("${DCSSMS}" exec --code "return sms.K.waypoint.type.TURNING_POINT")
 echo "${result}" | grep -q '"return_value":"Turning Point"' \
   || { echo "FAIL: expected 'Turning Point', got: ${result}"; exit 1; }
 
-echo "==> sms.waypoint.ACTION.OFF_ROAD == 'Off Road'"
-result=$("${DCSSMS}" exec --code "return sms.waypoint.ACTION.OFF_ROAD")
+echo "==> sms.K.waypoint.action.OFF_ROAD == 'Off Road'"
+result=$("${DCSSMS}" exec --code "return sms.K.waypoint.action.OFF_ROAD")
 echo "${result}" | grep -q '"return_value":"Off Road"' \
   || { echo "FAIL: expected 'Off Road', got: ${result}"; exit 1; }
 
-echo "==> sms.waypoint.TYPE.LANDING_REFUEL_REARM == 'LandingReFuAr' (contracted casing guard)"
-result=$("${DCSSMS}" exec --code "return sms.waypoint.TYPE.LANDING_REFUEL_REARM")
+echo "==> sms.K.waypoint.type.LANDING_REFUEL_REARM == 'LandingReFuAr' (contracted casing guard)"
+result=$("${DCSSMS}" exec --code "return sms.K.waypoint.type.LANDING_REFUEL_REARM")
 echo "${result}" | grep -q '"return_value":"LandingReFuAr"' \
   || { echo "FAIL: expected 'LandingReFuAr', got: ${result}"; exit 1; }
 
-echo "==> sms.waypoint.ACTION.LANDING_REFUEL_REARM == 'LandingReFuAr' (contracted casing guard)"
-result=$("${DCSSMS}" exec --code "return sms.waypoint.ACTION.LANDING_REFUEL_REARM")
+echo "==> sms.K.waypoint.action.LANDING_REFUEL_REARM == 'LandingReFuAr' (contracted casing guard)"
+result=$("${DCSSMS}" exec --code "return sms.K.waypoint.action.LANDING_REFUEL_REARM")
 echo "${result}" | grep -q '"return_value":"LandingReFuAr"' \
   || { echo "FAIL: expected 'LandingReFuAr', got: ${result}"; exit 1; }
+
+echo "==> sms.K.targets.AIR == 'Air'"
+result=$("${DCSSMS}" exec --code "return sms.K.targets.AIR")
+echo "${result}" | grep -q '"return_value":"Air"' \
+  || { echo "FAIL: expected 'Air', got: ${result}"; exit 1; }
+
+echo "==> sms.K.designations.LASER == 'Laser'"
+result=$("${DCSSMS}" exec --code "return sms.K.designations.LASER")
+echo "${result}" | grep -q '"return_value":"Laser"' \
+  || { echo "FAIL: expected 'Laser', got: ${result}"; exit 1; }
+
+echo "==> old sms.countries surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.countries)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.countries to be nil, got: ${result}"; exit 1; }
+
+echo "==> old sms.skill surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.skill)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.skill to be nil, got: ${result}"; exit 1; }
+
+echo "==> old sms.alt_type surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.alt_type)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.alt_type to be nil, got: ${result}"; exit 1; }
+
+echo "==> old sms.waypoint surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.waypoint)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.waypoint to be nil, got: ${result}"; exit 1; }
+
+echo "==> old sms.targets surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.targets)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.targets to be nil, got: ${result}"; exit 1; }
+
+echo "==> old sms.designations surface is gone (nil)"
+result=$("${DCSSMS}" exec --code "return tostring(sms.designations)")
+echo "${result}" | grep -q '"return_value":"nil"' \
+  || { echo "FAIL: expected sms.designations to be nil, got: ${result}"; exit 1; }
 
 echo "==> sms.utils.coalition_int_to_str(1) == 'red'"
 result=$("${DCSSMS}" exec --code "return sms.utils.coalition_int_to_str(1)")

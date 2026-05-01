@@ -1,13 +1,13 @@
--- dcs-sms framework: countries module (sms.countries).
+-- dcs-sms framework: countries module (sms.constants.countries / sms.K.countries).
 --
 -- Hand-maintained enum of DCS country.id keys. Mission code uses
--- sms.countries.<KEY> instead of magic strings:
+-- sms.K.countries.<KEY> instead of magic strings:
 --
---     sms.group.create({country = sms.countries.USA, ...})
---     sms.static.create({country = sms.countries.RUSSIA, ...})
+--     sms.group.create({country = sms.K.countries.USA, ...})
+--     sms.static.create({country = sms.K.countries.RUSSIA, ...})
 --
 -- Values are the upper-snake form that country.id itself uses, which
--- gives the invariant sms.countries.X == "X". sms.utils.resolve_country
+-- gives the invariant sms.K.countries.X == "X". sms.utils.resolve_country
 -- accepts either the upper-snake form or display variants ("USA",
 -- "usa", "United Kingdom"); the enum picks the canonical form.
 --
@@ -17,16 +17,17 @@
 -- introduces a country we haven't catalogued — and surfaces the gap so
 -- the static list can be updated to keep editor autocomplete in sync.
 --
--- Loading order: sms.lua -> log.lua -> utils.lua -> countries.lua.
+-- Loading order: sms.lua -> log.lua -> utils.lua -> constants.lua -> framework/constants/countries.lua.
 --
 -- See docs/superpowers/specs/2026-05-01-sms-countries.md.
 
-assert(type(sms) == "table",     "framework/sms.lua must be loaded first")
-assert(type(sms.log) == "table", "framework/log.lua must be loaded first")
+assert(type(sms) == "table",          "framework/sms.lua must be loaded first")
+assert(type(sms.log) == "table",      "framework/log.lua must be loaded first")
+assert(type(sms.constants) == "table","framework/constants.lua must be loaded first")
 
-local log = sms.log.module("sms.countries")
+local log = sms.log.module("sms.constants.countries")
 
----@class sms.countries
+---@class sms.constants.countries
 ---@field RUSSIA                  "RUSSIA"
 ---@field UKRAINE                 "UKRAINE"
 ---@field USA                     "USA"
@@ -121,7 +122,7 @@ local log = sms.log.module("sms.countries")
 ---@field LATVIA                  "LATVIA"
 ---@field LITHUANIA               "LITHUANIA"
 ---@field URUGUAY                 "URUGUAY"
-sms.countries = sms.countries or {}
+sms.constants.countries = sms.constants.countries or {}
 
 ---@alias sms.Country
 ---| "RUSSIA"
@@ -220,101 +221,101 @@ sms.countries = sms.countries or {}
 ---| "URUGUAY"
 
 -- Static enum: every key's value is the key itself, so
--- sms.countries.X == "X" holds for every entry.
-sms.countries.RUSSIA                  = "RUSSIA"
-sms.countries.UKRAINE                 = "UKRAINE"
-sms.countries.USA                     = "USA"
-sms.countries.TURKEY                  = "TURKEY"
-sms.countries.UK                      = "UK"
-sms.countries.FRANCE                  = "FRANCE"
-sms.countries.GERMANY                 = "GERMANY"
-sms.countries.USAF_AGGRESSORS         = "USAF_AGGRESSORS"
-sms.countries.CANADA                  = "CANADA"
-sms.countries.SPAIN                   = "SPAIN"
-sms.countries.THE_NETHERLANDS         = "THE_NETHERLANDS"
-sms.countries.BELGIUM                 = "BELGIUM"
-sms.countries.NORWAY                  = "NORWAY"
-sms.countries.DENMARK                 = "DENMARK"
-sms.countries.ISRAEL                  = "ISRAEL"
-sms.countries.GEORGIA                 = "GEORGIA"
-sms.countries.INSURGENTS              = "INSURGENTS"
-sms.countries.ABKHAZIA                = "ABKHAZIA"
-sms.countries.SOUTH_OSETIA            = "SOUTH_OSETIA"
-sms.countries.ITALY                   = "ITALY"
-sms.countries.AUSTRALIA               = "AUSTRALIA"
-sms.countries.SWITZERLAND             = "SWITZERLAND"
-sms.countries.AUSTRIA                 = "AUSTRIA"
-sms.countries.BELARUS                 = "BELARUS"
-sms.countries.BULGARIA                = "BULGARIA"
-sms.countries.CHEZH_REPUBLIC          = "CHEZH_REPUBLIC"
-sms.countries.CHINA                   = "CHINA"
-sms.countries.CROATIA                 = "CROATIA"
-sms.countries.EGYPT                   = "EGYPT"
-sms.countries.FINLAND                 = "FINLAND"
-sms.countries.GREECE                  = "GREECE"
-sms.countries.HUNGARY                 = "HUNGARY"
-sms.countries.INDIA                   = "INDIA"
-sms.countries.IRAN                    = "IRAN"
-sms.countries.IRAQ                    = "IRAQ"
-sms.countries.JAPAN                   = "JAPAN"
-sms.countries.KAZAKHSTAN              = "KAZAKHSTAN"
-sms.countries.NORTH_KOREA             = "NORTH_KOREA"
-sms.countries.PAKISTAN                = "PAKISTAN"
-sms.countries.POLAND                  = "POLAND"
-sms.countries.ROMANIA                 = "ROMANIA"
-sms.countries.SAUDI_ARABIA            = "SAUDI_ARABIA"
-sms.countries.SERBIA                  = "SERBIA"
-sms.countries.SLOVAKIA                = "SLOVAKIA"
-sms.countries.SOUTH_KOREA             = "SOUTH_KOREA"
-sms.countries.SWEDEN                  = "SWEDEN"
-sms.countries.SYRIA                   = "SYRIA"
-sms.countries.YEMEN                   = "YEMEN"
-sms.countries.VIETNAM                 = "VIETNAM"
-sms.countries.VENEZUELA               = "VENEZUELA"
-sms.countries.TUNISIA                 = "TUNISIA"
-sms.countries.THAILAND                = "THAILAND"
-sms.countries.SUDAN                   = "SUDAN"
-sms.countries.PHILIPPINES             = "PHILIPPINES"
-sms.countries.MOROCCO                 = "MOROCCO"
-sms.countries.MEXICO                  = "MEXICO"
-sms.countries.MALAYSIA                = "MALAYSIA"
-sms.countries.LIBYA                   = "LIBYA"
-sms.countries.JORDAN                  = "JORDAN"
-sms.countries.INDONESIA               = "INDONESIA"
-sms.countries.HONDURAS                = "HONDURAS"
-sms.countries.ETHIOPIA                = "ETHIOPIA"
-sms.countries.CHILE                   = "CHILE"
-sms.countries.BRAZIL                  = "BRAZIL"
-sms.countries.BAHRAIN                 = "BAHRAIN"
-sms.countries.THIRDREICH              = "THIRDREICH"
-sms.countries.YUGOSLAVIA              = "YUGOSLAVIA"
-sms.countries.USSR                    = "USSR"
-sms.countries.ITALIAN_SOCIAL_REPUBLIC = "ITALIAN_SOCIAL_REPUBLIC"
-sms.countries.ALGERIA                 = "ALGERIA"
-sms.countries.KUWAIT                  = "KUWAIT"
-sms.countries.QATAR                   = "QATAR"
-sms.countries.OMAN                    = "OMAN"
-sms.countries.UAE                     = "UAE"
-sms.countries.SOUTH_AFRICA            = "SOUTH_AFRICA"
-sms.countries.CUBA                    = "CUBA"
-sms.countries.PORTUGAL                = "PORTUGAL"
-sms.countries.GDR                     = "GDR"
-sms.countries.LEBANON                 = "LEBANON"
-sms.countries.CJTF_BLUE               = "CJTF_BLUE"
-sms.countries.CJTF_RED                = "CJTF_RED"
-sms.countries.UN_PEACEKEEPERS         = "UN_PEACEKEEPERS"
-sms.countries.ARGENTINA               = "ARGENTINA"
-sms.countries.CYPRUS                  = "CYPRUS"
-sms.countries.SLOVENIA                = "SLOVENIA"
-sms.countries.BOLIVIA                 = "BOLIVIA"
-sms.countries.GHANA                   = "GHANA"
-sms.countries.NIGERIA                 = "NIGERIA"
-sms.countries.PERU                    = "PERU"
-sms.countries.ECUADOR                 = "ECUADOR"
-sms.countries.ESTONIA                 = "ESTONIA"
-sms.countries.LATVIA                  = "LATVIA"
-sms.countries.LITHUANIA               = "LITHUANIA"
-sms.countries.URUGUAY                 = "URUGUAY"
+-- sms.constants.countries.X == "X" holds for every entry.
+sms.constants.countries.RUSSIA                  = "RUSSIA"
+sms.constants.countries.UKRAINE                 = "UKRAINE"
+sms.constants.countries.USA                     = "USA"
+sms.constants.countries.TURKEY                  = "TURKEY"
+sms.constants.countries.UK                      = "UK"
+sms.constants.countries.FRANCE                  = "FRANCE"
+sms.constants.countries.GERMANY                 = "GERMANY"
+sms.constants.countries.USAF_AGGRESSORS         = "USAF_AGGRESSORS"
+sms.constants.countries.CANADA                  = "CANADA"
+sms.constants.countries.SPAIN                   = "SPAIN"
+sms.constants.countries.THE_NETHERLANDS         = "THE_NETHERLANDS"
+sms.constants.countries.BELGIUM                 = "BELGIUM"
+sms.constants.countries.NORWAY                  = "NORWAY"
+sms.constants.countries.DENMARK                 = "DENMARK"
+sms.constants.countries.ISRAEL                  = "ISRAEL"
+sms.constants.countries.GEORGIA                 = "GEORGIA"
+sms.constants.countries.INSURGENTS              = "INSURGENTS"
+sms.constants.countries.ABKHAZIA                = "ABKHAZIA"
+sms.constants.countries.SOUTH_OSETIA            = "SOUTH_OSETIA"
+sms.constants.countries.ITALY                   = "ITALY"
+sms.constants.countries.AUSTRALIA               = "AUSTRALIA"
+sms.constants.countries.SWITZERLAND             = "SWITZERLAND"
+sms.constants.countries.AUSTRIA                 = "AUSTRIA"
+sms.constants.countries.BELARUS                 = "BELARUS"
+sms.constants.countries.BULGARIA                = "BULGARIA"
+sms.constants.countries.CHEZH_REPUBLIC          = "CHEZH_REPUBLIC"
+sms.constants.countries.CHINA                   = "CHINA"
+sms.constants.countries.CROATIA                 = "CROATIA"
+sms.constants.countries.EGYPT                   = "EGYPT"
+sms.constants.countries.FINLAND                 = "FINLAND"
+sms.constants.countries.GREECE                  = "GREECE"
+sms.constants.countries.HUNGARY                 = "HUNGARY"
+sms.constants.countries.INDIA                   = "INDIA"
+sms.constants.countries.IRAN                    = "IRAN"
+sms.constants.countries.IRAQ                    = "IRAQ"
+sms.constants.countries.JAPAN                   = "JAPAN"
+sms.constants.countries.KAZAKHSTAN              = "KAZAKHSTAN"
+sms.constants.countries.NORTH_KOREA             = "NORTH_KOREA"
+sms.constants.countries.PAKISTAN                = "PAKISTAN"
+sms.constants.countries.POLAND                  = "POLAND"
+sms.constants.countries.ROMANIA                 = "ROMANIA"
+sms.constants.countries.SAUDI_ARABIA            = "SAUDI_ARABIA"
+sms.constants.countries.SERBIA                  = "SERBIA"
+sms.constants.countries.SLOVAKIA                = "SLOVAKIA"
+sms.constants.countries.SOUTH_KOREA             = "SOUTH_KOREA"
+sms.constants.countries.SWEDEN                  = "SWEDEN"
+sms.constants.countries.SYRIA                   = "SYRIA"
+sms.constants.countries.YEMEN                   = "YEMEN"
+sms.constants.countries.VIETNAM                 = "VIETNAM"
+sms.constants.countries.VENEZUELA               = "VENEZUELA"
+sms.constants.countries.TUNISIA                 = "TUNISIA"
+sms.constants.countries.THAILAND                = "THAILAND"
+sms.constants.countries.SUDAN                   = "SUDAN"
+sms.constants.countries.PHILIPPINES             = "PHILIPPINES"
+sms.constants.countries.MOROCCO                 = "MOROCCO"
+sms.constants.countries.MEXICO                  = "MEXICO"
+sms.constants.countries.MALAYSIA                = "MALAYSIA"
+sms.constants.countries.LIBYA                   = "LIBYA"
+sms.constants.countries.JORDAN                  = "JORDAN"
+sms.constants.countries.INDONESIA               = "INDONESIA"
+sms.constants.countries.HONDURAS                = "HONDURAS"
+sms.constants.countries.ETHIOPIA                = "ETHIOPIA"
+sms.constants.countries.CHILE                   = "CHILE"
+sms.constants.countries.BRAZIL                  = "BRAZIL"
+sms.constants.countries.BAHRAIN                 = "BAHRAIN"
+sms.constants.countries.THIRDREICH              = "THIRDREICH"
+sms.constants.countries.YUGOSLAVIA              = "YUGOSLAVIA"
+sms.constants.countries.USSR                    = "USSR"
+sms.constants.countries.ITALIAN_SOCIAL_REPUBLIC = "ITALIAN_SOCIAL_REPUBLIC"
+sms.constants.countries.ALGERIA                 = "ALGERIA"
+sms.constants.countries.KUWAIT                  = "KUWAIT"
+sms.constants.countries.QATAR                   = "QATAR"
+sms.constants.countries.OMAN                    = "OMAN"
+sms.constants.countries.UAE                     = "UAE"
+sms.constants.countries.SOUTH_AFRICA            = "SOUTH_AFRICA"
+sms.constants.countries.CUBA                    = "CUBA"
+sms.constants.countries.PORTUGAL                = "PORTUGAL"
+sms.constants.countries.GDR                     = "GDR"
+sms.constants.countries.LEBANON                 = "LEBANON"
+sms.constants.countries.CJTF_BLUE               = "CJTF_BLUE"
+sms.constants.countries.CJTF_RED                = "CJTF_RED"
+sms.constants.countries.UN_PEACEKEEPERS         = "UN_PEACEKEEPERS"
+sms.constants.countries.ARGENTINA               = "ARGENTINA"
+sms.constants.countries.CYPRUS                  = "CYPRUS"
+sms.constants.countries.SLOVENIA                = "SLOVENIA"
+sms.constants.countries.BOLIVIA                 = "BOLIVIA"
+sms.constants.countries.GHANA                   = "GHANA"
+sms.constants.countries.NIGERIA                 = "NIGERIA"
+sms.constants.countries.PERU                    = "PERU"
+sms.constants.countries.ECUADOR                 = "ECUADOR"
+sms.constants.countries.ESTONIA                 = "ESTONIA"
+sms.constants.countries.LATVIA                  = "LATVIA"
+sms.constants.countries.LITHUANIA               = "LITHUANIA"
+sms.constants.countries.URUGUAY                 = "URUGUAY"
 
 -- Runtime drift check. country is the DCS global; country.id is a
 -- {KEY = int} hash of every country DCS knows about. If a key is in
@@ -324,9 +325,9 @@ sms.countries.URUGUAY                 = "URUGUAY"
 -- tests that don't have the country global).
 if type(country) == "table" and type(country.id) == "table" then
   for key in pairs(country.id) do
-    if type(key) == "string" and sms.countries[key] == nil then
-      sms.countries[key] = key
-      log.warn("country.id key '" .. key .. "' not in static list — added at runtime; update framework/countries.lua to keep autocomplete in sync")
+    if type(key) == "string" and sms.constants.countries[key] == nil then
+      sms.constants.countries[key] = key
+      log.warn("country.id key '" .. key .. "' not in static list — added at runtime; update framework/constants/countries.lua to keep autocomplete in sync")
     end
   end
 end

@@ -392,7 +392,7 @@ local function _adapt_task_for_category(task, category, g)
         action = pt.action,
         task   = { id = "ComboTask", params = { tasks = {} } },
       }
-      if is_air then start.alt_type = "BARO" end
+      if is_air then start.alt_type = sms.K.alt_type.BARO end
       if pt.speed then
         start.speed        = pt.speed
         start.speed_locked = pt.speed_locked

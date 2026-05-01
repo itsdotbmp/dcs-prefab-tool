@@ -17,8 +17,6 @@
 ---@field task             sms.task
 ---@field utils            sms.utils
 ---@field log              sms.log
----@field designations     sms.designations
----@field targets          sms.targets
 ---@field group_spawn      sms.group_spawn
 ---@field K                sms.constants
 sms = sms or {}
