@@ -64,7 +64,7 @@ The full set is whatever DCS exposes — iterate `world.event` to confirm. Anyth
 -- sms.weapon is loaded) is a wrapped handle.
 sms.events.connect(sms.events.SHOT, function(evt)
   if not evt.initiator then return end
-  if evt.initiator:get_coalition() ~= "red" then return end
+  if evt.initiator:get_coalition() ~= sms.K.coalition.RED then return end
   sms.log.info(string.format(
     "%s fired %s at t=%.1f",
     evt.initiator:get_name(),
@@ -202,7 +202,7 @@ Non-listed events (e.g. `MISSION_START`, `MISSION_END`, `WEAPON_IMPACT`) must be
 -- Print a one-line tag whenever a blue aircraft fires an AIM-120.
 local shot_conn = sms.events.connect(sms.events.SHOT, function(evt)
   if not evt.initiator then return end
-  if evt.initiator:get_coalition() ~= "blue" then return end
+  if evt.initiator:get_coalition() ~= sms.K.coalition.BLUE then return end
   if evt.weapon_type ~= "weapons.missiles.AIM_120C" then return end
 
   sms.log.info(string.format(
@@ -225,8 +225,8 @@ shot_conn:disconnect()
 local platoon = sms.group.create({
   name     = "red-armor-1",
   position = {x = -50000, y = 0, z = -50000},
-  country  = "Russia",
-  category = "ground",
+  country  = sms.K.countries.RUSSIA,
+  category = sms.K.category.GROUND,
   units    = {
     { type = "T-72B", offset = {x =  0, y = 0, z =  0} },
     { type = "T-72B", offset = {x = 20, y = 0, z =  0} },

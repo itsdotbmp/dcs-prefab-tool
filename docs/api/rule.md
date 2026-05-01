@@ -46,7 +46,7 @@ sms.rule("convoy_in_kz", {
     return sms.area("kill_zone"):is_any_of_group_in(sms.group("convoy"))
   end,
   action = function()
-    sms.group("ambush_armor"):set_option(sms.options.alarm_state("red"))
+    sms.group("ambush_armor"):set_option(sms.options.alarm_state(sms.K.alarm_state.RED))
   end,
 })
 
@@ -76,7 +76,7 @@ sms.rule("apache_unmasked", {
     return agl ~= nil and agl > sms.utils.feet_to_meters(200)
   end,
   action = function()
-    sms.group("manpads_team"):set_option(sms.options.alarm_state("red"))
+    sms.group("manpads_team"):set_option(sms.options.alarm_state(sms.K.alarm_state.RED))
   end,
 })
 ```
@@ -182,10 +182,10 @@ sms.rule("helicopter_height", {
   action = function()
     sms.log.info("Apaches detected — unmasking SAM ring")
     for _, name in ipairs({"radar_AAA", "radar_AAA_02", "sa8_02_grp", "sa3", "sa6"}) do
-      local roe_opt = sms.options.roe("weapon_free")
+      local roe_opt = sms.options.roe(sms.K.roe.WEAPON_FREE)
       sms.group(name):set_option(roe_opt)
     end
-    local alarm_red = sms.options.alarm_state("red")
+    local alarm_red = sms.options.alarm_state(sms.K.alarm_state.RED)
     sms.group("sa5"):set_option(alarm_red)
     sms.group("manpads"):set_option(alarm_red)
   end,

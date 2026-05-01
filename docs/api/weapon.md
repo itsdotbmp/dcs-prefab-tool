@@ -396,7 +396,7 @@ If you need an impact-style event from a programmatic abort, capture
 sms.events.connect(sms.events.SHOT, function(evt)
   local weapon = evt.weapon
   if not weapon then return end
-  if weapon:get_coalition() == "red" and friendly_zone:is_vec3_in(weapon:get_release_position()) then
+  if weapon:get_coalition() == sms.K.coalition.RED and friendly_zone:is_vec3_in(weapon:get_release_position()) then
     weapon:destroy()
   end
 end)

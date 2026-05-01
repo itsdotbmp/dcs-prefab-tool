@@ -15,7 +15,7 @@ The framework failure model — log + return `nil` (builders) or `false` (apply)
 These apply to **every** builder; they are not repeated in each row.
 
 - **String values are lowercase + underscores.** `"weapon_free"`, `"open_fire_weapon_free"`, `"for_continuous_search"`, etc. Match the framework-wide convention in [`AGENTS.md` §4](../../AGENTS.md#4-conventions-and-units).
-- **Constant tables are UPPERCASE.** `sms.options.ROE.WEAPON_FREE` resolves to the string `"weapon_free"`. Both forms are accepted by every builder; pick whichever reads better at the call site.
+- **Constant tables are UPPERCASE.** `sms.K.roe.WEAPON_FREE` resolves to the string `"weapon_free"`. Both forms are accepted by every builder; pick whichever reads better at the call site.
 - **Category gates** are enforced at apply time. An air-only option (e.g. `rtb_on_bingo`) applied to a ground group logs a warning and returns `false`. Same for ground-only options (`alarm_state`, `disperse_on_attack`) on aircraft.
 - **Distances** are meters; **durations** are seconds. (Both are passed through to DCS unchanged.)
 
@@ -57,14 +57,14 @@ When the supplied option carries `_sms_roe = true`, `set_option` does **not** re
 ```lua
 -- A blue CAP set to "weapons free" once they push.
 local cap = sms.group("blue-cap-1")
-cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_FREE))
-cap:set_option(sms.options.reaction_on_threat(sms.options.REACTION_ON_THREAT.EVADE_FIRE))
+cap:set_option(sms.options.roe(sms.K.roe.WEAPON_FREE))
+cap:set_option(sms.options.reaction_on_threat(sms.K.reaction_on_threat.EVADE_FIRE))
 cap:set_option(sms.options.rtb_on_bingo(true))
 
 -- A SAM site sleeping until called for.
 local sam = sms.group("red-sa6-1")
-sam:set_option(sms.options.alarm_state(sms.options.ALARM_STATE.GREEN))
-sam:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
+sam:set_option(sms.options.alarm_state(sms.K.alarm_state.GREEN))
+sam:set_option(sms.options.roe(sms.K.roe.WEAPON_HOLD))
 ```
 
 ---
@@ -77,7 +77,7 @@ sam:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
 
 | Name | Type | Description |
 |---|---|---|
-| `value` | `string` | One of the lowercase ROE strings, or the matching `sms.options.ROE.*` constant. See the [enum reference](#smsoptionsroe) below. |
+| `value` | `string` | One of the lowercase ROE strings, or the matching `sms.K.roe.*` constant. See the [enum reference](#smskroe) below. |
 
 **Returns** — option table tagged `_sms_roe = true`. Builder validates only that `value` is *some* known ROE string; per-category validity is checked by [`group:set_option`](#groupset_optionopt--bool).
 
@@ -89,11 +89,11 @@ sam:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
 local blue_cap = sms.group("blue-cap-1")
 local red_cap  = sms.group("red-cap-1")
 
-blue_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
-red_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
+blue_cap:set_option(sms.options.roe(sms.K.roe.WEAPON_HOLD))
+red_cap:set_option(sms.options.roe(sms.K.roe.WEAPON_HOLD))
 
 -- Later, on trigger:
-blue_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_FREE))
+blue_cap:set_option(sms.options.roe(sms.K.roe.WEAPON_FREE))
 ```
 
 **Example — SAM ambush**
@@ -101,13 +101,13 @@ blue_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_FREE))
 ```lua
 -- Strela holding fire until the strike package is overhead.
 local strela = sms.group("red-strela-ambush")
-strela:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
-strela:set_option(sms.options.alarm_state(sms.options.ALARM_STATE.GREEN))
+strela:set_option(sms.options.roe(sms.K.roe.WEAPON_HOLD))
+strela:set_option(sms.options.alarm_state(sms.K.alarm_state.GREEN))
 
 -- When triggered, raise alarm and clear ground-allowed ROE.
 sms.timer.after(300, function()
-  strela:set_option(sms.options.alarm_state(sms.options.ALARM_STATE.RED))
-  strela:set_option(sms.options.roe(sms.options.ROE.OPEN_FIRE))
+  strela:set_option(sms.options.alarm_state(sms.K.alarm_state.RED))
+  strela:set_option(sms.options.roe(sms.K.roe.OPEN_FIRE))
 end)
 ```
 
@@ -117,10 +117,10 @@ end)
 local tank = sms.group("red-t72-platoon")
 
 -- This succeeds: open_fire is allowed for ground.
-tank:set_option(sms.options.roe(sms.options.ROE.OPEN_FIRE))   -- → true
+tank:set_option(sms.options.roe(sms.K.roe.OPEN_FIRE))   -- → true
 
 -- This is rejected at apply time: weapon_free is air-only.
-tank:set_option(sms.options.roe(sms.options.ROE.WEAPON_FREE)) -- → false
+tank:set_option(sms.options.roe(sms.K.roe.WEAPON_FREE)) -- → false
 -- log.warn: roe: value 'weapon_free' not allowed for ground groups
 ```
 
@@ -142,7 +142,7 @@ Each builder below stamps the option with `_sms_air_only = true`; applying any o
 
 | Name | Type | Description |
 |---|---|---|
-| `value` | `string` | One of `sms.options.REACTION_ON_THREAT.*`. See the [enum reference](#smsoptionsreaction_on_threat). |
+| `value` | `string` | One of `sms.K.reaction_on_threat.*`. See the [enum reference](#smskReaction_on_threat). |
 
 **Returns** — option table for `AI.Option.Air.id.REACTION_ON_THREAT`. Air-only.
 
@@ -151,7 +151,7 @@ Each builder below stamps the option with `_sms_air_only = true`; applying any o
 ```lua
 local cap = sms.group("blue-cap-1")
 local opt = sms.options.reaction_on_threat(
-  sms.options.REACTION_ON_THREAT.EVADE_FIRE
+  sms.K.reaction_on_threat.EVADE_FIRE
 )
 cap:set_option(opt)
 ```
@@ -166,7 +166,7 @@ cap:set_option(opt)
 
 | Name | Type | Description |
 |---|---|---|
-| `value` | `string` | One of `sms.options.RADAR_USING.*`. See the [enum reference](#smsoptionsradar_using). |
+| `value` | `string` | One of `sms.K.radar_using.*`. See the [enum reference](#smskradar_using). |
 
 **Returns** — option table for `AI.Option.Air.id.RADAR_USING`. Air-only.
 
@@ -176,7 +176,7 @@ cap:set_option(opt)
 -- Silent CAP — only emit when committing to a kill.
 local cap = sms.group("blue-cap-stealth")
 local opt = sms.options.radar_using(
-  sms.options.RADAR_USING.FOR_ATTACK_ONLY
+  sms.K.radar_using.FOR_ATTACK_ONLY
 )
 cap:set_option(opt)
 ```
@@ -191,7 +191,7 @@ cap:set_option(opt)
 
 | Name | Type | Description |
 |---|---|---|
-| `value` | `string` | One of `sms.options.FLARE_USING.*`. See the [enum reference](#smsoptionsflare_using). |
+| `value` | `string` | One of `sms.K.flare_using.*`. See the [enum reference](#smskflare_using). |
 
 **Returns** — option table for `AI.Option.Air.id.FLARE_USING`. Air-only.
 
@@ -200,7 +200,7 @@ cap:set_option(opt)
 ```lua
 local strike = sms.group("blue-strike-1")
 local opt = sms.options.flare_using(
-  sms.options.FLARE_USING.AGAINST_FIRED_MISSILE
+  sms.K.flare_using.AGAINST_FIRED_MISSILE
 )
 strike:set_option(opt)
 ```
@@ -209,13 +209,13 @@ strike:set_option(opt)
 
 ### `sms.options.formation(value) → option`
 
-**Synopsis** — set the air formation. Accepts either an `sms.options.FORMATION.*` preset string or a raw DCS packed-integer formation code (escape hatch for formations not in the preset list).
+**Synopsis** — set the air formation. Accepts either an `sms.K.formation.*` preset string or a raw DCS packed-integer formation code (escape hatch for formations not in the preset list).
 
 **Arguments**
 
 | Name | Type | Description |
 |---|---|---|
-| `value` | `string \| number` | Preset string (e.g. `"finger_four"`) or a raw DCS packed integer. See the [enum reference](#smsoptionsformation) for the seven presets and their DCS integer mappings. |
+| `value` | `string \| number` | Preset string (e.g. `"finger_four"`) or a raw DCS packed integer. See the [enum reference](#smskformation) for the seven presets and their DCS integer mappings. |
 
 **Returns** — option table for `AI.Option.Air.id.FORMATION`. Air-only.
 
@@ -223,7 +223,7 @@ strike:set_option(opt)
 
 ```lua
 local cap = sms.group("blue-cap-1")
-cap:set_option(sms.options.formation(sms.options.FORMATION.FINGER_FOUR))
+cap:set_option(sms.options.formation(sms.K.formation.FINGER_FOUR))
 
 -- Or pass a raw DCS integer for a formation not in the preset list:
 cap:set_option(sms.options.formation(786433))   -- e.g. a custom DCS code
@@ -247,7 +247,7 @@ cap:set_option(sms.options.formation(786433))   -- e.g. a custom DCS code
 
 ```lua
 local cap = sms.group("blue-cap-1")
-cap:set_option(sms.options.formation(sms.options.FORMATION.SPREAD))
+cap:set_option(sms.options.formation(sms.K.formation.SPREAD))
 cap:set_option(sms.options.formation_interval(450))   -- 450 m between wingmen
 ```
 
@@ -530,7 +530,7 @@ Each builder below stamps `_sms_ground_only = true`; applying to an air / ship g
 
 | Name | Type | Description |
 |---|---|---|
-| `value` | `string` | One of `sms.options.ALARM_STATE.*`. See the [enum reference](#smsoptionsalarm_state). |
+| `value` | `string` | One of `sms.K.alarm_state.*`. See the [enum reference](#smskalarm_state). |
 
 **Returns** — option table for `AI.Option.Ground.id.ALARM_STATE`. Ground-only.
 
@@ -538,11 +538,11 @@ Each builder below stamps `_sms_ground_only = true`; applying to an air / ship g
 
 ```lua
 local sam = sms.group("red-sa10-bn")
-sam:set_option(sms.options.alarm_state(sms.options.ALARM_STATE.GREEN))
+sam:set_option(sms.options.alarm_state(sms.K.alarm_state.GREEN))
 
 -- Wake up on trigger.
 sms.timer.after(180, function()
-  sam:set_option(sms.options.alarm_state(sms.options.ALARM_STATE.RED))
+  sam:set_option(sms.options.alarm_state(sms.K.alarm_state.RED))
 end)
 ```
 
@@ -578,62 +578,62 @@ convoy:set_option(sms.options.disperse_on_attack(0))
 
 Every value listed below is also accepted as the lowercase string on the right (both forms work in every builder).
 
-### `sms.options.ROE`
+### `sms.K.roe`
 
 | Constant | String | Allowed for |
 |---|---|---|
-| `sms.options.ROE.WEAPON_FREE` | `"weapon_free"` | air only |
-| `sms.options.ROE.OPEN_FIRE_WEAPON_FREE` | `"open_fire_weapon_free"` | air only |
-| `sms.options.ROE.OPEN_FIRE` | `"open_fire"` | air, ground, naval |
-| `sms.options.ROE.RETURN_FIRE` | `"return_fire"` | air, ground, naval |
-| `sms.options.ROE.WEAPON_HOLD` | `"weapon_hold"` | air, ground, naval |
+| `sms.K.roe.WEAPON_FREE` | `"weapon_free"` | air only |
+| `sms.K.roe.OPEN_FIRE_WEAPON_FREE` | `"open_fire_weapon_free"` | air only |
+| `sms.K.roe.OPEN_FIRE` | `"open_fire"` | air, ground, naval |
+| `sms.K.roe.RETURN_FIRE` | `"return_fire"` | air, ground, naval |
+| `sms.K.roe.WEAPON_HOLD` | `"weapon_hold"` | air, ground, naval |
 
-### `sms.options.REACTION_ON_THREAT`
-
-| Constant | String |
-|---|---|
-| `sms.options.REACTION_ON_THREAT.NO_REACTION` | `"no_reaction"` |
-| `sms.options.REACTION_ON_THREAT.PASSIVE_DEFENCE` | `"passive_defence"` |
-| `sms.options.REACTION_ON_THREAT.EVADE_FIRE` | `"evade_fire"` |
-| `sms.options.REACTION_ON_THREAT.BYPASS_AND_ESCAPE` | `"bypass_and_escape"` |
-| `sms.options.REACTION_ON_THREAT.ALLOW_ABORT_MISSION` | `"allow_abort_mission"` |
-
-### `sms.options.RADAR_USING`
+### `sms.K.reaction_on_threat`
 
 | Constant | String |
 |---|---|
-| `sms.options.RADAR_USING.NEVER` | `"never"` |
-| `sms.options.RADAR_USING.FOR_ATTACK_ONLY` | `"for_attack_only"` |
-| `sms.options.RADAR_USING.FOR_SEARCH_IF_REQUIRED` | `"for_search_if_required"` |
-| `sms.options.RADAR_USING.FOR_CONTINUOUS_SEARCH` | `"for_continuous_search"` |
+| `sms.K.reaction_on_threat.NO_REACTION` | `"no_reaction"` |
+| `sms.K.reaction_on_threat.PASSIVE_DEFENCE` | `"passive_defence"` |
+| `sms.K.reaction_on_threat.EVADE_FIRE` | `"evade_fire"` |
+| `sms.K.reaction_on_threat.BYPASS_AND_ESCAPE` | `"bypass_and_escape"` |
+| `sms.K.reaction_on_threat.ALLOW_ABORT_MISSION` | `"allow_abort_mission"` |
 
-### `sms.options.FLARE_USING`
-
-| Constant | String |
-|---|---|
-| `sms.options.FLARE_USING.NEVER` | `"never"` |
-| `sms.options.FLARE_USING.AGAINST_FIRED_MISSILE` | `"against_fired_missile"` |
-| `sms.options.FLARE_USING.WHEN_FLYING_IN_SAM_WEZ` | `"when_flying_in_sam_wez"` |
-| `sms.options.FLARE_USING.WHEN_FLYING_NEAR_ENEMIES` | `"when_flying_near_enemies"` |
-
-### `sms.options.ALARM_STATE`
+### `sms.K.radar_using`
 
 | Constant | String |
 |---|---|
-| `sms.options.ALARM_STATE.AUTO` | `"auto"` |
-| `sms.options.ALARM_STATE.GREEN` | `"green"` |
-| `sms.options.ALARM_STATE.RED` | `"red"` |
+| `sms.K.radar_using.NEVER` | `"never"` |
+| `sms.K.radar_using.FOR_ATTACK_ONLY` | `"for_attack_only"` |
+| `sms.K.radar_using.FOR_SEARCH_IF_REQUIRED` | `"for_search_if_required"` |
+| `sms.K.radar_using.FOR_CONTINUOUS_SEARCH` | `"for_continuous_search"` |
 
-### `sms.options.FORMATION`
+### `sms.K.flare_using`
+
+| Constant | String |
+|---|---|
+| `sms.K.flare_using.NEVER` | `"never"` |
+| `sms.K.flare_using.AGAINST_FIRED_MISSILE` | `"against_fired_missile"` |
+| `sms.K.flare_using.WHEN_FLYING_IN_SAM_WEZ` | `"when_flying_in_sam_wez"` |
+| `sms.K.flare_using.WHEN_FLYING_NEAR_ENEMIES` | `"when_flying_near_enemies"` |
+
+### `sms.K.alarm_state`
+
+| Constant | String |
+|---|---|
+| `sms.K.alarm_state.AUTO` | `"auto"` |
+| `sms.K.alarm_state.GREEN` | `"green"` |
+| `sms.K.alarm_state.RED` | `"red"` |
+
+### `sms.K.formation`
 
 | Constant | String | DCS packed integer |
 |---|---|---|
-| `sms.options.FORMATION.LINE_ABREAST` | `"line_abreast"` | `65537` |
-| `sms.options.FORMATION.TRAIL` | `"trail"` | `131073` |
-| `sms.options.FORMATION.WEDGE` | `"wedge"` | `196609` |
-| `sms.options.FORMATION.ECHELON_RIGHT` | `"echelon_right"` | `262145` |
-| `sms.options.FORMATION.ECHELON_LEFT` | `"echelon_left"` | `327681` |
-| `sms.options.FORMATION.FINGER_FOUR` | `"finger_four"` | `393217` |
-| `sms.options.FORMATION.SPREAD` | `"spread"` | `458753` |
+| `sms.K.formation.LINE_ABREAST` | `"line_abreast"` | `65537` |
+| `sms.K.formation.TRAIL` | `"trail"` | `131073` |
+| `sms.K.formation.WEDGE` | `"wedge"` | `196609` |
+| `sms.K.formation.ECHELON_RIGHT` | `"echelon_right"` | `262145` |
+| `sms.K.formation.ECHELON_LEFT` | `"echelon_left"` | `327681` |
+| `sms.K.formation.FINGER_FOUR` | `"finger_four"` | `393217` |
+| `sms.K.formation.SPREAD` | `"spread"` | `458753` |
 
 For formations not in this preset list, pass the raw packed integer directly to [`sms.options.formation`](#smsoptionsformationvalue--option).

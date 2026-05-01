@@ -73,7 +73,7 @@ sms.log.info("tracking " .. bandit:get_name())
 
 ```lua
 local bandit = sms.unit("Bandit-1")
-if bandit:get_coalition() == "red" then
+if bandit:get_coalition() == sms.K.coalition.RED then
   sms.log.info("hostile inbound")
 end
 ```

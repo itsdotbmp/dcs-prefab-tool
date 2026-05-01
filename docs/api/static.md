@@ -67,7 +67,7 @@ local fuel_tank = sms.static.create({
   name     = "fuel-tank",
   type     = "FARP Fuel Depot",
   position = anchor,
-  country  = "USA",
+  country  = sms.K.countries.USA,
 })
 sms.log.info("spawned as " .. fuel_tank:get_name())   -- may be "fuel-tank-1" on collision
 ```
@@ -82,7 +82,7 @@ sms.log.info("spawned as " .. fuel_tank:get_name())   -- may be "fuel-tank-1" on
 
 ```lua
 local hangar = sms.static("RangeHangar-1")
-if hangar:get_coalition() == "red" then
+if hangar:get_coalition() == sms.K.coalition.RED then
   -- enemy infrastructure
 end
 ```
@@ -184,7 +184,7 @@ local hangar = sms.static.create({
   name     = "rangetower",
   type     = "Hangar B",
   position = {x = 28000, y = 0, z = -190000},
-  country  = "USA",
+  country  = sms.K.countries.USA,
   heading  = 45,                          -- degrees
 })
 sms.log.info("spawned " .. hangar:get_name() .. " of type " .. hangar:get_type())
@@ -197,7 +197,7 @@ local crate = sms.static.create({
   name     = "ammo-crate",
   type     = "iso_container",
   position = lz_pos,
-  country  = "USA",
+  country  = sms.K.countries.USA,
   category = "Cargos",
   mass     = 1000,                        -- kg
   canCargo = true,
@@ -212,7 +212,7 @@ local wreck = sms.static.create({
   name     = "su27-wreck",
   type     = "Su-27",                     -- aircraft type used as static
   position = crash_site,
-  country  = "RUSSIA",
+  country  = sms.K.countries.RUSSIA,
   dead     = true,
 })
 -- wreck:is_alive() returns true (addressable via getByName), even though

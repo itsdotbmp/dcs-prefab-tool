@@ -19,17 +19,17 @@ For per-module reference see the [API index](README.md). For the dense surface m
 local blue_cap = sms.group.create({
   name     = "blue-cap",
   position = {x = 0,      y = 0, z = 0},
-  country  = sms.countries.USA,
-  category = "airplane",
-  units    = { {type = sms.units.planes.FA_18C_hornet, alt = 7500, heading = 90, speed = 220} },
+  country  = sms.K.countries.USA,
+  category = sms.K.category.AIRPLANE,
+  units    = { {type = sms.K.units.planes.FA_18C_hornet, alt = 7500, heading = 90, speed = 220} },
 })
 
 local red_cap = sms.group.create({
   name     = "red-cap",
   position = {x = 80000, y = 0, z = 0},   -- ~43 nm east
-  country  = sms.countries.RUSSIA,
-  category = "airplane",
-  units    = { {type = sms.units.planes.Su_27, alt = 7500, heading = 270, speed = 220} },
+  country  = sms.K.countries.RUSSIA,
+  category = sms.K.category.AIRPLANE,
+  units    = { {type = sms.K.units.planes.Su_27, alt = 7500, heading = 270, speed = 220} },
 })
 
 -- Send each side to orbit a point 30 km in front of itself.
@@ -44,8 +44,8 @@ local red_orbit = sms.task.orbit({x = 50000, y = 0, z = 0}, {
 red_cap:set_task(red_orbit)
 
 -- Both sides start with weapons hold.
-blue_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
-red_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_HOLD))
+blue_cap:set_option(sms.options.roe(sms.K.roe.WEAPON_HOLD))
+red_cap:set_option(sms.options.roe(sms.K.roe.WEAPON_HOLD))
 
 -- Poll once per second; convert 20 NM to meters once.
 local TRIGGER_RANGE_M = sms.utils.feet_to_meters(20 * 6076)   -- 20 NM ≈ 37 040 m
@@ -57,7 +57,7 @@ sms.timer.every(1.0, function()
 
   local distance = sms.utils.vec3_distance(blue_cap:get_position(), red_cap:get_position())
   if distance and distance <= TRIGGER_RANGE_M then
-    blue_cap:set_option(sms.options.roe(sms.options.ROE.WEAPON_FREE))
+    blue_cap:set_option(sms.options.roe(sms.K.roe.WEAPON_FREE))
     sms.log.info(string.format("blue cleared hot at %.0f m", distance))
     triggered = true
   end
@@ -171,22 +171,22 @@ arm_respawn(current)
 local strike = sms.group.create({
   name     = "blue-strike",
   position = {x = 0, y = 0, z = 0},
-  country  = sms.countries.USA,
-  category = "airplane",
+  country  = sms.K.countries.USA,
+  category = sms.K.category.AIRPLANE,
   units    = {
-    {type = sms.units.planes.F_16C_50, alt = 6000, heading = 90, speed = 220},
-    {type = sms.units.planes.F_16C_50, alt = 6000, heading = 90, speed = 220, offset = {x = -50, y = 0, z = 50}},
+    {type = sms.K.units.planes.F_16C_50, alt = 6000, heading = 90, speed = 220},
+    {type = sms.K.units.planes.F_16C_50, alt = 6000, heading = 90, speed = 220, offset = {x = -50, y = 0, z = 50}},
   },
 })
 
 local cap = sms.group.create({
   name     = "blue-cap",
   position = {x = -2000, y = 0, z = 1000},
-  country  = sms.countries.USA,
-  category = "airplane",
+  country  = sms.K.countries.USA,
+  category = sms.K.category.AIRPLANE,
   units    = {
-    {type = sms.units.planes.F_15C, alt = 7000, heading = 90, speed = 240},
-    {type = sms.units.planes.F_15C, alt = 7000, heading = 90, speed = 240, offset = {x = -50, y = 0, z = 50}},
+    {type = sms.K.units.planes.F_15C, alt = 7000, heading = 90, speed = 240},
+    {type = sms.K.units.planes.F_15C, alt = 7000, heading = 90, speed = 240, offset = {x = -50, y = 0, z = 50}},
   },
 })
 
@@ -218,7 +218,7 @@ local function on_strike_hit(evt)
   local shooter = evt.initiator
   if not shooter then return end
   local shooter_group = shooter:get_group()
-  if not shooter_group or shooter_group:get_coalition() == "blue" then return end
+  if not shooter_group or shooter_group:get_coalition() == sms.K.coalition.BLUE then return end
 
   sms.log.warn("[cap] strike hit by " .. shooter:get_name() .. " — engaging")
   cap:set_task(sms.task.attack(shooter_group, {weapon_type = "Auto"}))
@@ -245,9 +245,9 @@ local function spawn_awacs()
   local awacs = sms.group.create({
     name     = "blue-awacs",
     position = {x = FOB.x - 5000, y = 0, z = FOB.z},
-    country  = sms.countries.USA,
-    category = "airplane",
-    units    = { {type = sms.units.planes.E_3A, alt = sms.utils.feet_to_meters(30000), heading = 90, speed = 200} },
+    country  = sms.K.countries.USA,
+    category = sms.K.category.AIRPLANE,
+    units    = { {type = sms.K.units.planes.E_3A, alt = sms.utils.feet_to_meters(30000), heading = 90, speed = 200} },
   })
   if not awacs then return end
 
@@ -267,9 +267,9 @@ local function spawn_tanker()
   local tanker = sms.group.create({
     name     = "blue-tanker",
     position = {x = TRACK.x, y = 0, z = TRACK.z - 5000},
-    country  = sms.countries.USA,
-    category = "airplane",
-    units    = { {type = sms.units.planes.KC_135, alt = sms.utils.feet_to_meters(22000), heading = 0, speed = 180} },
+    country  = sms.K.countries.USA,
+    category = sms.K.category.AIRPLANE,
+    units    = { {type = sms.K.units.planes.KC_135, alt = sms.utils.feet_to_meters(22000), heading = 0, speed = 180} },
   })
   if not tanker then return end
 
@@ -332,8 +332,8 @@ sms.rule("convoy_ambush", {
   end,
   action = function()
     sms.log.info("[ambush] convoy in kill box — going hot")
-    local roe       = sms.options.roe(sms.options.ROE.WEAPON_FREE)
-    local alarm_red = sms.options.alarm_state(sms.options.ALARM_STATE.RED)
+    local roe       = sms.options.roe(sms.K.roe.WEAPON_FREE)
+    local alarm_red = sms.options.alarm_state(sms.K.alarm_state.RED)
     for _, grp in ipairs(ambush) do
       grp:set_option(roe)
       grp:set_option(alarm_red)
