@@ -121,11 +121,11 @@ local _alarm_state = { auto = 0, green = 1, red = 2 }
 -- Resolve which DCS option id and value table to use for a given group
 -- category. Returns id, value_table, category_name (for log messages).
 sms.options._roe_resolve_for_category = function(category)
-  if category == "airplane" or category == "helicopter" then
+  if category == sms.K.category.AIRPLANE or category == sms.K.category.HELICOPTER then
     return AI.Option.Air.id.ROE, _roe_air, "air"
-  elseif category == "ground" or category == "train" then
+  elseif category == sms.K.category.GROUND or category == sms.K.category.TRAIN then
     return AI.Option.Ground.id.ROE, _roe_ground, "ground"
-  elseif category == "ship" then
+  elseif category == sms.K.category.SHIP then
     return AI.Option.Naval.id.ROE, _roe_naval, "naval"
   end
   return nil, nil, tostring(category)

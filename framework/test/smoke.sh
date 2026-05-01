@@ -290,6 +290,46 @@ result=$("${DCSSMS}" exec --code "return type(sms.options.formation)")
 echo "${result}" | grep -q '"return_value":"function"' \
   || { echo "FAIL: expected sms.options.formation to be a function, got: ${result}"; exit 1; }
 
+echo "==> sms.K.coalition.BLUE == 'blue'"
+result=$("${DCSSMS}" exec --code "return sms.K.coalition.BLUE")
+echo "${result}" | grep -q '"return_value":"blue"' \
+  || { echo "FAIL: expected blue, got: ${result}"; exit 1; }
+
+echo "==> sms.K.coalition.RED == 'red'"
+result=$("${DCSSMS}" exec --code "return sms.K.coalition.RED")
+echo "${result}" | grep -q '"return_value":"red"' \
+  || { echo "FAIL: expected red, got: ${result}"; exit 1; }
+
+echo "==> sms.K.coalition.NEUTRAL == 'neutral'"
+result=$("${DCSSMS}" exec --code "return sms.K.coalition.NEUTRAL")
+echo "${result}" | grep -q '"return_value":"neutral"' \
+  || { echo "FAIL: expected neutral, got: ${result}"; exit 1; }
+
+echo "==> sms.K.category.AIRPLANE == 'airplane'"
+result=$("${DCSSMS}" exec --code "return sms.K.category.AIRPLANE")
+echo "${result}" | grep -q '"return_value":"airplane"' \
+  || { echo "FAIL: expected airplane, got: ${result}"; exit 1; }
+
+echo "==> sms.K.category.HELICOPTER == 'helicopter'"
+result=$("${DCSSMS}" exec --code "return sms.K.category.HELICOPTER")
+echo "${result}" | grep -q '"return_value":"helicopter"' \
+  || { echo "FAIL: expected helicopter, got: ${result}"; exit 1; }
+
+echo "==> sms.K.category.GROUND == 'ground'"
+result=$("${DCSSMS}" exec --code "return sms.K.category.GROUND")
+echo "${result}" | grep -q '"return_value":"ground"' \
+  || { echo "FAIL: expected ground, got: ${result}"; exit 1; }
+
+echo "==> sms.K.category.SHIP == 'ship'"
+result=$("${DCSSMS}" exec --code "return sms.K.category.SHIP")
+echo "${result}" | grep -q '"return_value":"ship"' \
+  || { echo "FAIL: expected ship, got: ${result}"; exit 1; }
+
+echo "==> sms.K.category.TRAIN == 'train'"
+result=$("${DCSSMS}" exec --code "return sms.K.category.TRAIN")
+echo "${result}" | grep -q '"return_value":"train"' \
+  || { echo "FAIL: expected train, got: ${result}"; exit 1; }
+
 echo "==> sms.utils.coalition_int_to_str(1) == 'red'"
 result=$("${DCSSMS}" exec --code "return sms.utils.coalition_int_to_str(1)")
 echo "${result}" | grep -q '"return_value":"red"' \

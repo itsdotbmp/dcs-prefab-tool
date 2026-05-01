@@ -169,12 +169,12 @@ local function _build_dcs_unit(u_spec, anchor, category, base_unit_name, idx)
   if u_spec.onboard_num ~= nil then dcs_unit.onboard_num = u_spec.onboard_num end
 
   -- Air-specific fields
-  if category == "airplane" or category == "helicopter" then
+  if category == sms.K.category.AIRPLANE or category == sms.K.category.HELICOPTER then
     if u_spec.alt        ~= nil then dcs_unit.alt        = u_spec.alt end
     if u_spec.alt_type   ~= nil then dcs_unit.alt_type   = u_spec.alt_type else dcs_unit.alt_type = sms.K.alt_type.BARO end
     if u_spec.speed      ~= nil then
       dcs_unit.speed = u_spec.speed
-    elseif category == "airplane" then
+    elseif category == sms.K.category.AIRPLANE then
       dcs_unit.speed = 200  -- airplanes need forward speed or they stall; helicopters default to 0 (hover)
     end
     if u_spec.payload    ~= nil then dcs_unit.payload    = u_spec.payload end
@@ -238,7 +238,7 @@ local function _build_dcs_group_def(cfg, resolved_group_name, category)
   -- Route handling
   if cfg.route ~= nil then
     def.route = cfg.route
-  elseif category == "airplane" or category == "helicopter" then
+  elseif category == sms.K.category.AIRPLANE or category == sms.K.category.HELICOPTER then
     def.route = _default_route_for_aircraft(anchor, cfg.units[1].alt)
   end
 
@@ -332,7 +332,7 @@ sms.group.create = function(cfg)
     return nil
   end
 
-  local category_str = (cfg.category or "ground"):lower()
+  local category_str = (cfg.category or sms.K.category.GROUND):lower()
   local category_int = _resolve_category(category_str)
   if not category_int then
     log.warn("create: unknown category '" .. tostring(cfg.category) .. "'")
@@ -346,7 +346,7 @@ sms.group.create = function(cfg)
   -- log+nil convention. The cap applies to both airplane and
   -- helicopter categories. Users wanting more should split into
   -- multiple groups.
-  if category_str == "airplane" or category_str == "helicopter" then
+  if category_str == sms.K.category.AIRPLANE or category_str == sms.K.category.HELICOPTER then
     if #cfg.units > 4 then
       log.warn("create: " .. category_str .. " group '" .. cfg.name .. "' has " .. #cfg.units .. " units, max 4 (DCS silently truncates above the cap); split into multiple groups")
       return nil

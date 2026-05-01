@@ -36,6 +36,8 @@ end)()
 local topics = {
   "alarm_state.lua",
   "alt_type.lua",
+  "category.lua",
+  "coalition.lua",
   "countries.lua",
   "designations.lua",
   "flare_using.lua",
