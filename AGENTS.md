@@ -136,6 +136,29 @@ Single-line builders are fine inline (`cap:set_option(sms.options.rtb_on_bingo(t
 
 This style applies to docs, examples, and smoke tests.
 
+### Style: descriptive variable names over short ones
+
+In docs, examples, and smoke tests, prefer role- or content-based names over single-letter abbreviations. Mission scripts read more like natural language when the variables describe what they hold:
+
+```lua
+-- Preferred
+local convoy   = sms.group("Red Armor 1")
+local bandit   = sms.unit("Bandit-1")
+local target   = convoy:get_position()
+local bearing  = sms.utils.bearing(bandit:get_position(), target)
+
+-- Avoid in docs/examples
+local g = sms.group("Red Armor 1")
+local u = sms.unit("Bandit-1")
+local p = g:get_position()
+local brg = sms.utils.bearing(u:get_position(), p)
+```
+
+Exceptions where short names stay idiomatic:
+- Single-letter loop indices (`i`, `k`, `v`).
+- Conventional aviation / military shorthand used as a role: `cas`, `cap`, `awacs`, `lz`, `fob`, `sa6`, `mlrs`.
+- Short event-payload binders inside handlers: `evt`, `id`.
+
 ---
 
 ## 5. Entity handles — the universal pattern
