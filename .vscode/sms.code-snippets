@@ -64,5 +64,29 @@
             "$0"
         ],
         "description": "Skeleton for sms.group.create (ground 1-unit default; add units / overrides by hand)"
+    },
+    "SMS Unit Spec": {
+        "scope": "lua",
+        "prefix": "sms--unit",
+        "body": [
+            "{",
+            "  type        = \"${1:sms.units.planes.A_10C_2}\",",
+            "  name        = \"${2:unit_name}\",",
+            "  offset      = {x = ${3:0}, y = ${4:0}, z = ${5:0}},",
+            "  heading     = ${6:0},",
+            "  skill       = \"${7|Average,Good,High,Excellent,Random,Player,Client|}\",",
+            "  livery_id   = \"${8}\",",
+            "  onboard_num = \"${9}\",",
+            "  alt         = ${10:5000},",
+            "  alt_type    = \"${11|BARO,RADIO|}\",",
+            "  speed       = ${12:200},",
+            "  callsign    = \"${13}\",",
+            "  frequency   = ${14:251000000},",
+            "  modulation  = ${15:0},",
+            "  parking_id  = \"${16}\",",
+            "},",
+            "$0"
+        ],
+        "description": "Full sms.group.unit_spec table with every universal + air-only field (delete what you don't need)"
     }
 }
