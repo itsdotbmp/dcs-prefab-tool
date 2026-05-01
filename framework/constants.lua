@@ -22,10 +22,12 @@ assert(type(sms.log) == "table", "framework/log.lua must be loaded first")
 ---@class sms.constants
 sms.constants = sms.constants or {}
 
+local CONSTANTS_DIR_FALLBACK = "D:/git/dcs-sms/framework/constants/"
+
 local CONSTANTS_DIR = (function()
   local src = (debug.getinfo(1, "S") or {}).source or ""
   local dir = src:match("^@(.*[/\\])constants%.lua$")
-  return dir and (dir .. "constants/") or "D:/git/dcs-sms/framework/constants/"
+  return dir and (dir .. "constants/") or CONSTANTS_DIR_FALLBACK
 end)()
 
 -- Topic files are added by subsequent tasks. List is alphabetical so a
