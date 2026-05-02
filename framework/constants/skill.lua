@@ -22,8 +22,8 @@
 --
 -- See docs/superpowers/specs/2026-05-01-sms-skill-waypoint-enums.md.
 
-assert(type(sms) == "table",          "framework/sms.lua must be loaded first")
-assert(type(sms.log) == "table",      "framework/log.lua must be loaded first")
+assert(type(sms) == "table", "framework/sms.lua must be loaded first")
+assert(type(sms.log) == "table", "framework/log.lua must be loaded first")
 assert(type(sms.constants) == "table", "framework/constants.lua must be loaded first")
 
 ---@class sms.constants.skill
@@ -31,16 +31,18 @@ assert(type(sms.constants) == "table", "framework/constants.lua must be loaded f
 ---@field GOOD      "Good"
 ---@field HIGH      "High"
 ---@field EXCELLENT "Excellent"
+---@field ACE       "Ace"
 ---@field RANDOM    "Random"
 ---@field PLAYER    "Player"
 ---@field CLIENT    "Client"
-sms.constants.skill = sms.constants.skill or {}
+sms.constants.skill           = sms.constants.skill or {}
 
 ---@alias sms.Skill
 ---| "Average"
 ---| "Good"
 ---| "High"
 ---| "Excellent"
+---| "Ace"
 ---| "Random"
 ---| "Player"
 ---| "Client"
@@ -49,6 +51,7 @@ sms.constants.skill.AVERAGE   = "Average"
 sms.constants.skill.GOOD      = "Good"
 sms.constants.skill.HIGH      = "High"
 sms.constants.skill.EXCELLENT = "Excellent"
+sms.constants.skill.ACE       = "Ace"
 sms.constants.skill.RANDOM    = "Random"
 sms.constants.skill.PLAYER    = "Player"
 sms.constants.skill.CLIENT    = "Client"
