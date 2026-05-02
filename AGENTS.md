@@ -261,7 +261,7 @@ When you need behavior the framework doesn't cover, this is the workflow:
 - Update [`AGENTS.md`](AGENTS.md) (this file) as part of the same PR. Adding or removing public surface without updating the §7 module index is a regression — agents and humans both lose visibility.
 - **Update the per-module reference page at [`docs/api/<module>.md`](docs/api/) in the same PR.** Add or revise the entry for every public symbol you touch — signature, options table, return value, runnable example. A PR that ships new public surface without a corresponding `docs/api/` entry is incomplete. This rule is parallel to the `AGENTS.md` sync rule and applies at every stage (spec → plan → implementation → review).
 - If your change introduces a cross-module pattern worth showcasing, add or update a recipe in [`docs/api/examples.md`](docs/api/) too.
-- Add or extend a smoke test under `framework/test/` (`smoke_<module>.sh` driven by `tools/dcs-sms.exe`).
+- Add or extend a smoke test under `framework/test/` (`smoke_<module>.ps1` driven by `tools/dcs-sms.exe`; shared helpers live in `framework/test/_smoke.psm1`).
 
 ---
 
