@@ -44,52 +44,12 @@ local function _stamp(t, verb, air_only, ground_only, naval_only)
 end
 
 -- ============================================================
--- Enum tables (lowercase strings; builders accept either constant or string)
+-- Enum strings consumed by the builders below live on sms.K (see
+-- framework/constants/{roe,reaction_on_threat,radar_using,flare_using,
+-- alarm_state,formation}.lua). The private lookup tables in this file
+-- (_roe_air, _alarm_state, _formation_dcs, etc.) map those strings to
+-- the DCS-side numeric values and stay private.
 -- ============================================================
-
-sms.options.ROE = {
-  WEAPON_FREE           = "weapon_free",
-  OPEN_FIRE_WEAPON_FREE = "open_fire_weapon_free",
-  OPEN_FIRE             = "open_fire",
-  RETURN_FIRE           = "return_fire",
-  WEAPON_HOLD           = "weapon_hold",
-}
-
-sms.options.REACTION_ON_THREAT = {
-  NO_REACTION         = "no_reaction",
-  PASSIVE_DEFENCE     = "passive_defence",
-  EVADE_FIRE          = "evade_fire",
-  BYPASS_AND_ESCAPE   = "bypass_and_escape",
-  ALLOW_ABORT_MISSION = "allow_abort_mission",
-}
-
-sms.options.RADAR_USING = {
-  NEVER                  = "never",
-  FOR_ATTACK_ONLY        = "for_attack_only",
-  FOR_SEARCH_IF_REQUIRED = "for_search_if_required",
-  FOR_CONTINUOUS_SEARCH  = "for_continuous_search",
-}
-
-sms.options.FLARE_USING = {
-  NEVER                    = "never",
-  AGAINST_FIRED_MISSILE    = "against_fired_missile",
-  WHEN_FLYING_IN_SAM_WEZ   = "when_flying_in_sam_wez",
-  WHEN_FLYING_NEAR_ENEMIES = "when_flying_near_enemies",
-}
-
-sms.options.ALARM_STATE = { AUTO = "auto", GREEN = "green", RED = "red" }
-
--- Air formation presets — strings here; builder maps to DCS packed integers.
--- Builder also accepts a raw integer for unknown formations.
-sms.options.FORMATION = {
-  LINE_ABREAST  = "line_abreast",
-  TRAIL         = "trail",
-  WEDGE         = "wedge",
-  ECHELON_RIGHT = "echelon_right",
-  ECHELON_LEFT  = "echelon_left",
-  FINGER_FOUR   = "finger_four",
-  SPREAD        = "spread",
-}
 
 -- ============================================================
 -- Internal lookup tables
@@ -161,11 +121,11 @@ local _alarm_state = { auto = 0, green = 1, red = 2 }
 -- Resolve which DCS option id and value table to use for a given group
 -- category. Returns id, value_table, category_name (for log messages).
 sms.options._roe_resolve_for_category = function(category)
-  if category == "airplane" or category == "helicopter" then
+  if category == sms.K.category.AIRPLANE or category == sms.K.category.HELICOPTER then
     return AI.Option.Air.id.ROE, _roe_air, "air"
-  elseif category == "ground" or category == "train" then
+  elseif category == sms.K.category.GROUND or category == sms.K.category.TRAIN then
     return AI.Option.Ground.id.ROE, _roe_ground, "ground"
-  elseif category == "ship" then
+  elseif category == sms.K.category.SHIP then
     return AI.Option.Naval.id.ROE, _roe_naval, "naval"
   end
   return nil, nil, tostring(category)
@@ -199,7 +159,7 @@ end
 -- ROE builder (special: id resolved at apply time via _sms_roe marker)
 -- ============================================================
 
----@param value string  # sms.options.ROE.* enum string
+---@param value string  # sms.K.roe.* enum string
 ---@return sms.options.option|nil
 sms.options.roe = function(value)
   if type(value) ~= "string" then
@@ -221,7 +181,7 @@ end
 -- Air-only enum builders
 -- ============================================================
 
----@param value string  # sms.options.REACTION_ON_THREAT.* enum string
+---@param value string  # sms.K.reaction_on_threat.* enum string
 ---@return sms.options.option|nil
 sms.options.reaction_on_threat = function(value)
   if type(value) ~= "string" or _reaction_on_threat[value] == nil then
@@ -234,7 +194,7 @@ sms.options.reaction_on_threat = function(value)
   }, "reaction_on_threat", true)
 end
 
----@param value string  # sms.options.RADAR_USING.* enum string
+---@param value string  # sms.K.radar_using.* enum string
 ---@return sms.options.option|nil
 sms.options.radar_using = function(value)
   if type(value) ~= "string" or _radar_using[value] == nil then
@@ -247,7 +207,7 @@ sms.options.radar_using = function(value)
   }, "radar_using", true)
 end
 
----@param value string  # sms.options.FLARE_USING.* enum string
+---@param value string  # sms.K.flare_using.* enum string
 ---@return sms.options.option|nil
 sms.options.flare_using = function(value)
   if type(value) ~= "string" or _flare_using[value] == nil then
@@ -264,9 +224,9 @@ end
 -- Formation builders (air-only)
 -- ============================================================
 
--- formation accepts either a sms.options.FORMATION string preset or a raw
+-- formation accepts either a sms.K.formation.* string preset or a raw
 -- DCS packed integer (escape hatch for formations not in the preset list).
----@param value string|integer  # sms.options.FORMATION.* preset or DCS packed integer
+---@param value string|integer  # sms.K.formation.* preset or DCS packed integer
 ---@return sms.options.option|nil
 sms.options.formation = function(value)
   local packed
@@ -378,7 +338,7 @@ sms.options.radio_kill    = _make_radio_option("radio_kill",    AI.Option.Air.id
 -- Ground-only builders
 -- ============================================================
 
----@param value string  # sms.options.ALARM_STATE.* enum string
+---@param value string  # sms.K.alarm_state.* enum string
 ---@return sms.options.option|nil
 sms.options.alarm_state = function(value)
   if type(value) ~= "string" or _alarm_state[value] == nil then

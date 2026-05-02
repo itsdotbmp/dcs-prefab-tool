@@ -196,7 +196,7 @@ end
 -- Naming follows the X_to_Y convention used by deg_to_rad / feet_to_meters.
 local _coalition_str = {[0] = "neutral", [1] = "red", [2] = "blue"}
 ---@param c integer
----@return "red"|"blue"|"neutral"|nil
+---@return sms.Coalition|nil
 sms.utils.coalition_int_to_str = function(c)
   return _coalition_str[c]
 end

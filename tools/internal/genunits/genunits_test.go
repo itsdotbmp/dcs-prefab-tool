@@ -34,9 +34,9 @@ func TestRun_endToEnd(t *testing.T) {
 		t.Errorf("statics count: got %d, want 1", s)
 	}
 
-	unitsBytes, err := os.ReadFile(filepath.Join(out, "units.lua"))
+	unitsBytes, err := os.ReadFile(filepath.Join(out, "constants", "units.lua"))
 	if err != nil {
-		t.Fatalf("read units.lua: %v", err)
+		t.Fatalf("read constants/units.lua: %v", err)
 	}
 	units := string(unitsBytes)
 
@@ -50,7 +50,7 @@ func TestRun_endToEnd(t *testing.T) {
 		`Soldier_M4 = "Soldier M4"`,
 		`T_80B = "T-80B"`,
 		`-- Cold War Asset Pack`,
-		`sms.units.origin_of = function`,
+		`sms.constants.units.origin_of = function`,
 		`["T-80B"]`,
 	}
 	for _, want := range mustContain {
@@ -59,16 +59,16 @@ func TestRun_endToEnd(t *testing.T) {
 		}
 	}
 
-	staticsBytes, err := os.ReadFile(filepath.Join(out, "statics.lua"))
+	staticsBytes, err := os.ReadFile(filepath.Join(out, "constants", "statics.lua"))
 	if err != nil {
-		t.Fatalf("read statics.lua: %v", err)
+		t.Fatalf("read constants/statics.lua: %v", err)
 	}
 	statics := string(staticsBytes)
 	for _, want := range []string{
 		`---@alias sms.StaticSpawnType`,
 		`Bunker = "Bunker"`,
-		`sms.statics.fortifications = {`,
-		`sms.statics.origin_of = function`,
+		`sms.constants.statics.fortifications = {`,
+		`sms.constants.statics.origin_of = function`,
 	} {
 		if !strings.Contains(statics, want) {
 			t.Errorf("statics.lua missing %q", want)

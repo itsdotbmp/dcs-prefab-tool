@@ -36,11 +36,11 @@ local log = sms.log.module("sms.spawn")
 ---@field name? string  # optional unit name; auto-suffixed on collision
 ---@field offset? {x: number, y: number, z: number}  # per-unit offset from group anchor (meters)
 ---@field heading? number  # heading in degrees (default 0)
----@field skill? sms.Skill|string  # AI skill level; pass sms.skill.<KEY> for autocomplete (default "Average")
+---@field skill? sms.Skill|string  # AI skill level; pass sms.K.skill.<KEY> for autocomplete (default "Average")
 ---@field livery_id? string
 ---@field onboard_num? string
 ---@field alt? number  # altitude in meters (required for airplane/helicopter)
----@field alt_type? sms.AltType|string  # altitude reference; pass sms.alt_type.<KEY> for autocomplete (default "BARO" for air)
+---@field alt_type? sms.AltType|string  # altitude reference; pass sms.K.alt_type.<KEY> for autocomplete (default "BARO" for air)
 ---@field speed? number  # initial speed (m/s); airplanes default to 200 if unset
 ---@field payload? table
 ---@field callsign? table|string
@@ -51,7 +51,7 @@ local log = sms.log.module("sms.spawn")
 ---@class sms.group.create_cfg
 ---@field name string  # group name; auto-suffixed on collision
 ---@field position {x: number, y: number, z: number}  # group anchor (vec3, DCS world coords)
----@field country sms.Country|string  # country name (resolved via sms.utils.resolve_country); pass sms.countries.<KEY> for autocomplete or any case-folded string
+---@field country sms.Country|string  # country name (resolved via sms.utils.resolve_country); pass sms.K.countries.<KEY> for autocomplete or any case-folded string
 ---@field category? string  # "ground" | "airplane" | "helicopter" | "ship" | "train" (default "ground")
 ---@field task? string  # group-level task string (default per category)
 ---@field route? table  # DCS route table; auto-generated for aircraft if omitted
@@ -169,12 +169,12 @@ local function _build_dcs_unit(u_spec, anchor, category, base_unit_name, idx)
   if u_spec.onboard_num ~= nil then dcs_unit.onboard_num = u_spec.onboard_num end
 
   -- Air-specific fields
-  if category == "airplane" or category == "helicopter" then
+  if category == sms.K.category.AIRPLANE or category == sms.K.category.HELICOPTER then
     if u_spec.alt        ~= nil then dcs_unit.alt        = u_spec.alt end
-    if u_spec.alt_type   ~= nil then dcs_unit.alt_type   = u_spec.alt_type else dcs_unit.alt_type = "BARO" end
+    if u_spec.alt_type   ~= nil then dcs_unit.alt_type   = u_spec.alt_type else dcs_unit.alt_type = sms.K.alt_type.BARO end
     if u_spec.speed      ~= nil then
       dcs_unit.speed = u_spec.speed
-    elseif category == "airplane" then
+    elseif category == sms.K.category.AIRPLANE then
       dcs_unit.speed = 200  -- airplanes need forward speed or they stall; helicopters default to 0 (hover)
     end
     if u_spec.payload    ~= nil then dcs_unit.payload    = u_spec.payload end
@@ -211,7 +211,7 @@ local function _default_route_for_aircraft(anchor, first_unit_alt)
         x        = anchor.x,
         y        = anchor.z + 50000,  -- DCS-2D north
         alt      = alt,
-        alt_type = "BARO",
+        alt_type = sms.K.alt_type.BARO,
         speed    = 200,
         task     = { id = "ComboTask", params = { tasks = {} } },
       },
@@ -238,7 +238,7 @@ local function _build_dcs_group_def(cfg, resolved_group_name, category)
   -- Route handling
   if cfg.route ~= nil then
     def.route = cfg.route
-  elseif category == "airplane" or category == "helicopter" then
+  elseif category == sms.K.category.AIRPLANE or category == sms.K.category.HELICOPTER then
     def.route = _default_route_for_aircraft(anchor, cfg.units[1].alt)
   end
 
@@ -332,7 +332,7 @@ sms.group.create = function(cfg)
     return nil
   end
 
-  local category_str = (cfg.category or "ground"):lower()
+  local category_str = (cfg.category or sms.K.category.GROUND):lower()
   local category_int = _resolve_category(category_str)
   if not category_int then
     log.warn("create: unknown category '" .. tostring(cfg.category) .. "'")
@@ -346,7 +346,7 @@ sms.group.create = function(cfg)
   -- log+nil convention. The cap applies to both airplane and
   -- helicopter categories. Users wanting more should split into
   -- multiple groups.
-  if category_str == "airplane" or category_str == "helicopter" then
+  if category_str == sms.K.category.AIRPLANE or category_str == sms.K.category.HELICOPTER then
     if #cfg.units > 4 then
       log.warn("create: " .. category_str .. " group '" .. cfg.name .. "' has " .. #cfg.units .. " units, max 4 (DCS silently truncates above the cap); split into multiple groups")
       return nil

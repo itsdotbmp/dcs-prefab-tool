@@ -191,8 +191,8 @@ echo "==> live DCS round-trip — DEAD event"
   local g = sms.group.create({
     name = "smoke_evt_target",
     position = {x = -50000, y = 0, z = -50000},
-    country = "USA",
-    category = "ground",
+    country = sms.K.countries.USA,
+    category = sms.K.category.GROUND,
     units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
   })
   if g then
@@ -256,8 +256,8 @@ echo "==> entity sugar — non-entity event rejected"
   _G._sms_events_smoke.g = sms.group.create({
     name = "smoke_evt_sugar_grp",
     position = {x = -49000, y = 0, z = -49000},
-    country = "USA",
-    category = "ground",
+    country = sms.K.countries.USA,
+    category = sms.K.category.GROUND,
     units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
   })
   if _G._sms_events_smoke.g then
@@ -324,8 +324,8 @@ echo "==> sms.unit.destroy(u, {emit_event=true}) fires DEAD via the bus"
   local g = sms.group.create({
     name = "smoke_destroy_target",
     position = {x = -48500, y = 0, z = -48500},
-    country = "USA",
-    category = "ground",
+    country = sms.K.countries.USA,
+    category = sms.K.category.GROUND,
     units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
   })
   if g then
@@ -352,8 +352,8 @@ echo "==> sms.unit.destroy(u) without opts does NOT fire DEAD"
   local g = sms.group.create({
     name = "smoke_silent_destroy",
     position = {x = -47500, y = 0, z = -47500},
-    country = "USA",
-    category = "ground",
+    country = sms.K.countries.USA,
+    category = sms.K.category.GROUND,
     units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
   })
   if g then
@@ -380,8 +380,8 @@ echo "==> g:connect(DEAD) fires only when group is fully dead"
   local g = sms.group.create({
     name = "smoke_grp_dead",
     position = {x = -46500, y = 0, z = -46500},
-    country = "USA",
-    category = "ground",
+    country = sms.K.countries.USA,
+    category = sms.K.category.GROUND,
     units = {
       { type = "M-1 Abrams", offset = {x = 0, y = 0, z =  0} },
       { type = "M-1 Abrams", offset = {x = 0, y = 0, z = 20} },

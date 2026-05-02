@@ -548,7 +548,7 @@ mlrs:set_task(fire_task)
 |---|---|---|---|
 | `offset` | `vec3` | `{x=-50, y=0, z=-50}` | Target-relative offset. |
 | `engagement_dist_max` | `number` (meters) | `5000` | Max distance from the formation at which the escort will engage. |
-| `target_types` | `{string, ...}?` | unset | Array of attribute strings (use [`sms.targets.*`](constants.md) constants). When omitted, DCS applies its default. |
+| `target_types` | `{string, ...}?` | unset | Array of attribute strings (use [`sms.K.targets.*`](constants.md) constants). When omitted, DCS applies its default. |
 | `last_waypoint_index` | `number?` | unset | Detach when target reaches this waypoint. When set, DCS `lastWptIndexFlag` is also set. |
 
 **Returns** — DCS `Escort` with `_sms_air_only = true`.
@@ -563,13 +563,13 @@ local escort = sms.group("blue-f15-escort")
 local escort_task = sms.task.escort(lead, {
   offset              = {x = -200, y = 100, z = 200},   -- aft, above, right
   engagement_dist_max = 15000,
-  target_types        = {sms.targets.AIR},
+  target_types        = {sms.K.targets.AIR},
   last_waypoint_index = 5,
 })
 escort:set_task(escort_task)
 ```
 
-**See also** — [`sms.task.follow`](#smstaskfollowtarget-opts--task), [`sms.targets`](constants.md).
+**See also** — [`sms.task.follow`](#smstaskfollowtarget-opts--task), [`sms.K.targets`](constants.md).
 
 ---
 
@@ -587,7 +587,7 @@ escort:set_task(escort_task)
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `weapon_type` | `string` \| `number` | `"Auto"` | Recommended weapon class for engagers. |
-| `designation` | `string` | `"Auto"` | Marker style. Use [`sms.designations.*`](constants.md): `NO`, `AUTO`, `WP`, `IR_POINTER`, `LASER`. Raw strings also accepted (DCS validates). |
+| `designation` | `string` | `"Auto"` | Marker style. Use [`sms.K.designations.*`](constants.md): `NO`, `AUTO`, `WP`, `IR_POINTER`, `LASER`. Raw strings also accepted (DCS validates). |
 | `datalink` | `boolean` | `true` | Whether to share via datalink. |
 
 **Returns** — DCS `FAC_AttackGroup`. No category flag.
@@ -601,13 +601,13 @@ local hostile = sms.group("red-armor-1")
 
 local fac_task = sms.task.fac_attack_group(hostile, {
   weapon_type = "Auto",
-  designation = sms.designations.WP,
+  designation = sms.K.designations.WP,
   datalink    = true,
 })
 fac:set_task(fac_task)
 ```
 
-**See also** — [`sms.task.fac`](#smstaskfacopts--task), [`sms.task.fac_engage_group`](#smstaskfac_engage_grouptarget-opts--task), [`sms.designations`](constants.md).
+**See also** — [`sms.task.fac`](#smstaskfacopts--task), [`sms.task.fac_engage_group`](#smstaskfac_engage_grouptarget-opts--task), [`sms.K.designations`](constants.md).
 
 ---
 
@@ -668,7 +668,7 @@ scout:set_task(plan)
 local fac     = sms.group("blue-fac-flight")
 local hostile = sms.group("red-mech-coy-1")
 local fac_task = sms.task.fac_engage_group(hostile, {
-  designation = sms.designations.LASER,
+  designation = sms.K.designations.LASER,
   priority    = 1,
 })
 fac:push_task(fac_task)
@@ -688,7 +688,7 @@ fac:push_task(fac_task)
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `target_types` | `{string, ...}` | **required** | Attribute strings (use [`sms.targets.*`](constants.md)). |
+| `target_types` | `{string, ...}` | **required** | Attribute strings (use [`sms.K.targets.*`](constants.md)). |
 | `max_dist` | `number?` (meters) | unset | Max engagement distance from the route. |
 | `priority` | `number` | `1` | Enroute-task priority. |
 
@@ -702,7 +702,7 @@ local sweep = sms.group("blue-f16-sweep")
 local plan = sms.task.combo({
   sms.task.move_to({x = 80000, y = 7500, z = 0}),
   sms.task.engage_en_route_targets({
-    target_types = {sms.targets.PLANES, sms.targets.HELICOPTERS},
+    target_types = {sms.K.targets.PLANES, sms.K.targets.HELICOPTERS},
     max_dist     = 50000,
     priority     = 1,
   }),
@@ -710,7 +710,7 @@ local plan = sms.task.combo({
 sweep:set_task(plan)
 ```
 
-**See also** — [`sms.targets`](constants.md), [`sms.task.engage_en_route_group`](#smstaskengage_en_route_grouptarget-opts--task).
+**See also** — [`sms.K.targets`](constants.md), [`sms.task.engage_en_route_group`](#smstaskengage_en_route_grouptarget-opts--task).
 
 ---
 

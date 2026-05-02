@@ -26,10 +26,6 @@ After this, every `sms.*` symbol below is available.
 | [`group.md`](group.md) | `sms.group` | Group entity wrapper, spawn factories (`create` / `clone`), event sugar, `set_task` / `push_task`. |
 | [`unit.md`](unit.md) | `sms.unit` | Unit entity wrapper. Position, heading, altitude, group lookup, event sugar, programmatic destroy. |
 | [`static.md`](static.md) | `sms.static` | Static-object wrapper plus `create` / `clone` factories. |
-| [`countries.md`](countries.md) | `sms.countries` | Hand-maintained enum of DCS `country.id` keys; provides autocomplete on `country = sms.countries.<KEY>` spawn configs. |
-| [`skill.md`](skill.md) | `sms.skill` | Hand-maintained enum of DCS unit skill levels; autocomplete on the `skill` field of unit specs. |
-| [`alt_type.md`](alt_type.md) | `sms.alt_type` | Two-entry enum (`BARO` / `RADIO`) for the waypoint altitude reference. |
-| [`waypoint.md`](waypoint.md) | `sms.waypoint` | Two enum sub-tables (`TYPE` and `ACTION`) for hand-built route waypoints. |
 | [`area.md`](area.md) | `sms.area` | Unified zone / drawing / runtime-circle / runtime-polygon abstraction with containment tests. |
 | [`weapon.md`](weapon.md) | `sms.weapon` | Weapon-from-event wrapper with tracking lifecycle and impact extrapolation. |
 | [`events.md`](events.md) | `sms.events` | DCS world-event bus, normalized payloads, entity-scoped `:connect`. |
@@ -37,7 +33,7 @@ After this, every `sms.*` symbol below is available.
 | [`rule.md`](rule.md) | `sms.rule` | Declarative trigger rules: once / continuous / toggle with cooldown + sustain knobs and a dev_condition escape hatch. |
 | [`utils.md`](utils.md) | `sms.utils` | Numeric helpers (deg/rad, ft/m), vec3 maths, country / coalition lookup. |
 | [`log.md`](log.md) | `sms.log` | Structured logging with four levels and per-module tagged loggers. |
-| [`constants.md`](constants.md) | `sms`, `sms.targets`, `sms.designations`, `load_all` | Root namespace, target-attribute constants, FAC designation constants, framework loader. |
+| [`constants.md`](constants.md) | `sms.constants` (alias `sms.K`) | Single namespace for every DCS wire-format constant: countries, coalitions, categories, skill levels, waypoint types/actions, ROE / alarm-state / formation / reaction-on-threat / radar-using / flare-using strings, target attributes, FAC designations. Also covers `sms.K.units` / `sms.K.statics` (auto-generated catalogs from dcs-lua-datamine; see `units.md` / `statics.md` for catalog navigation). |
 | [`examples.md`](examples.md) | (all) | Copy-and-paste recipes that combine multiple modules. |
 
 ## Page template

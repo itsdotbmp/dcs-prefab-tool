@@ -137,15 +137,19 @@ func Run(opts Options) (units, statics int, err error) {
 		}
 	}
 
-	if err := writeFile(filepath.Join(opts.OutDir, "units.lua"), func(w *os.File) error {
+	unitsConstDir := filepath.Join(opts.OutDir, "constants")
+	if err := os.MkdirAll(unitsConstDir, 0o755); err != nil {
+		return 0, 0, fmt.Errorf("genunits: mkdir constants: %w", err)
+	}
+	if err := writeFile(filepath.Join(unitsConstDir, "units.lua"), func(w *os.File) error {
 		return EmitUnits(w, classified, opts.DatamineCommit, now)
 	}); err != nil {
-		return 0, 0, fmt.Errorf("genunits: write units.lua: %w", err)
+		return 0, 0, fmt.Errorf("genunits: write constants/units.lua: %w", err)
 	}
-	if err := writeFile(filepath.Join(opts.OutDir, "statics.lua"), func(w *os.File) error {
+	if err := writeFile(filepath.Join(unitsConstDir, "statics.lua"), func(w *os.File) error {
 		return EmitStatics(w, classified, opts.DatamineCommit, now)
 	}); err != nil {
-		return 0, 0, fmt.Errorf("genunits: write statics.lua: %w", err)
+		return 0, 0, fmt.Errorf("genunits: write constants/statics.lua: %w", err)
 	}
 	return units, statics, nil
 }

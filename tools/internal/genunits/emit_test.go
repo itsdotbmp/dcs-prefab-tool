@@ -43,19 +43,19 @@ func TestEmitUnits_outputShape(t *testing.T) {
 		`---| "M-1 Abrams"`,
 		`---| "T-80B"`,
 		// Tables — assignments (no embedded padding; spaces vary per-line)
-		`sms.units = sms.units or {}`,
-		`sms.units.planes = {`,
+		`sms.constants.units = sms.constants.units or {}`,
+		`sms.constants.units.planes = {`,
 		`F_16C_50 = "F-16C_50",`,
-		`sms.units.armor = {`,
+		`sms.constants.units.armor = {`,
 		`tanks = {`,
 		`T_72B = "T-72B",`,
 		`T_80B = "T-80B",`,
 		`M_1_Abrams = "M-1 Abrams",`,
 		`ifv = {`,
 		`BMP_2 = "BMP-2",`,
-		`sms.units.infantry = {`,
+		`sms.constants.units.infantry = {`,
 		`Soldier_M4 = "Soldier M4",`,
-		`sms.units.ships = {`,
+		`sms.constants.units.ships = {`,
 		`warships = {`,
 		`MOSCOW = "MOSCOW",`,
 		// Origin label appears after the assignment, separated by padding
@@ -64,7 +64,7 @@ func TestEmitUnits_outputShape(t *testing.T) {
 		`local _origin = {`,
 		`["T-80B"]`,
 		`= "Cold War Asset Pack",`,
-		`sms.units.origin_of = function`,
+		`sms.constants.units.origin_of = function`,
 	}
 	for _, want := range mustContain {
 		if !strings.Contains(out, want) {
@@ -80,7 +80,7 @@ func TestEmitUnits_alphabeticalWithinBucket(t *testing.T) {
 		t.Fatalf("EmitUnits: %v", err)
 	}
 	out := sb.String()
-	// Within sms.units.armor.tanks, identifiers are alphabetical:
+	// Within sms.constants.units.armor.tanks, identifiers are alphabetical:
 	// M_1_Abrams < T_72B < T_80B.
 	idxA := strings.Index(out, `M_1_Abrams`)
 	idxT72 := strings.Index(out, `T_72B`)
@@ -118,12 +118,12 @@ func TestEmitStatics_outputShape(t *testing.T) {
 		`---@alias sms.StaticSpawnType`,
 		`---| "Bunker"`,
 		`---| "Cow"`,
-		`sms.statics = sms.statics or {}`,
-		`sms.statics.fortifications = {`,
+		`sms.constants.statics = sms.constants.statics or {}`,
+		`sms.constants.statics.fortifications = {`,
 		`Bunker = "Bunker",`,
-		`sms.statics.animals = {`,
+		`sms.constants.statics.animals = {`,
 		`Cow = "Cow",`,
-		`sms.statics.origin_of = function`,
+		`sms.constants.statics.origin_of = function`,
 	}
 	for _, want := range mustContain {
 		if !strings.Contains(out, want) {

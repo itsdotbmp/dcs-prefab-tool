@@ -2,8 +2,9 @@
 -- Source: dcs-lua-datamine @   (regenerated 2026-04-30T15:53:55Z)
 -- See docs/api/statics.md for usage.
 
-assert(type(sms) == "table", "framework/sms.lua must be loaded first")
-local log = sms.log.module("sms.statics")
+assert(type(sms) == "table",           "framework/sms.lua must be loaded first")
+assert(type(sms.constants) == "table", "framework/constants.lua must be loaded first")
+local log = sms.log.module("sms.constants.statics")
 
 ---@alias sms.StaticSpawnType
 ---| ".Ammunition depot"
@@ -299,22 +300,22 @@ local log = sms.log.module("sms.statics")
 ---| "warning_board_b"
 ---| "wp_marker"
 
----@class sms.statics
-sms.statics = sms.statics or {}
+---@class sms.constants.statics
+sms.constants.statics = sms.constants.statics or {}
 
-sms.statics.airfields = {
+sms.constants.statics.airfields = {
   GrassAirfield = "GrassAirfield",
 }
 
-sms.statics.airships = {
+sms.constants.statics.airships = {
   m1_vla = "m1_vla",                                         -- WWII Assets
 }
 
-sms.statics.animals = {
+sms.constants.statics.animals = {
   Cow = "Cow",                                               -- Animals
 }
 
-sms.statics.cargos = {
+sms.constants.statics.cargos = {
   M92_10Ft_Container = "M92_10Ft_Container",                 -- C-130 Assets
   M92_Ammo_Pallet = "M92_Ammo_Pallet",                       -- C-130 Assets
   M92_Concrete_Barrier_Cargo = "M92_Concrete_Barrier_Cargo", -- C-130 Assets
@@ -341,12 +342,12 @@ sms.statics.cargos = {
   uh1h_cargo = "uh1h_cargo",
 }
 
-sms.statics.effects = {
+sms.constants.statics.effects = {
   big_smoke = "big_smoke",
   wp_marker = "wp_marker",
 }
 
-sms.statics.equipment = {
+sms.constants.statics.equipment = {
   AS32_31A = "AS32-31A",                                     -- Supercarrier
   AS32_32A = "AS32-32A",                                     -- Supercarrier
   AS32_36A = "AS32-36A",                                     -- Supercarrier
@@ -359,7 +360,7 @@ sms.statics.equipment = {
   Ski_Ramp = "Ski Ramp",                                     -- South Atlantic Assets
 }
 
-sms.statics.fortifications = {
+sms.constants.statics.fortifications = {
   AM32a_60_01 = "AM32a-60_01",                               -- Massun92 Assets
   AM32a_60_02 = "AM32a-60_02",                               -- Massun92 Assets
   APFC_fuel = "APFC fuel",                                   -- Massun92 Assets
@@ -590,14 +591,14 @@ sms.statics.fortifications = {
   warning_board_b = "warning_board_b",                       -- China Asset Pack
 }
 
-sms.statics.ground_objects = {
+sms.constants.statics.ground_objects = {
   Bridge = "Bridge",
   Building = "Building",
   Train = "Train",
   Transport = "Transport",
 }
 
-sms.statics.heliports = {
+sms.constants.statics.heliports = {
   FARP = "FARP",
   FARP_SINGLE_01 = "FARP_SINGLE_01",                         -- South Atlantic Assets
   Gas_platform = "Gas platform",                             -- Tech Weapon Pack
@@ -606,7 +607,7 @@ sms.statics.heliports = {
   SINGLE_HELIPAD = "SINGLE_HELIPAD",
 }
 
-sms.statics.personnel = {
+sms.constants.statics.personnel = {
   Carrier_Airboss = "Carrier Airboss",                       -- Supercarrier
   Carrier_LSO_Personell = "Carrier LSO Personell",           -- Supercarrier
   Carrier_LSO_Personell_1 = "Carrier LSO Personell 1",       -- Supercarrier
@@ -619,7 +620,7 @@ sms.statics.personnel = {
   us_carrier_tech = "us carrier tech",                       -- Supercarrier
 }
 
-sms.statics.warehouses = {
+sms.constants.statics.warehouses = {
   Tank = "Tank",
   Tank_2 = "Tank 2",
   Tank_3 = "Tank 3",
@@ -816,7 +817,7 @@ local _origin = {
 
 ---@param type_string string  DCS type-string to look up
 ---@return string|nil  asset-pack label if non-base, nil otherwise
-sms.statics.origin_of = function(type_string)
+sms.constants.statics.origin_of = function(type_string)
   if type(type_string) ~= "string" then return nil end
   return _origin[type_string]
 end

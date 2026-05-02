@@ -307,8 +307,8 @@ local huh  = sms.utils.coalition_int_to_str(99) -- nil, no log
 ```lua
 local template = {
   name     = "red-cas-1",
-  country  = "russia",
-  category = "airplane",
+  country  = sms.K.countries.RUSSIA,
+  category = sms.K.category.AIRPLANE,
   units = {
     {type = "Su-25T", x = 0, z = 0, payload = {pylons = {}}},
   },

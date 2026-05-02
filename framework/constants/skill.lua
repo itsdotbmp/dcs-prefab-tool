@@ -1,10 +1,10 @@
--- dcs-sms framework: skill module (sms.skill).
+-- dcs-sms framework: skill module (sms.constants.skill / sms.K.skill).
 --
 -- Hand-maintained enum of DCS unit-skill strings. Mission code uses
--- sms.skill.<KEY> instead of magic strings:
+-- sms.K.skill.<KEY> instead of magic strings:
 --
 --     sms.group.create({
---       units = { {type = sms.units.planes.F_16C_50, skill = sms.skill.AVERAGE} },
+--       units = { {type = sms.units.planes.F_16C_50, skill = sms.K.skill.AVERAGE} },
 --       ...
 --     })
 --
@@ -17,17 +17,16 @@
 -- usage (skill = "Average"). The skill field on sms.group.unit_spec
 -- is annotated sms.Skill|string so both forms are typo-checkable.
 --
--- Loading order: sms.lua -> log.lua -> utils.lua -> countries.lua ->
--- skill.lua. No runtime drift check (no DCS-global to introspect).
+-- Loading order: sms.lua -> log.lua -> utils.lua -> constants.lua ->
+-- framework/constants/skill.lua. No runtime drift check (no DCS-global to introspect).
 --
 -- See docs/superpowers/specs/2026-05-01-sms-skill-waypoint-enums.md.
 
-assert(type(sms) == "table",     "framework/sms.lua must be loaded first")
-assert(type(sms.log) == "table", "framework/log.lua must be loaded first")
+assert(type(sms) == "table",          "framework/sms.lua must be loaded first")
+assert(type(sms.log) == "table",      "framework/log.lua must be loaded first")
+assert(type(sms.constants) == "table", "framework/constants.lua must be loaded first")
 
-local log = sms.log.module("sms.skill")
-
----@class sms.skill
+---@class sms.constants.skill
 ---@field AVERAGE   "Average"
 ---@field GOOD      "Good"
 ---@field HIGH      "High"
@@ -35,7 +34,7 @@ local log = sms.log.module("sms.skill")
 ---@field RANDOM    "Random"
 ---@field PLAYER    "Player"
 ---@field CLIENT    "Client"
-sms.skill = sms.skill or {}
+sms.constants.skill = sms.constants.skill or {}
 
 ---@alias sms.Skill
 ---| "Average"
@@ -46,10 +45,10 @@ sms.skill = sms.skill or {}
 ---| "Player"
 ---| "Client"
 
-sms.skill.AVERAGE   = "Average"
-sms.skill.GOOD      = "Good"
-sms.skill.HIGH      = "High"
-sms.skill.EXCELLENT = "Excellent"
-sms.skill.RANDOM    = "Random"
-sms.skill.PLAYER    = "Player"
-sms.skill.CLIENT    = "Client"
+sms.constants.skill.AVERAGE   = "Average"
+sms.constants.skill.GOOD      = "Good"
+sms.constants.skill.HIGH      = "High"
+sms.constants.skill.EXCELLENT = "Excellent"
+sms.constants.skill.RANDOM    = "Random"
+sms.constants.skill.PLAYER    = "Player"
+sms.constants.skill.CLIENT    = "Client"

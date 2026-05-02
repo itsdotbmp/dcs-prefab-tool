@@ -16,7 +16,7 @@ func init() {
 
 // genUnitsCmd runs the units/statics catalog generator. Exit codes:
 //
-//	0 — success; framework/units.lua + framework/statics.lua written.
+//	0 — success; framework/constants/units.lua + framework/constants/statics.lua written.
 //	1 — generator error (parse, emit, or validation failed).
 //	2 — flag parse error or required path missing.
 func genUnitsCmd(args []string, stdout, stderr io.Writer) int {
@@ -64,6 +64,6 @@ func genUnitsCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "dcs-sms gen-units:", err)
 		return 1
 	}
-	fmt.Fprintf(stdout, "wrote %s/units.lua (%d entries) and %s/statics.lua (%d entries)\n", outDir, u, outDir, s)
+	fmt.Fprintf(stdout, "wrote %s/constants/units.lua (%d entries) and %s/constants/statics.lua (%d entries)\n", outDir, u, outDir, s)
 	return 0
 }

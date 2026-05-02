@@ -73,7 +73,7 @@ sms.log.info("spawned as " .. group:get_name()) -- always trust this over the in
 **Example**
 
 ```lua
-if sms.group("strike-1"):get_coalition() == "red" then
+if sms.group("strike-1"):get_coalition() == sms.K.coalition.RED then
   sms.log.info("red strike package live")
 end
 ```
@@ -88,7 +88,7 @@ end
 
 ```lua
 local patrol = sms.group("patrol-1")
-if patrol:get_category() == "airplane" then
+if patrol:get_category() == sms.K.category.AIRPLANE then
   patrol:set_task(sms.task.orbit(orbit_pt, {altitude = 6000, pattern = "Anchored"}))
 end
 ```
@@ -235,8 +235,8 @@ Any extra unit keys are passed through verbatim.
 local tanks = sms.group.create({
   name     = "tank-section",
   position = {x = 0, y = 0, z = 0},
-  country  = "USA",
-  category = "ground",                            -- default; can be omitted
+  country  = sms.K.countries.USA,
+  category = sms.K.category.GROUND,               -- default; can be omitted
   units    = {
     { type = "M-1 Abrams" },
     { type = "M-1 Abrams", offset = {x = 0, y = 0, z = 20} },
@@ -252,8 +252,8 @@ sms.log.info("spawned as " .. tanks:get_name())   -- e.g. "tank-section" or "tan
 sms.group.create({
   name     = "f18-cap",
   position = airfield_pos,
-  country  = "USA",
-  category = "airplane",
+  country  = sms.K.countries.USA,
+  category = sms.K.category.AIRPLANE,
   units    = {
     { type = "FA-18C_hornet", alt = 6000, heading = 90 },
     { type = "FA-18C_hornet", alt = 6000, heading = 90, offset = {x = -50, y = 0, z = -50} },

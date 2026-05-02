@@ -9,6 +9,7 @@
 ---@field group            sms.group
 ---@field unit             sms.unit
 ---@field area             sms.area
+---@field constants        sms.constants
 ---@field static           sms.static
 ---@field weapon           sms.weapon
 ---@field timer            sms.timer
@@ -16,9 +17,8 @@
 ---@field task             sms.task
 ---@field utils            sms.utils
 ---@field log              sms.log
----@field designations     sms.designations
----@field targets          sms.targets
 ---@field group_spawn      sms.group_spawn
+---@field K                sms.constants
 sms = sms or {}
 sms.version = "0.1.0"
 

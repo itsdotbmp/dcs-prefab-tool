@@ -332,7 +332,7 @@ local function _adapt_task_for_category(task, category, g)
   -- the group's current position at speed 0 — that's how MOOSE / common
   -- mission scripts stop a ground unit.
   if task._sms_verb == "hold" then
-    if category ~= "airplane" and category ~= "helicopter" and g then
+    if category ~= sms.K.category.AIRPLANE and category ~= sms.K.category.HELICOPTER and g then
       local cur = g:get_position()
       if cur then
         task.id = "Mission"
@@ -361,10 +361,10 @@ local function _adapt_task_for_category(task, category, g)
   local pt = route and route.points and route.points[1]
   if not pt then return end
 
-  local is_air = (category == "airplane" or category == "helicopter")
+  local is_air = (category == sms.K.category.AIRPLANE or category == sms.K.category.HELICOPTER)
   if is_air then
     pt.action            = "Turning Point"
-    pt.alt_type          = pt.alt_type or "BARO"
+    pt.alt_type          = pt.alt_type or sms.K.alt_type.BARO
     task.params.airborne = true
   else
     pt.action = "Off Road"
@@ -392,7 +392,7 @@ local function _adapt_task_for_category(task, category, g)
         action = pt.action,
         task   = { id = "ComboTask", params = { tasks = {} } },
       }
-      if is_air then start.alt_type = "BARO" end
+      if is_air then start.alt_type = sms.K.alt_type.BARO end
       if pt.speed then
         start.speed        = pt.speed
         start.speed_locked = pt.speed_locked
