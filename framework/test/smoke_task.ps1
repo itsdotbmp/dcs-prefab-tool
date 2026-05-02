@@ -552,18 +552,10 @@ return g:set_task(sms.task.orbit({x = $SPAWN_X, y = 100, z = $SPAWN_Z})) == fals
     Write-Host "==> [apply] verify air-only rejection log line"
     # set_task / push_task live in framework/group.lua (the apply API
     # extends sms.group's namespace), so they log under [sms.group].
-    $exe = Get-DcsSmsPath
-    $logWindow = & $exe tail-log --grep '\[sms.group\]' -n 50 2>&1 | Out-String
-    if ($logWindow -notmatch "set_task: 'orbit' is air-only") {
-        Write-Host "FAIL: missing air-only log line"
-        Write-Host $logWindow
-        exit 1
-    }
-    if ($logWindow -notmatch "_smoke_task_ground") {
-        Write-Host "FAIL: air-only log missing group name"
-        Write-Host $logWindow
-        exit 1
-    }
+    Expect-LogContains -Label 'log: orbit air-only' `
+        -Pattern "set_task: 'orbit' is air-only" -Grep '\[sms.group\]' -Lines 50
+    Expect-LogContains -Label 'log: air-only mentions group name' `
+        -Pattern '_smoke_task_ground' -Grep '\[sms.group\]' -Lines 50
 
     Write-Host "==> [apply] cleanup ground fixture"
     Invoke-Smoke -Code @'

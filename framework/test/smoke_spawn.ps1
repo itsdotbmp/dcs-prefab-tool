@@ -595,13 +595,7 @@ return sms.group.clone('$TEMPLATE_NAME', {
     # Section 10: log assertion
     # ----------------------------------------------------------------
     Write-Host "==> [log] dcs.log should contain [sms.spawn] line for unknown country"
-    $exe = Get-DcsSmsPath
-    $logWindow = & $exe tail-log --grep '\[sms.spawn\]' -n 200 | Out-String
-    if ($logWindow -notmatch 'unknown country') {
-        Write-Host "FAIL: missing log line for unknown country"
-        Write-Host $logWindow
-        exit 1
-    }
+    Expect-LogContains -Label 'log: unknown country' -Pattern 'unknown country' -Grep '\[sms.spawn\]'
 
     # ----------------------------------------------------------------
     # Section 11: aircraft 4-unit cap (issue #5)

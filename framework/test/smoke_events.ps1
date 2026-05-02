@@ -390,12 +390,10 @@ if g then pcall(g.destroy, g) end
 '@ | Out-Null
 
     Write-Host "==> verify [sms.events] log lines for bad args and user errors"
-    # Note: the bash version uses dcs-sms tail-log --grep to scan the recent
-    # log window for diagnostic strings. The PowerShell helper has no
-    # equivalent yet, so we surface the raw status (operator can inspect
-    # logs manually) rather than fail-stop on missing log lines. The Lua
-    # behavior under test is already exercised by the assertions above.
-    Write-Host "    (log-line scan skipped — no PS helper for tail-log yet)"
+    Expect-LogContains -Label 'log: connect nil name'         -Pattern 'connect: name must be a string'                 -Grep '\[sms.events\]'
+    Expect-LogContains -Label 'log: connect non-fn'           -Pattern 'connect: fn must be a function'                 -Grep '\[sms.events\]'
+    Expect-LogContains -Label 'log: disconnect non-handle'    -Pattern 'disconnect: argument must be a Connection handle' -Grep '\[sms.events\]'
+    Expect-LogContains -Label 'log: subscriber raised'        -Pattern "subscriber for 'err_test' raised"               -Grep '\[sms.events\]'
 
     Write-Host ""
     Write-Host "ALL smoke_events checks passed."

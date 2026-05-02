@@ -88,6 +88,11 @@ return p ~= nil and type(p.x) == "number" and type(p.y) == "number" and type(p.z
     Write-Host "==> after destroy, lookup should return nil"
     Expect-True -Label 'post-destroy' -Code 'return sms.group("_sms_test_group") == nil'
 
+    Write-Host "==> dcs.log should contain [sms.group] miss line"
+    Expect-LogContains -Label 'log: nonexistent group' `
+        -Pattern "couldn't find group '_definitely_does_not_exist'" `
+        -Grep '\[sms.group\]'
+
     Write-Host ""
     Write-Host "ALL smoke_group checks passed."
 } finally {

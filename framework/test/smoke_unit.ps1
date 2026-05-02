@@ -137,13 +137,9 @@ return math.abs((asl - agl) - terrain) < 0.1
     Expect-True -Label 'post-destroy' -Code 'return sms.unit("_sms_test_unit") == nil'
 
     Write-Host "==> dcs.log should contain [sms.unit] miss line"
-    $exe = Get-DcsSmsPath
-    $logWindow = & $exe tail-log --grep '\[sms.unit\]' -n 200 2>&1 | Out-String
-    if ($logWindow -notmatch "couldn't find unit '_definitely_not_a_unit'") {
-        Write-Host "FAIL: missing log line for nonexistent unit"
-        Write-Host $logWindow
-        exit 1
-    }
+    Expect-LogContains -Label 'log: nonexistent unit' `
+        -Pattern "couldn't find unit '_definitely_not_a_unit'" `
+        -Grep '\[sms.unit\]'
 
     Write-Host "==> cleanup: destroy parent group (best-effort)"
     $cleanupCode = @"

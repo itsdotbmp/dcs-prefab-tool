@@ -281,33 +281,11 @@ Expect-Eq -Label "reset: refired on next tick after reset (cooldown cleared)" -C
 Invoke-Smoke -Code 'sms.rule.remove("smoke_reset")' | Out-Null
 
 Write-Host "==> verify [sms.rule] log lines for bad args and user errors"
-$exe = Get-DcsSmsPath
-$logWindow = & $exe tail-log --grep '\[sms.rule\]' -n 200 2>&1 | Out-String
-if ($logWindow -notmatch "type must be one of sms.rule.TYPE") {
-    Write-Host "FAIL: missing log line for unknown type"
-    Write-Host $logWindow
-    exit 1
-}
-if ($logWindow -notmatch "cooldown is meaningless on ONCE") {
-    Write-Host "FAIL: missing log line for cooldown on ONCE"
-    Write-Host $logWindow
-    exit 1
-}
-if ($logWindow -notmatch "boom from smoke_throw") {
-    Write-Host "FAIL: missing log line for action throw"
-    Write-Host $logWindow
-    exit 1
-}
-if ($logWindow -notmatch "manual fire") {
-    Write-Host "FAIL: missing log line for manual fire"
-    Write-Host $logWindow
-    exit 1
-}
-if ($logWindow -notmatch "replacing existing rule 'smoke_collide'") {
-    Write-Host "FAIL: missing log line for name collision"
-    Write-Host $logWindow
-    exit 1
-}
+Expect-LogContains -Label 'log: unknown type'        -Pattern 'type must be one of sms.rule.TYPE' -Grep '\[sms.rule\]'
+Expect-LogContains -Label 'log: cooldown on ONCE'    -Pattern 'cooldown is meaningless on ONCE'   -Grep '\[sms.rule\]'
+Expect-LogContains -Label 'log: action threw'        -Pattern 'boom from smoke_throw'             -Grep '\[sms.rule\]'
+Expect-LogContains -Label 'log: manual fire'         -Pattern 'manual fire'                       -Grep '\[sms.rule\]'
+Expect-LogContains -Label 'log: name collision'      -Pattern "replacing existing rule 'smoke_collide'" -Grep '\[sms.rule\]'
 
 Write-Host ""
 Write-Host "ALL smoke_rule checks passed."

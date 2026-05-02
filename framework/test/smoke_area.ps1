@@ -345,13 +345,9 @@ if g2 then g2:destroy() end
 '@ | Out-Null
 
     Write-Host "==> dcs.log should contain [sms.area] miss line"
-    $exe = Get-DcsSmsPath
-    $logWindow = & $exe tail-log --grep '\[sms.area\]' -n 200 2>&1 | Out-String
-    if ($logWindow -notmatch "couldn't find area '_definitely_not_a_zone'") {
-        Write-Host "FAIL: missing log line for nonexistent area"
-        Write-Host $logWindow
-        exit 1
-    }
+    Expect-LogContains -Label 'log: nonexistent area' `
+        -Pattern "couldn't find area '_definitely_not_a_zone'" `
+        -Grep '\[sms.area\]'
 
     Write-Host ""
     Write-Host "ALL smoke_area checks passed."

@@ -88,5 +88,12 @@ Invoke-Smoke -Code @"
 Start-Sleep -Seconds 3
 Expect-True -Label 'errors caught: handle ran to max iterations' -Code 'return _G._smoke.h:is_active() == false'
 
+Write-Host "==> verify [sms.timer] log lines for bad args and user errors"
+Expect-LogContains -Label 'log: after seconds<0' -Pattern 'after: seconds must be a non-negative' -Grep '\[sms.timer\]'
+Expect-LogContains -Label 'log: after fn non-fn' -Pattern 'after: fn must be a function'          -Grep '\[sms.timer\]'
+Expect-LogContains -Label 'log: every seconds=0' -Pattern 'every: seconds must be a positive'     -Grep '\[sms.timer\]'
+Expect-LogContains -Label 'log: every max<0'     -Pattern 'every: max must be a positive'         -Grep '\[sms.timer\]'
+Expect-LogContains -Label 'log: user error'      -Pattern 'boom from smoke test'                  -Grep '\[sms.timer\]'
+
 Write-Host ""
 Write-Host "ALL smoke_timer checks passed."

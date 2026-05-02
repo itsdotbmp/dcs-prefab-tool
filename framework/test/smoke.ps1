@@ -250,24 +250,9 @@ Write-Host "==> sms.log.error('boom from smoke test')"
 Invoke-Smoke -Code "sms.log.error('boom from smoke test')" | Out-Null
 
 Write-Host "==> verify dcs.log captured tagged lines"
-$exe = Get-DcsSmsPath
-$logWindow = & $exe tail-log --grep '\[sms' -n 200 | Out-String
-
-if ($logWindow -notmatch '\[sms\.utils\] add_numbers\(2, 3\)') {
-    Write-Host "FAIL: missing [sms.utils] add_numbers line in dcs.log"
-    Write-Host $logWindow
-    exit 1
-}
-if ($logWindow -notmatch '\[sms\] hello from smoke test') {
-    Write-Host "FAIL: missing [sms] hello line in dcs.log"
-    Write-Host $logWindow
-    exit 1
-}
-if ($logWindow -notmatch '\[sms\] boom from smoke test') {
-    Write-Host "FAIL: missing [sms] boom line in dcs.log"
-    Write-Host $logWindow
-    exit 1
-}
+Expect-LogContains -Label 'log: utils add_numbers' -Pattern '\[sms\.utils\] add_numbers\(2, 3\)' -Grep '\[sms'
+Expect-LogContains -Label 'log: hello'             -Pattern '\[sms\] hello from smoke test'      -Grep '\[sms'
+Expect-LogContains -Label 'log: boom'              -Pattern '\[sms\] boom from smoke test'       -Grep '\[sms'
 
 # ------------------------------------------------------------------
 # Task 5: sms.K.units catalog under sms.constants.units

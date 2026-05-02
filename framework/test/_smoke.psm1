@@ -169,6 +169,76 @@ function Expect-Eq {
     }
 }
 
+function Invoke-TailLog {
+    # Read recent dcs.log lines, optionally filtered on the dcs-sms side via
+    # --grep (regex) and/or --since ("cursor", "0", or a duration like "60s").
+    [CmdletBinding()]
+    param(
+        [string]$Grep,
+        [int]$Lines = 200,
+        [string]$Since
+    )
+    $exe = Get-DcsSmsPath
+    $args = @('tail-log', '-n', $Lines)
+    if ($Grep)  { $args += @('--grep', $Grep) }
+    if ($Since) { $args += @('--since', $Since) }
+    & $exe @args 2>&1
+}
+
+function Expect-LogContains {
+    # Assert the recent dcs.log window matches a regex. -Grep prefilters lines
+    # on the dcs-sms side (typically a tag like '[sms.timer]') before the
+    # PowerShell regex match runs over the result. -Since narrows the window
+    # to "0" (whole file) or a duration like "60s".
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][string]$Pattern,
+        [string]$Grep,
+        [int]$Lines = 200,
+        [string]$Since
+    )
+    # Default to whole-file scan — "cursor" semantics on dcs-sms's tail-log
+    # advance after every read, which makes back-to-back assertion calls miss
+    # lines they should both see. Assertion fetches want a sliding window, not
+    # a tailing cursor.
+    if (-not $Since) { $Since = '0' }
+    $opts = @{ Lines = $Lines }
+    if ($Grep)  { $opts.Grep = $Grep }
+    $opts.Since = $Since
+    $text = (Invoke-TailLog @opts | Out-String)
+    if ($text -notmatch $Pattern) {
+        Write-Host "FAIL: ${Label}: log did not contain pattern '$Pattern'"
+        Write-Host "  --- log tail (last $Lines, grep='$Grep', since='$Since') ---"
+        Write-Host $text
+        exit 1
+    }
+}
+
+function Expect-LogNotContains {
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][string]$Pattern,
+        [string]$Grep,
+        [int]$Lines = 200,
+        [string]$Since
+    )
+    # Default to whole-file scan — "cursor" semantics on dcs-sms's tail-log
+    # advance after every read, which makes back-to-back assertion calls miss
+    # lines they should both see. Assertion fetches want a sliding window, not
+    # a tailing cursor.
+    if (-not $Since) { $Since = '0' }
+    $opts = @{ Lines = $Lines }
+    if ($Grep)  { $opts.Grep = $Grep }
+    $opts.Since = $Since
+    $text = (Invoke-TailLog @opts | Out-String)
+    if ($text -match $Pattern) {
+        Write-Host "FAIL: ${Label}: log unexpectedly contained pattern '$Pattern'"
+        Write-Host "  --- log tail (last $Lines, grep='$Grep', since='$Since') ---"
+        Write-Host $text
+        exit 1
+    }
+}
+
 function Clear-SmokeFixtures {
     # Best-effort destruction of test groups/statics by name. Idempotent —
     # only destroys what currently exists. Errors are swallowed because this
@@ -189,6 +259,7 @@ end
 }
 
 Export-ModuleMember -Function `
-    Initialize-Smoke, Get-DcsSmsPath, Invoke-Smoke, Invoke-Status, `
+    Initialize-Smoke, Get-DcsSmsPath, Invoke-Smoke, Invoke-Status, Invoke-TailLog, `
     Expect-True, Expect-False, Expect-Nil, Expect-EqString, Expect-EqNumber, Expect-Eq, `
+    Expect-LogContains, Expect-LogNotContains, `
     Clear-SmokeFixtures

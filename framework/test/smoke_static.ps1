@@ -682,13 +682,8 @@ return s:get_position() == nil
     # Section 16: tail-log assertion
     # ----------------------------------------------------------------
     Write-Host "==> [log] dcs.log should contain [sms.static] line for unknown country"
-    $exe = Get-DcsSmsPath
-    $logWindow = & $exe tail-log --grep '\[sms.static\]' -n 200 -since 60s | Out-String
-    if ($logWindow -notmatch 'unknown country') {
-        Write-Host "FAIL: missing log line for unknown country"
-        Write-Host $logWindow
-        exit 1
-    }
+    Expect-LogContains -Label 'log: unknown country' `
+        -Pattern 'unknown country' -Grep '\[sms.static\]' -Since '60s'
 
     Write-Host ""
     Write-Host "ALL smoke_static checks passed."
