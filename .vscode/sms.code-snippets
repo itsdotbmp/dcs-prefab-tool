@@ -27,7 +27,7 @@
     // }
     "SMS Rule": {
         "scope": "lua",
-        "prefix": "sms--rule",
+        "prefix": "##sms.rule",
         "body": [
             "sms.rule(\"${1:rule_name}\", {",
             "  type          = sms.rule.TYPE.${2|ONCE,CONTINUOUS,TOGGLE|},",
@@ -50,34 +50,50 @@
     },
     "SMS Group Create": {
         "scope": "lua",
-        "prefix": "sms--group",
+        "prefix": "##sms.group",
         "body": [
             "sms.group.create({",
             "  name     = \"${1:group_name}\",",
             "  position = {x = ${2:0}, y = ${3:0}, z = ${4:0}},",
-            "  country  = \"${5:USA}\",",
-            "  category = \"${6|ground,airplane,helicopter,ship,train|}\",",
+            "  country  = ${5:sms.K.countries.CJTF_BLUE},",
+            "  category = ${6|sms.K.category.GROUND,sms.K.category.AIRPLANE,sms.K.category.HELICOPTER,sms.K.category.SHIP,sms.K.category.TRAIN|},",
             "  units    = {",
-            "    { type = ${7:sms.units.planes.A_10C_2} },",
+            "    ",
             "  },",
             "})",
             "$0"
         ],
         "description": "Skeleton for sms.group.create (ground 1-unit default; add units / overrides by hand)"
     },
-    "SMS Unit Spec": {
+    "SMS Ground Unit Spec": {
         "scope": "lua",
-        "prefix": "sms--unit",
+        "prefix": "##sms.ground-unit",
         "body": [
             "{",
-            "  type        = ${1:sms.units.planes.A_10C_2},",
+            "  type    = ${1:sms.K.units.armor.tanks.T_72B},",
+            "  name    = \"${2:unit_name}\",",
+            "  offset  = {x = ${3:0}, y = ${4:0}, z = ${5:0}},  -- from group center",
+            "  heading = ${6:0},",
+            "  speed   = ${7:0},",
+            "  skill   = ${8|sms.K.skill.AVERAGE,sms.K.skill.GOOD,sms.K.skill.HIGH,sms.K.skill.EXCELLENT,sms.K.skill.ACE,sms.K.skill.RANDOM,sms.K.skill.PLAYER,sms.K.skill.CLIENT|},",
+            "},",
+            "$0"
+        ],
+        "description": "sms.group.unit_spec for ground units (no alt / radio / parking fields)"
+    },
+    "SMS Air Unit Spec": {
+        "scope": "lua",
+        "prefix": "##sms.air-unit",
+        "body": [
+            "{",
+            "  type        = ${1:sms.K.units.planes.A_10C_2},",
             "  name        = \"${2:unit_name}\",",
             "  alt         = ${3:5000},                   -- in meters",
-            "  speed       = ${4:200},",
-            "  offset      = {x = ${5:0}, y = ${6:0}, z = ${7:0}},  -- from group center",
-            "  heading     = ${8:0},",
-            "  skill       = \"${9|Average,Good,High,Excellent,Random,Player,Client|}\",",
-            "  alt_type    = \"${10|BARO,RADIO|}\",",
+            "  alt_type    = ${4|sms.K.alt_type.BARO,sms.K.alt_type.RADIO|},",
+            "  speed       = ${5:200},",
+            "  offset      = {x = ${6:0}, y = ${7:0}, z = ${8:0}},  -- from group center",
+            "  heading     = ${9:0},",
+            "  skill       = ${10|sms.K.skill.AVERAGE,sms.K.skill.GOOD,sms.K.skill.HIGH,sms.K.skill.EXCELLENT,sms.K.skill.ACE,sms.K.skill.RANDOM,sms.K.skill.PLAYER,sms.K.skill.CLIENT|},",
             "  livery_id   = \"${11}\",",
             "  onboard_num = \"${12}\",",
             "  callsign    = \"${13}\",",
@@ -87,6 +103,22 @@
             "},",
             "$0"
         ],
-        "description": "Full sms.group.unit_spec table with every universal + air-only field (delete what you don't need)"
+        "description": "sms.group.unit_spec for airplanes / helicopters (alt + radio + parking fields included)"
+    },
+    "SMS Naval Unit Spec": {
+        "scope": "lua",
+        "prefix": "##sms.naval-unit",
+        "body": [
+            "{",
+            "  type    = ${1:sms.K.units.ships.warships.MOSCOW},",
+            "  name    = \"${2:unit_name}\",",
+            "  offset  = {x = ${3:0}, y = ${4:0}, z = ${5:0}},  -- from group center",
+            "  heading = ${6:0},",
+            "  speed   = ${7:0},",
+            "  skill   = ${8|sms.K.skill.AVERAGE,sms.K.skill.GOOD,sms.K.skill.HIGH,sms.K.skill.EXCELLENT,sms.K.skill.ACE,sms.K.skill.RANDOM,sms.K.skill.PLAYER,sms.K.skill.CLIENT|},",
+            "},",
+            "$0"
+        ],
+        "description": "sms.group.unit_spec for ships (no alt / radio / parking fields)"
     }
 }
