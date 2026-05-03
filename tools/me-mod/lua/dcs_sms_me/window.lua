@@ -493,6 +493,7 @@ local function on_undo_click()
 end
 
 function M.show()
+    log.write('sms.me', log.INFO, 'window.show() called (W.window present=' .. tostring(W.window ~= nil) .. ')')
     if W.window then
         pcall(function() W.window:setVisible(true) end)
         return

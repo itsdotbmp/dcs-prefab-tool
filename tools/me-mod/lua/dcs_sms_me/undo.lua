@@ -18,7 +18,7 @@
 --   drawings     [{orig_name, drawing_obj}]
 --   errors       [string]
 
-local prefab_ops = require('prefab_ops')
+local prefab_ops = require('dcs_sms_me.prefab_ops')
 
 local M = {}
 local slot = nil

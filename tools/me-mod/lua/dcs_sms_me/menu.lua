@@ -60,8 +60,18 @@ local function add_menu_entry()
 
     -- The Customize menu's onChange already calls item.func on click
     -- (set up by me_menubar.setMenuCallback / setCustomizeMenu).
+    -- Log explicitly so failures during require/toggle don't get
+    -- swallowed by the caller's protection.
     item.func = function()
-        pcall(function() get_window().toggle() end)
+        log.write('sms.me', log.INFO, 'Prefab Manager menu item clicked')
+        local ok, err = pcall(function()
+            local win = require('dcs_sms_me.window')
+            win.toggle()
+        end)
+        if not ok then
+            log.write('sms.me', log.ERROR,
+                'Prefab Manager toggle failed: ' .. tostring(err))
+        end
     end
 
     menu._dcs_sms_prefab_added = true

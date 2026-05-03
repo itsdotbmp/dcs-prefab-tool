@@ -12,9 +12,10 @@ end
 
 package.path = '../lua/dcs_sms_me/?.lua;../lua/?.lua;' .. package.path
 
--- Stub out prefab_ops._remove BEFORE undo loads.
+-- Stub out prefab_ops._remove BEFORE undo loads. Must use the qualified
+-- name so the same module instance is shared with undo.lua's require.
 local removed = { group = {}, zone = {}, drawing = {} }
-local prefab_ops = require('prefab_ops')
+local prefab_ops = require('dcs_sms_me.prefab_ops')
 prefab_ops._remove = {
     group   = function(obj) removed.group[#removed.group + 1] = obj; return true end,
     zone    = function(id)  removed.zone[#removed.zone + 1] = id; return true end,
