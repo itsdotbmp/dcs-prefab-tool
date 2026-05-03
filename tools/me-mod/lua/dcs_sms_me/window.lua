@@ -11,6 +11,7 @@ local Window = require('Window')
 local Static = require('Static')
 local Button = require('Button')
 local Gui    = require('dxgui')
+local Skin   = require('Skin')
 
 local selection  = require('dcs_sms_me.selection')
 local serializer = require('dcs_sms_me.serializer')
@@ -129,9 +130,11 @@ function M.show()
         local y = 80
 
         window = Window.new(x, y, w, h, 'dcs-sms ME — hello world')
+        window:setSkin(Skin.windowSkin())
         window:setVisible(true)
         window:setDraggable(true)
         window:setResizable(false)
+        window:setZOrder(190)
 
         local button = Button.new()
         button:setBounds(10, 6, w - 20, 28)
