@@ -63,9 +63,16 @@ local function strip_back_refs(value, visited)
     local captured_country
     for k, v in pairs(value) do
         if k == 'boss' then
-            -- Capture country before dropping.
-            if type(v) == 'table' and type(v.country) == 'table' and type(v.country.id) == 'number' then
-                captured_country = v.country.id
+            -- Capture country before dropping. Real ME dumps have boss as
+            -- the country object directly (boss.id is the country id,
+            -- boss.name is e.g. "USA"). Synthetic test fixtures may use the
+            -- older boss.country.id shape — accept both.
+            if type(v) == 'table' then
+                if type(v.id) == 'number' then
+                    captured_country = v.id
+                elseif type(v.country) == 'table' and type(v.country.id) == 'number' then
+                    captured_country = v.country.id
+                end
             end
             -- Drop the boss field entirely.
         else
