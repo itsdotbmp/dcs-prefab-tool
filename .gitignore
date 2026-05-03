@@ -1,6 +1,9 @@
 # Worktrees
 .worktrees/
 
+# Superpowers brainstorm companion (mockups, server state)
+.superpowers/
+
 # Go build artifacts
 tools/dcs-sms
 tools/dcs-sms.exe
