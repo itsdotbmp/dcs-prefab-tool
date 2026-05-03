@@ -7,33 +7,49 @@
 -- Public:
 --   M.serialize(value, opts) → string
 --     opts.indent     = "  "    (default; one indent unit)
---     opts.sort_keys  = true    (default; deterministic key order for diffs)
+--
+-- Keys are always sorted (deterministic output for diffs).
 
 local M = {}
+
+-- Produce a load-safe Lua literal for a number, normalizing NaN and +/-inf
+-- to expressions (avoids "1.#INF" / "-1.#IND" platform-specific tostring).
+local function number_literal(n)
+    if n ~= n then return '0/0' end           -- NaN
+    if n == math.huge then return '1/0' end    -- +inf
+    if n == -math.huge then return '-1/0' end  -- -inf
+    return tostring(n)
+end
 
 local function key_repr(k)
     if type(k) == 'string' then
         return '[' .. string.format('%q', k) .. ']'
     elseif type(k) == 'number' then
-        return '[' .. tostring(k) .. ']'
+        return '[' .. number_literal(k) .. ']'
     elseif type(k) == 'boolean' then
         return '[' .. tostring(k) .. ']'
     end
-    return nil  -- skip keys we can't represent
+    return nil  -- caller emits a comment marker for dropped keys
 end
 
 local function value_repr(v)
     local t = type(v)
     if t == 'nil' then return 'nil' end
     if t == 'string' then return string.format('%q', v) end
-    if t == 'number' then
-        if v ~= v then return '0/0' end           -- NaN
-        if v == math.huge then return '1/0' end    -- +inf
-        if v == -math.huge then return '-1/0' end  -- -inf
-        return tostring(v)
-    end
+    if t == 'number' then return number_literal(v) end
     if t == 'boolean' then return tostring(v) end
     return nil  -- table/function/userdata/thread handled by caller
+end
+
+-- One-line summary of a key value for the "key dropped" comment marker.
+local function key_summary(k)
+    local t = type(k)
+    if t == 'string' then
+        return string.format('%q', k)
+    elseif t == 'number' or t == 'boolean' then
+        return tostring(k)
+    end
+    return tostring(k)  -- table/function/userdata/thread → "table: 0x..."
 end
 
 local function sorted_keys(tbl)
@@ -73,6 +89,11 @@ local function emit_table(tbl, indent_unit, depth, visited)
         if k_repr then
             local v_str = emit_value(tbl[k], indent_unit, depth + 1, visited)
             parts[#parts + 1] = pad .. k_repr .. ' = ' .. v_str .. ','
+        else
+            -- Key type can't be represented as a Lua literal. Leave a
+            -- visible marker so the dump's lossiness is auditable.
+            parts[#parts + 1] = pad .. '-- key dropped: ' .. type(k)
+                .. ' = ' .. key_summary(k)
         end
     end
     parts[#parts + 1] = pad_end .. '}'
@@ -94,9 +115,6 @@ end
 function M.serialize(value, opts)
     opts = opts or {}
     local indent_unit = opts.indent or '  '
-    -- sort_keys is honored implicitly by sorted_keys (always sorts). The
-    -- option is kept in the signature for forward-compat with an unsorted
-    -- mode if we ever want one.
     local body = emit_value(value, indent_unit, 0, {})
     return 'return ' .. body .. '\n'
 end

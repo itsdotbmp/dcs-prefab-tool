@@ -64,10 +64,10 @@ end
 
 -- 4. Cycle detection: self-referencing table emits a marker, doesn't loop.
 do
-    local input = {name = 'cycle'}
+    local input = {name = 'ouroboros'}
     input.self = input
     local chunk = serializer.serialize(input)
-    -- Should contain a cycle marker comment and not stack-overflow.
+    -- Marker form is "--[[ cycle ]]". Use plain find on the literal substring.
     check('cycle detection emits marker',
         chunk:find('cycle', 1, true) ~= nil,
         'no cycle marker in: ' .. chunk)
@@ -81,12 +81,12 @@ do
         out and out.n == 42 and out.fn == nil, err)
 end
 
--- 6. sort_keys produces byte-identical output across two runs.
+-- 6. Output is byte-identical across two runs (keys always sorted).
 do
     local input = {z = 1, a = 2, m = 3, b = 4}
-    local first  = serializer.serialize(input, {sort_keys = true})
-    local second = serializer.serialize(input, {sort_keys = true})
-    check('sort_keys=true is byte-stable', first == second,
+    local first  = serializer.serialize(input)
+    local second = serializer.serialize(input)
+    check('serialize is byte-stable', first == second,
         'differ:\n' .. first .. '\n---\n' .. second)
 end
 
@@ -117,6 +117,55 @@ end
 do
     local out, err = roundtrip({})
     check('empty table', out and tables_equal({}, out), err)
+end
+
+-- 11. Numeric-key infinity round-trips losslessly (regression: tostring(math.huge)
+--     yields "1.#INF" on Windows Lua, which is not a valid Lua literal).
+do
+    local input = {[math.huge] = 'x'}
+    local chunk = serializer.serialize(input)
+    local fn, err = loadstring(chunk)
+    if not fn then
+        check('numeric-key inf round-trips', false,
+            'loadstring failed: ' .. tostring(err) .. '\nchunk:\n' .. chunk)
+    else
+        local ok, result = pcall(fn)
+        check('numeric-key inf round-trips',
+            ok and type(result) == 'table' and result[math.huge] == 'x',
+            'eval/lookup failed; chunk:\n' .. chunk)
+    end
+end
+
+-- 12. Mutual cycles between two tables: must terminate and emit a cycle marker.
+do
+    local a, b = {name = 'a'}, {name = 'b'}
+    a.b = b
+    b.a = a
+    local chunk = serializer.serialize(a)
+    check('mutual cycles terminate with marker',
+        chunk:find('cycle', 1, true) ~= nil,
+        'no cycle marker in: ' .. chunk)
+end
+
+-- 13. Shared (but acyclic) sub-table: serialized in each location by current
+--     design (no shared-reference deduplication). Document via test.
+do
+    local sub = {x = 1}
+    local input = {first = sub, second = sub}
+    local chunk = serializer.serialize(input)
+    -- Count occurrences of '["x"] = 1' — should appear in both `first` and
+    -- `second` (no shared-reference deduplication by current design).
+    local needle = '["x"] = 1'
+    local count, pos = 0, 1
+    while true do
+        local s, e = chunk:find(needle, pos, true)
+        if not s then break end
+        count = count + 1
+        pos = e + 1
+    end
+    check('shared sub-table is duplicated (no dedup by design)',
+        count == 2, 'expected 2 occurrences of ' .. needle .. ', got ' .. count
+            .. '\nchunk:\n' .. chunk)
 end
 
 if failures > 0 then
