@@ -7,6 +7,7 @@
 -- Public:
 --   M.show()    — construct and display the window. Idempotent.
 
+local Window = require('Window')
 local Static = require('Static')
 local Button = require('Button')
 local Gui    = require('dxgui')
@@ -119,31 +120,27 @@ end
 function M.show()
     if window then return end
     local ok, err = pcall(function()
-        -- Build the window imperatively. Layout: column with title (Static),
-        -- button, and status label. Sized to fit a single dump-result line.
+        -- Build the window imperatively. Window is the only widget with
+        -- insertWidget — Static is just a label. The window auto-attaches
+        -- to the GUI surface on construction; setVisible(true) shows it.
         local screen_w, screen_h = Gui.GetWindowSize()
-        local w, h = 360, 110
+        local w, h = 360, 100
         local x = screen_w - w - 20
         local y = 80
 
-        window = Static.new()
-        window:setBounds(x, y, w, h)
-        window:setText('dcs-sms ME')
+        window = Window.new(x, y, w, h, 'dcs-sms ME — hello world')
         window:setVisible(true)
-
-        local title = Static.new()
-        title:setBounds(10, 6, w - 20, 18)
-        title:setText('dcs-sms ME — hello world')
-        window:insertWidget(title)
+        window:setDraggable(true)
+        window:setResizable(false)
 
         local button = Button.new()
-        button:setBounds(10, 30, w - 20, 28)
+        button:setBounds(10, 6, w - 20, 28)
         button:setText('Print selection')
         button:addChangeCallback(M._on_print_clicked)
         window:insertWidget(button)
 
         statusLabel = Static.new()
-        statusLabel:setBounds(10, 64, w - 20, 36)
+        statusLabel:setBounds(10, 40, w - 20, 36)
         statusLabel:setText('Ready.')
         window:insertWidget(statusLabel)
     end)
