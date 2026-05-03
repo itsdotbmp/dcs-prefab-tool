@@ -456,10 +456,21 @@ local function inject_zone(zone)
 end
 
 -- Drawings via panel_draw.copyObjToCoord.
--- copyObjToCoord(object, x, y) creates a copy and returns the new object.
--- The returned object (not just an id) is stored in the undo record so that
--- panel_draw.objectDelete can remove it.
-local function inject_drawing(drawing)
+--
+-- copyObjToCoord(drawing, target_x, target_y) creates a copy and returns
+-- the new object. Internally it calls MapWindow.createDrawObject(mapData)
+-- to render at the geometry's current absolute coords, then
+-- MapWindow.updateDrawObject(mapId, {target_x, target_y}) which shifts
+-- the visual by (target_x - drawing.mapData.x).
+--
+-- Caller MUST pass target_{x,y} as the desired new world anchor and
+-- leave drawing.mapData.{x,y} at the source coords so the shift delta
+-- is non-zero. This is why we don't pre-set mapData.x/y in M.place's
+-- drawing loop — see the comment block there.
+--
+-- The returned object (not just an id) is stored in the undo record so
+-- that panel_draw.objectDelete can remove it.
+local function inject_drawing(drawing, target_x, target_y)
     local ok_req, panel = pcall(require, 'me_draw_panel')
     if not ok_req or not panel then
         return nil, 'me_draw_panel not available'
@@ -467,9 +478,11 @@ local function inject_drawing(drawing)
     if type(panel.copyObjToCoord) ~= 'function' then
         return nil, 'panel_draw.copyObjToCoord not available'
     end
-    local x = (drawing.mapData and drawing.mapData.x) or drawing.x or 0
-    local y = (drawing.mapData and drawing.mapData.y) or drawing.y or 0
-    local ok, result = pcall(panel.copyObjToCoord, drawing, x, y)
+    -- If caller didn't supply explicit target coords, fall back to
+    -- whatever the drawing's mapData/top-level says (legacy paths).
+    local tx = target_x or (drawing.mapData and drawing.mapData.x) or drawing.x or 0
+    local ty = target_y or (drawing.mapData and drawing.mapData.y) or drawing.y or 0
+    local ok, result = pcall(panel.copyObjToCoord, drawing, tx, ty)
     if not ok then return nil, tostring(result) end
     return result  -- returns the new drawing object
 end
@@ -614,35 +627,33 @@ function M.place(prefab, opts)
         end
     end
 
-    -- Drawings — special-cased because their inner points (polygon
-    -- vertices, line segments, etc.) are stored relative to mapData.x/y
-    -- by the ME's draw renderer. transform_coords would absolute-ize
-    -- them and the renderer would then double-apply the offset (placing
-    -- a drawing 2000m east shifts its inner geometry ~4000m east). The
-    -- ME's own copy/paste at me_copy_paste.lua:651-653 just adjusts
-    -- mapData.x/y and leaves points untouched — we do the same.
+    -- Drawings: copyObjToCoord(drawing, target_x, target_y) eventually
+    -- calls MapWindow.updateDrawObject(mapId, {target_x, target_y}),
+    -- which shifts the visual by (target_x - drawing.mapData.x). For
+    -- that shift to land the drawing at the new world anchor, we must
+    -- LEAVE mapData.x at its post-distill (anchor-relative) value and
+    -- pass target_x = anchor + that value. Pre-setting mapData.x to
+    -- world coords made the shift zero — the bug the user hit twice.
     --
-    -- Rotation is not yet applied to drawings (would require rotating
-    -- inner points around mapData center). Deferred to v2.
+    -- We also must not run transform_coords on drawings, because it
+    -- would absolute-ize the inner geometry (polygon vertices etc.).
+    -- The renderer treats those geometry x/y as absolute world coords
+    -- already; distill rebased them to anchor-relative; so leaving them
+    -- untouched here means after the moveObject shift they end up at
+    -- (anchor-relative + anchor) = correct world position.
+    --
+    -- Rotation of drawings is not handled (would require rotating each
+    -- inner point around mapData center). Deferred to v2.
     for _, d_template in ipairs(prefab.drawings or {}) do
         local d = deep_copy(d_template)
 
-        -- Compute world coords from the (anchor-relative) drawing center.
+        -- mapData.x/y is at anchor-relative coords from distill. Compute
+        -- the new world center; pass it to copyObjToCoord as the target.
         local rel_x = (d.mapData and d.mapData.x) or d.x or 0
         local rel_y = (d.mapData and d.mapData.y) or d.y or 0
         local world_x, world_y = M._place_xy(rel_x, rel_y, anchor, rotation)
 
-        -- Update only the center fields. Inner points stay relative.
-        if d.mapData then
-            d.mapData.x = world_x
-            d.mapData.y = world_y
-        end
-        if type(d.x) == 'number' and type(d.y) == 'number' then
-            d.x = world_x; d.y = world_y
-        end
-
-        -- inject_drawing reads d.mapData.x/y itself; no separate args needed.
-        local drawing_obj, err = inject_drawing(d)
+        local drawing_obj, err = inject_drawing(d, world_x, world_y)
         if drawing_obj then
             record.drawings[#record.drawings + 1] = {
                 orig_name   = d_template.name,
