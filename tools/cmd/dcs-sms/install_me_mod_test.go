@@ -54,7 +54,7 @@ func TestInstallMeMod_PatchesAndBacksUp(t *testing.T) {
 	}
 	patched, _ := os.ReadFile(filepath.Join(install, "MissionEditor", "MissionEditor.lua"))
 	if !strings.Contains(string(patched), "-- dcs-sms-me-mod begin") ||
-		!strings.Contains(string(patched), "require('dcs_sms_me')") ||
+		!strings.Contains(string(patched), "require('dcs_sms_me.init')") ||
 		!strings.Contains(string(patched), "-- dcs-sms-me-mod end") {
 		t.Fatalf("patched MissionEditor.lua missing markers/require: %s", patched)
 	}

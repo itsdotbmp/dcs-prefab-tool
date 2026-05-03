@@ -21,7 +21,11 @@ const ModuleDirName = "dcs_sms_me"
 const (
 	RequireBeginMarker = "-- dcs-sms-me-mod begin"
 	RequireEndMarker   = "-- dcs-sms-me-mod end"
-	RequireBody        = "require('dcs_sms_me')"
+	// RequireBody uses dotted form so Lua's require resolves the module
+	// dot to a path slash, finding ./MissionEditor/modules/dcs_sms_me/init.lua
+	// rather than ./MissionEditor/modules/dcs_sms_me.lua (which doesn't exist;
+	// the mod ships as a directory).
+	RequireBody = "require('dcs_sms_me.init')"
 )
 
 // PatchBlock is the full block appended to MissionEditor.lua at install time.

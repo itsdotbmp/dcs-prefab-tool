@@ -27,7 +27,7 @@ func TestUninstallMeMod_RemovesMarkerBlockSurgically(t *testing.T) {
 		t.Fatalf("uninstall exit %d, stderr: %s", code, stderr.String())
 	}
 	me, _ := os.ReadFile(filepath.Join(install, "MissionEditor", "MissionEditor.lua"))
-	if strings.Contains(string(me), "dcs-sms-me-mod") || strings.Contains(string(me), "require('dcs_sms_me')") {
+	if strings.Contains(string(me), "dcs-sms-me-mod") || strings.Contains(string(me), "require('dcs_sms_me.init')") {
 		t.Fatalf("patch markers still present after uninstall: %s", me)
 	}
 	if !strings.Contains(string(me), "original ME bootstrap") {
@@ -60,9 +60,9 @@ func TestUninstallMeMod_RemovesBackupFile(t *testing.T) {
 func TestUninstallMeMod_FallsBackToBackupWhenMarkersMissing(t *testing.T) {
 	install := installFirst(t)
 	// Simulate a user manually editing MissionEditor.lua and stripping markers
-	// but leaving "require('dcs_sms_me')" mangled.
+	// but leaving the require line mangled.
 	meFile := filepath.Join(install, "MissionEditor", "MissionEditor.lua")
-	if err := os.WriteFile(meFile, []byte("-- corrupted by user\nrequire('dcs_sms_me')\n"), 0o644); err != nil {
+	if err := os.WriteFile(meFile, []byte("-- corrupted by user\nrequire('dcs_sms_me.init')\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer

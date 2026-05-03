@@ -24,8 +24,8 @@ What this does:
 1. Backs up `<DCS>\MissionEditor\MissionEditor.lua` →
    `MissionEditor.lua.dcs-sms.bak`. Refuses if a backup already exists (run
    `dcs-sms uninstall-me-mod` first to clean up).
-2. Appends a `require('dcs_sms_me')` block (delimited by sentinel comments)
-   to `MissionEditor.lua`.
+2. Appends a `require('dcs_sms_me.init')` block (delimited by sentinel
+   comments) to `MissionEditor.lua`.
 3. Copies the mod files to `<DCS>\MissionEditor\modules\dcs_sms_me\`.
 
 Re-running the install is safe — it re-copies the module files but does not
@@ -50,7 +50,7 @@ skeleton. To assemble a usable OvGME mod by hand:
    `ovgme/dcs-sms-me-mod/MissionEditor/modules/dcs_sms_me/`.
 2. Copy your CURRENT `<DCS>\MissionEditor\MissionEditor.lua` into
    `ovgme/dcs-sms-me-mod/MissionEditor/MissionEditor.lua` and append the
-   patch block (`-- dcs-sms-me-mod begin` … `require('dcs_sms_me')` …
+   patch block (`-- dcs-sms-me-mod begin` … `require('dcs_sms_me.init')` …
    `-- dcs-sms-me-mod end`).
 3. Drop `dcs-sms-me-mod/` into your OvGME mods folder and enable it.
 
@@ -62,7 +62,7 @@ After install, run through this list to verify the mod works end-to-end.
 
 1. **Install:** run `dcs-sms install-me-mod`. Verify
    `<DCS>\MissionEditor\MissionEditor.lua.dcs-sms.bak` exists. Verify the
-   `require('dcs_sms_me')` line was appended (between sentinel markers).
+   `require('dcs_sms_me.init')` line was appended (between sentinel markers).
    Verify `<DCS>\MissionEditor\modules\dcs_sms_me\` contains all five files.
 2. **Cold start:** open the Mission Editor. Verify the small "dcs-sms ME"
    window appears in the upper right. Verify `dcs.log` shows
