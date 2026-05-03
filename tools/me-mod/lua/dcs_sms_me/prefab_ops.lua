@@ -79,4 +79,60 @@ function M.save_selection(name)
     return true, path
 end
 
+-- ---------------------------------------------------------------------------
+-- Load + scan
+-- ---------------------------------------------------------------------------
+
+function M.load(path)
+    if type(path) ~= 'string' or path == '' then return nil, 'path required' end
+    local ok, result = pcall(dofile, path)
+    if not ok then return nil, 'dofile failed: ' .. tostring(result) end
+    if type(result) ~= 'table' then return nil, 'file did not return a table' end
+    if type(result.meta) ~= 'table' or type(result.meta.name) ~= 'string' then
+        return nil, 'missing meta.name'
+    end
+    return result
+end
+
+local function count(t)
+    if type(t) ~= 'table' then return 0 end
+    return #t
+end
+
+local function row_from_prefab(name, path, prefab)
+    local meta = prefab.meta
+    return {
+        name          = meta.name or name,
+        path          = path,
+        theatre       = meta.theatre,
+        source_dump   = meta.source_dump,
+        group_count   = count(prefab.groups),
+        static_count  = count(prefab.statics),
+        zone_count    = count(prefab.zones),
+        drawing_count = count(prefab.drawings),
+    }
+end
+
+function M.scan_dir()
+    paths.ensure_prefabs()
+    local rows = {}
+    local ok, iter = pcall(lfs.dir, paths.PREFABS_DIR)
+    if not ok then return rows end
+
+    for entry in iter do
+        if entry ~= '.' and entry ~= '..' and entry:match('%.lua$') then
+            local name = entry:gsub('%.lua$', '')
+            local path = paths.PREFABS_DIR .. entry
+            local prefab, err = M.load(path)
+            if prefab then
+                rows[#rows + 1] = row_from_prefab(name, path, prefab)
+            else
+                rows[#rows + 1] = { name = name, path = path, error = err }
+            end
+        end
+    end
+    table.sort(rows, function(a, b) return a.name < b.name end)
+    return rows
+end
+
 return M
