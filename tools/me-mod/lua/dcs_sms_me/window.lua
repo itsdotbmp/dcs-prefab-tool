@@ -225,19 +225,20 @@ local function require_selection(action_label)
 end
 
 -- List-row select callback.
--- ListBox's selection-change callback fires with the ListBox widget itself
--- as `self`; the selected ListBoxItem is fetched via getSelectedItem().
--- Map back to the row index via the W.list_items parallel array (set in
--- refresh_list).
-local function on_list_select(self_listbox)
+-- ListBox's selection-change callback fires with no args (the registered
+-- callback in ListBox.construct is `function() self:onSelectionChange() end`).
+-- Read the current selection directly from W.list_box.
+local function on_list_select(...)
     pcall(function()
-        local picked
-        if self_listbox and self_listbox.getSelectedItem then
-            picked = self_listbox:getSelectedItem()
-        elseif W.list_box and W.list_box.getSelectedItem then
-            picked = W.list_box:getSelectedItem()
+        local picked = W.list_box and W.list_box.getSelectedItem
+                       and W.list_box:getSelectedItem()
+        log.write('sms.me', log.INFO,
+            'on_list_select fired (picked=' .. tostring(picked)
+            .. ', n_items=' .. tostring(#(W.list_items or {})) .. ')')
+        if not picked then
+            W.selected_idx = nil
+            return
         end
-        if not picked then return end
         for i, item in ipairs(W.list_items or {}) do
             if item == picked then
                 W.selected_idx = i
@@ -245,9 +246,14 @@ local function on_list_select(self_listbox)
                 if row then
                     set_status('Selected: ' .. tostring(row.name))
                 end
+                log.write('sms.me', log.INFO,
+                    'on_list_select matched index ' .. i
+                    .. ' (' .. tostring(row and row.name or '?') .. ')')
                 return
             end
         end
+        log.write('sms.me', log.WARNING,
+            'on_list_select: picked item not found in W.list_items')
     end)
 end
 
@@ -619,13 +625,19 @@ function M.show()
             if W.list_box.setText then W.list_box:setText('ListBox not available') end
         end
         W.list_box:setBounds(10, 80, w - 20, 130)
-        -- Real ListBox API uses addSelectionChangeCallback. addChangeCallback
-        -- exists on simpler widgets like Button but does not fire on ListBox
-        -- selection. Try the real one first, fall back to the older alias.
+        -- DCS ListBox routes USER clicks through `onChange(self, item, dbl)`
+        -- (called from onItemMouseUp → onChangeNew). The selection-change
+        -- callback fires only for programmatic selections. Override onChange
+        -- so user clicks update our W.selected_idx; also register on
+        -- selection-change as a belt-and-braces.
+        W.list_box.onChange = function(_self, item, _dbl)
+            on_list_select(W.list_box)
+        end
         if W.list_box.addSelectionChangeCallback then
-            W.list_box:addSelectionChangeCallback(on_list_select)
-        elseif W.list_box.addChangeCallback then
-            W.list_box:addChangeCallback(on_list_select)
+            pcall(function() W.list_box:addSelectionChangeCallback(on_list_select) end)
+        end
+        if W.list_box.addItemMouseUpCallback then
+            pcall(function() W.list_box:addItemMouseUpCallback(on_list_select) end)
         end
         W.window:insertWidget(W.list_box)
 
