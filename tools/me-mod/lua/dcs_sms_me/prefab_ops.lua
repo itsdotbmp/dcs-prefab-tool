@@ -117,10 +117,15 @@ function M.scan_dir()
     paths.ensure_prefabs()
     local rows = {}
 
-    -- lfs.dir returns (iterator, state) — both must be passed to the for
-    -- loop or DCS's vfs lfs aborts with "bad argument #1 to '(for generator)'".
-    -- pcall the whole walk so a missing dir or VFS error returns an empty
-    -- list instead of throwing.
+    -- lfs.dir returns (iterator, state) — generic-for needs BOTH so
+    -- the iterator gets called with its state on each step. An earlier
+    -- attempt did `local ok, iter = pcall(lfs.dir, ...)` then `for entry
+    -- in iter do`, which discards state and aborts with "bad argument
+    -- #1 to '(for generator)'" against DCS's vfs lfs. Wrapping the
+    -- entire walk in pcall preserves the multi-return (Lua passes both
+    -- values from `lfs.dir(...)` to `for` directly inside the closure)
+    -- AND turns any mid-walk VFS error into an empty list instead of a
+    -- throw.
     local ok, err = pcall(function()
         for entry in lfs.dir(paths.PREFABS_DIR) do
             if entry ~= '.' and entry ~= '..' and entry:match('%.lua$') then

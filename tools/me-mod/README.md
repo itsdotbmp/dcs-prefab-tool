@@ -126,14 +126,27 @@ tools/me-mod/
 ├── lua/
 │   ├── embed.go                ← Go embed package for the mod files
 │   └── dcs_sms_me/
-│       ├── init.lua            ← bootstrap (require window, show)
-│       ├── window.lua          ← dxgui window + button + click handler
+│       ├── init.lua            ← bootstrap (registers Customize-menu entry)
+│       ├── menu.lua            ← Customize-menu install + floating-button fallback
+│       ├── window.lua          ← Prefab Manager window (Save / Library / Place / Undo)
 │       ├── selection.lua       ← ME selection-state lookup (patch-fragile)
+│       ├── prefab_distill.lua  ← anchor-rebase + boss-strip; mirror of framework copy
+│       ├── prefab_ops.lua      ← save / load / scan_dir / place + ME-API injection
+│       ├── undo.lua            ← single-slot undo for the most recent place
 │       ├── serializer.lua      ← Lua value → Lua chunk string
-│       └── paths.lua           ← output dir constants
+│       └── paths.lua           ← output dir constants (me/, prefabs/)
 ├── test/
-│   ├── test_serializer.lua     ← pure-Lua test cases
-│   └── run-tests.ps1           ← PowerShell driver
+│   ├── fixtures/
+│   │   ├── dump_synthetic_aerial.lua   ← shared with framework parity test
+│   │   └── prefabs_dir/                ← farp_alpha / sam_site / broken
+│   ├── test_serializer.lua             ← serializer round-trip
+│   ├── test_serializer_parity.lua      ← framework ↔ me-mod output parity
+│   ├── test_distill_parity.lua         ← framework ↔ me-mod distill parity
+│   ├── test_prefab_ops_save.lua        ← save_selection envelope + path logic
+│   ├── test_prefab_ops_load.lua        ← scan_dir + load + error rows
+│   ├── test_prefab_ops_place.lua       ← place math (rotate + translate + anchor)
+│   ├── test_undo.lua                   ← undo single-slot + partial-failure
+│   └── run-tests.ps1                   ← PowerShell driver (runs all of the above)
 └── ovgme/
     └── dcs-sms-me-mod/         ← OvGME package skeleton (DIY, see above)
 ```
