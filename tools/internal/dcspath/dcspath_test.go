@@ -102,3 +102,90 @@ func TestParseTomlString(t *testing.T) {
 		})
 	}
 }
+
+func TestDiscoverFromInstallEnv(t *testing.T) {
+	t.Setenv("DCS_SMS_DCS_INSTALL", "")
+	if _, ok := DiscoverFromInstallEnv(); ok {
+		t.Fatal("expected ok=false when env var unset")
+	}
+	t.Setenv("DCS_SMS_DCS_INSTALL", `D:\Program Files\Eagle Dynamics\DCS World`)
+	v, ok := DiscoverFromInstallEnv()
+	if !ok || v != `D:\Program Files\Eagle Dynamics\DCS World` {
+		t.Fatalf("got (%q, %v), want (D:\\..., true)", v, ok)
+	}
+}
+
+func TestDiscoverFromInstallConfig_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config.toml")
+	want := `D:\Program Files\Eagle Dynamics\DCS World`
+	if err := SaveInstallConfig(cfg, want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := DiscoverFromInstallConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestSaveInstallConfig_PreservesSavedGamesKey(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config.toml")
+	if err := SaveConfig(cfg, `C:\Users\X\Saved Games\DCS`); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveInstallConfig(cfg, `D:\Program Files\Eagle Dynamics\DCS World`); err != nil {
+		t.Fatal(err)
+	}
+	sg, err := DiscoverFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("saved_games lost after writing dcs_install: %v", err)
+	}
+	if sg != `C:\Users\X\Saved Games\DCS` {
+		t.Fatalf("saved_games clobbered: got %q", sg)
+	}
+	inst, err := DiscoverFromInstallConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst != `D:\Program Files\Eagle Dynamics\DCS World` {
+		t.Fatalf("dcs_install wrong: got %q", inst)
+	}
+}
+
+func TestDiscoverInstall_PriorityOrder(t *testing.T) {
+	dir := t.TempDir()
+	cfg := filepath.Join(dir, "config.toml")
+	if err := SaveInstallConfig(cfg, `C:\from-config`); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DCS_SMS_DCS_INSTALL", `D:\from-env`)
+
+	// Override wins.
+	got, err := DiscoverInstall(`E:\from-flag`, cfg)
+	if err != nil || got != `E:\from-flag` {
+		t.Fatalf("override should win, got (%q, %v)", got, err)
+	}
+
+	// Env wins over config.
+	got, err = DiscoverInstall("", cfg)
+	if err != nil || got != `D:\from-env` {
+		t.Fatalf("env should win, got (%q, %v)", got, err)
+	}
+
+	// Config wins when env unset.
+	t.Setenv("DCS_SMS_DCS_INSTALL", "")
+	got, err = DiscoverInstall("", cfg)
+	if err != nil || got != `C:\from-config` {
+		t.Fatalf("config fallback, got (%q, %v)", got, err)
+	}
+
+	// Nothing → error.
+	got, err = DiscoverInstall("", filepath.Join(dir, "missing.toml"))
+	if err == nil {
+		t.Fatalf("expected error when no source provided, got %q", got)
+	}
+}
