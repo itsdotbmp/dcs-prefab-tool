@@ -356,14 +356,129 @@ local function on_place_origin_click()
     end
 end
 
+-- Show a rename overlay: prompt + text input + OK/Cancel.
+-- on_ok receives the new name string; on_cancel takes no args.
+local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
+    local screen_w, screen_h = Gui.GetWindowSize()
+    local w, h = 460, 150
+    local x = (screen_w - w) / 2
+    local y = (screen_h - h) / 2
+    local overlay, input = nil, nil
+    local function close()
+        pcall(function() if overlay and overlay.setVisible then overlay:setVisible(false) end end)
+    end
+    local ok, err = pcall(function()
+        overlay = Window.new(x, y, w, h, 'Rename')
+        overlay:setSkin(Skin.windowSkin())
+        overlay:setVisible(true)
+        overlay:setDraggable(true)
+        overlay:setResizable(false)
+        overlay:setZOrder(220)
+
+        local lbl = Static.new()
+        lbl:setBounds(10, 10, w - 20, 20)
+        lbl:setText(tostring(prompt or 'New name:'))
+        overlay:insertWidget(lbl)
+
+        input = TextBox.new()
+        input:setBounds(10, 36, w - 20, 22)
+        if input.setText then input:setText(tostring(current_name or '')) end
+        if input.setFocused then input:setFocused(true) end
+        overlay:insertWidget(input)
+
+        local ok_btn = Button.new()
+        ok_btn:setBounds(w - 200, h - 36, 90, 22)
+        ok_btn:setText('OK')
+        ok_btn:addChangeCallback(function()
+            local new_name = (input.getText and input:getText()) or ''
+            close()
+            pcall(function() (on_ok or function() end)(new_name) end)
+        end)
+        overlay:insertWidget(ok_btn)
+
+        local cancel_btn = Button.new()
+        cancel_btn:setBounds(w - 100, h - 36, 90, 22)
+        cancel_btn:setText('Cancel')
+        cancel_btn:addChangeCallback(function()
+            close()
+            pcall(on_cancel or function() end)
+        end)
+        overlay:insertWidget(cancel_btn)
+    end)
+    if not ok then
+        log.write('sms.me', log.ERROR, 'rename overlay failed: ' .. tostring(err))
+        pcall(on_cancel or function() end)
+    end
+end
+
+local function rename_file(old_path, old_name, new_name)
+    local prefab, lerr = prefab_ops.load(old_path)
+    if not prefab then return false, 'load failed: ' .. tostring(lerr) end
+    prefab.meta = prefab.meta or {}
+    prefab.meta.name = new_name
+
+    local serializer = require('dcs_sms_me.serializer')
+    local serialized = serializer.serialize(prefab)
+    local paths = require('dcs_sms_me.paths')
+    local new_path = paths.PREFABS_DIR .. new_name .. '.lua'
+    if old_path == new_path then return true, old_path end  -- no-op rename
+    if prefab_ops.exists(new_name) then return false, 'target name already exists' end
+
+    local f, oerr = io.open(new_path, 'w')
+    if not f then return false, 'open failed: ' .. tostring(oerr) end
+    f:write(serialized)
+    f:close()
+
+    local rok = os.remove(old_path)
+    if not rok then
+        -- Roll back: delete the new file, keep old.
+        os.remove(new_path)
+        return false, 'could not delete old file (rolled back)'
+    end
+    return true, new_path
+end
+
 local function on_rename_click()
-    if not require_selection('rename') then return end
-    set_status('Rename — wired in Task 13')
+    local row = require_selection('rename')
+    if not row then return end
+    show_rename_overlay('Rename "' .. row.name .. '" to:', row.name,
+        function(new_name)
+            new_name = (new_name or ''):gsub('^%s+', ''):gsub('%s+$', '')
+            if new_name == '' then set_status('Rename cancelled (empty name).'); return end
+            if new_name == row.name then set_status('Rename cancelled (same name).'); return end
+            local ok, msg = rename_file(row.path, row.name, new_name)
+            if ok then
+                set_status('Renamed ' .. row.name .. ' → ' .. new_name)
+                log.write('sms.me.prefab', log.INFO, 'renamed ' .. row.name .. ' → ' .. new_name)
+                refresh_list()
+            else
+                set_status('Rename failed: ' .. tostring(msg))
+                log.write('sms.me.prefab', log.ERROR, 'rename failed: ' .. tostring(msg))
+            end
+        end,
+        function() set_status('Rename cancelled.') end)
 end
 
 local function on_delete_click()
-    if not require_selection('delete') then return end
-    set_status('Delete — wired in Task 13')
+    local row = require_selection('delete')
+    if not row then return end
+    show_overlay(
+        'Delete "' .. row.name .. '"?\n\nThis cannot be undone.',
+        {
+            { label = 'Delete', on_click = function()
+                local ok, oerr = os.remove(row.path)
+                if ok then
+                    set_status('Deleted ' .. row.name)
+                    log.write('sms.me.prefab', log.INFO, 'deleted ' .. row.name)
+                else
+                    set_status('Delete failed: ' .. tostring(oerr))
+                    log.write('sms.me.prefab', log.ERROR, 'delete failed for ' .. row.path .. ': ' .. tostring(oerr))
+                end
+                W.selected_idx = nil
+                refresh_list()
+            end },
+            { label = 'Cancel', on_click = function() set_status('Delete cancelled.') end },
+        })
 end
 local function on_undo_click()
     pcall(function()
