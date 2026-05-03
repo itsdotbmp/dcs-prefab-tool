@@ -119,7 +119,11 @@ M._selected_row = selected_row
 
 local function show_overlay(message, buttons)
     local screen_w, screen_h = Gui.GetWindowSize()
-    local w, h = 420, 130
+    -- h grew 130 → 170 so the buttons sit clear of the skin's bottom
+    -- border. The ~26px title bar at the top + ~14px bottom border
+    -- means content area is roughly h - 40 = 130; buttons at y=128
+    -- (h - 42) leave 22px above the bottom border.
+    local w, h = 420, 170
     local x = (screen_w - w) / 2
     local y = (screen_h - h) / 2
 
@@ -137,7 +141,7 @@ local function show_overlay(message, buttons)
         overlay:setZOrder(220)
 
         local msg = Static.new()
-        msg:setBounds(10, 10, w - 20, h - 60)
+        msg:setBounds(10, 14, w - 20, h - 70)
         msg:setText(tostring(message or ''))
         overlay:insertWidget(msg)
 
@@ -145,7 +149,7 @@ local function show_overlay(message, buttons)
         local bw = math.floor((w - 20 - (n - 1) * 10) / n)
         for i, b in ipairs(buttons) do
             local btn = Button.new()
-            btn:setBounds(10 + (i - 1) * (bw + 10), h - 36, bw, 22)
+            btn:setBounds(10 + (i - 1) * (bw + 10), h - 42, bw, 22)
             btn:setText(b.label or '?')
             btn:addChangeCallback(function()
                 pcall(b.on_click or function() end)
@@ -267,12 +271,16 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
     W.place_pending = true
     W.place_pending_name = prefab_name
     pcall(function()
-        if W.window and W.window.setText then W.window:setText('Click on map to place ' .. prefab_name .. ' (Esc to cancel)') end
+        if W.window and W.window.setText then
+            -- ALL-CAPS + arrow markers to make place-pending unmistakable
+            -- without needing color (dxgui Static has no setColor API).
+            W.window:setText('▶▶▶ PLACING "' .. prefab_name .. '" — CLICK MAP (Esc cancels) ◀◀◀')
+        end
     end)
     pcall(function()
         if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Cancel') end
     end)
-    set_status('Click on the map to place ' .. prefab_name .. '...')
+    set_status('▶▶▶ PLACING "' .. prefab_name .. '" — CLICK ON THE MAP (Esc cancels) ◀◀◀')
 
     -- Map-click hook via me_map_window state machine.
     -- We create a plain table that satisfies the NewMapView state interface
@@ -301,8 +309,17 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
                 local rec, err = prefab_ops.place(prefab_table, { anchor = { x = wx, y = wy }, rotation = rotation_deg })
                 if rec then
                     undo.record(rec)
-                    set_status(string.format('Placed %s (%dg %ds %dz %dd) at (%.0f, %.0f)',
-                        prefab_name, #rec.groups, #rec.statics, #rec.zones, #rec.drawings, wx, wy))
+                    -- record.statics doesn't exist in Task 6's shape (statics
+                    -- ride inside record.groups since DCS treats them as
+                    -- groups with type='static'). Sum errors instead.
+                    set_status(string.format(
+                        'Placed %s (%dg %dz %dd, %d errors) at (%.0f, %.0f)',
+                        prefab_name,
+                        #(rec.groups or {}),
+                        #(rec.zones or {}),
+                        #(rec.drawings or {}),
+                        #(rec.errors or {}),
+                        wx, wy))
                     log.write('sms.me.prefab', log.INFO, 'placed ' .. prefab_name)
                 else
                     set_status('Place failed: ' .. tostring(err))
@@ -385,8 +402,14 @@ local function on_place_origin_click()
     if rec then
         undo.record(rec)
         local wa = prefab.meta and prefab.meta.world_anchor or { x = 0, y = 0 }
-        set_status(string.format('Placed %s at original (%dg %ds %dz %dd) at (%.0f, %.0f)',
-            row.name, #rec.groups, #rec.statics, #rec.zones, #rec.drawings, wa.x, wa.y))
+        set_status(string.format(
+            'Placed %s at original (%dg %dz %dd, %d errors) at (%.0f, %.0f)',
+            row.name,
+            #(rec.groups or {}),
+            #(rec.zones or {}),
+            #(rec.drawings or {}),
+            #(rec.errors or {}),
+            wa.x, wa.y))
         log.write('sms.me.prefab', log.INFO, 'placed ' .. row.name .. ' at original')
     else
         set_status('Place failed: ' .. tostring(err))
@@ -398,7 +421,8 @@ end
 -- on_ok receives the new name string; on_cancel takes no args.
 local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
     local screen_w, screen_h = Gui.GetWindowSize()
-    local w, h = 460, 150
+    -- Same skin-bottom-border accommodation as show_overlay above.
+    local w, h = 460, 180
     local x = (screen_w - w) / 2
     local y = (screen_h - h) / 2
     local overlay, input = nil, nil
@@ -414,18 +438,18 @@ local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
         overlay:setZOrder(220)
 
         local lbl = Static.new()
-        lbl:setBounds(10, 10, w - 20, 20)
+        lbl:setBounds(10, 14, w - 20, 20)
         lbl:setText(tostring(prompt or 'New name:'))
         overlay:insertWidget(lbl)
 
         input = TextBox.new()
-        input:setBounds(10, 36, w - 20, 22)
+        input:setBounds(10, 40, w - 20, 22)
         if input.setText then input:setText(tostring(current_name or '')) end
         if input.setFocused then input:setFocused(true) end
         overlay:insertWidget(input)
 
         local ok_btn = Button.new()
-        ok_btn:setBounds(w - 200, h - 36, 90, 22)
+        ok_btn:setBounds(w - 200, h - 42, 90, 22)
         ok_btn:setText('OK')
         ok_btn:addChangeCallback(function()
             local new_name = (input.getText and input:getText()) or ''
@@ -435,7 +459,7 @@ local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
         overlay:insertWidget(ok_btn)
 
         local cancel_btn = Button.new()
-        cancel_btn:setBounds(w - 100, h - 36, 90, 22)
+        cancel_btn:setBounds(w - 100, h - 42, 90, 22)
         cancel_btn:setText('Cancel')
         cancel_btn:addChangeCallback(function()
             close()
@@ -552,29 +576,22 @@ function M.show()
         W.window:setResizable(false)
         W.window:setZOrder(190)
 
-        if W.window.addKeyDownCallback then
-            W.window:addKeyDownCallback(function(_, key, modifiers)
-                pcall(function()
-                    -- Esc cancels place-pending.
-                    if W.place_pending and (key == 27 or key == 'KEY_ESCAPE' or key == 'Escape') then
-                        set_status('Place cancelled.')
-                        exit_place_pending()
-                        return
-                    end
-
-                    -- Ctrl-Z → undo. Modifier handling varies across dxgui
-                    -- builds — accept either an explicit ctrl flag or just
-                    -- the Z key (window must be focused for the hook to
-                    -- fire, which is our scope guard).
-                    local is_z = (key == 'Z' or key == 'z' or key == 90 or key == 'KEY_Z')
-                    if is_z then
-                        local ctrl = false
-                        if type(modifiers) == 'table' then ctrl = modifiers.ctrl or modifiers.control end
-                        if type(modifiers) == 'number' then ctrl = (modifiers % 8) >= 4 end  -- best-effort bitmask
-                        if ctrl or modifiers == nil then
-                            on_undo_click()
-                        end
-                    end
+        -- Esc cancels place-pending; Ctrl-Z undoes the last place.
+        -- DCS Window exposes addHotKeyCallback (key-name strings like
+        -- "escape", "Ctrl+Z") — addKeyDownCallback exists only on
+        -- input widgets like EditBox, not on Window. Same pattern as
+        -- me_menubar uses for Ctrl+S, delete, etc.
+        if W.window.addHotKeyCallback then
+            pcall(function()
+                W.window:addHotKeyCallback('escape', function()
+                    if not W.place_pending then return end
+                    set_status('Place cancelled.')
+                    exit_place_pending()
+                end)
+            end)
+            pcall(function()
+                W.window:addHotKeyCallback('Ctrl+Z', function()
+                    on_undo_click()
                 end)
             end)
         end
