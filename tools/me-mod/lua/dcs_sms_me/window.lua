@@ -124,20 +124,51 @@ local function on_reload_click()
     pcall(function() refresh_list(); set_status('Library reloaded.') end)
 end
 
+local function require_selection(action_label)
+    local row = selected_row()
+    if not row then
+        set_status('Select a prefab in the list first (' .. action_label .. ').')
+        return nil
+    end
+    if row.error then
+        set_status('Cannot ' .. action_label .. ' — file has load error.')
+        return nil
+    end
+    return row
+end
+
 -- List-row select callback.
 local function on_list_select(_, idx)
     pcall(function()
         if type(idx) == 'number' then
             W.selected_idx = idx
+            local row = selected_row()
+            if row then
+                set_status('Selected: ' .. tostring(row.name))
+            end
         end
     end)
 end
 
--- Stub click handlers for Task 9 — wired in later tasks.
-local function on_place_click() set_status('Place at click — wired in Task 12') end
-local function on_place_origin_click() set_status('Place at original — wired in Task 12') end
-local function on_rename_click() set_status('Rename — wired in Task 13') end
-local function on_delete_click() set_status('Delete — wired in Task 13') end
+local function on_place_click()
+    if not require_selection('place') then return end
+    set_status('Place at click — wired in Task 12')
+end
+
+local function on_place_origin_click()
+    if not require_selection('place at original') then return end
+    set_status('Place at original — wired in Task 12')
+end
+
+local function on_rename_click()
+    if not require_selection('rename') then return end
+    set_status('Rename — wired in Task 13')
+end
+
+local function on_delete_click()
+    if not require_selection('delete') then return end
+    set_status('Delete — wired in Task 13')
+end
 local function on_undo_click()
     pcall(function()
         if not undo.has_record() then set_status('Nothing to undo.'); return end
