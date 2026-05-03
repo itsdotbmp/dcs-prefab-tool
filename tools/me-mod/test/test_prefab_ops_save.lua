@@ -1,0 +1,118 @@
+-- Standalone test for prefab_ops.save_selection envelope wrapping + path logic.
+-- Stubs lfs and selection to avoid DCS dependencies.
+-- Run via: lua test_prefab_ops_save.lua  (cwd: tools/me-mod/test/)
+
+-- Stub lfs (writedir + mkdir).
+local fake_writedir = 'C:\\fake-saved-games\\'
+package.preload['lfs'] = function()
+    return {
+        writedir = function() return fake_writedir end,
+        mkdir = function(p) return true end,
+    }
+end
+
+-- Capture io.open calls so we can inspect what the save wrote.
+local captured = { path = nil, content = nil }
+local real_open = io.open
+io.open = function(path, mode)
+    if mode == 'w' then
+        return {
+            write = function(self, content) captured.path = path; captured.content = content end,
+            close = function(self) end,
+        }
+    end
+    return real_open(path, mode)
+end
+
+-- Stub selection.snapshot.
+package.preload['dcs_sms_me.selection'] = function()
+    return {
+        snapshot = function()
+            return {
+                ok = true,
+                timestamp_utc = '2026-05-03T12:00:00Z',
+                selection_mode = 'multi',
+                groups = {
+                    { name='G1', x=100, y=200,
+                      units={ { name='U1', type='F-16C_50', x=100, y=200, heading=0 } },
+                      boss = { id=2, name='USA' } },
+                },
+                statics = {},
+                zones = {},
+                drawings = {},
+                nav_points = {},
+                raw = {},
+            }
+        end,
+    }
+end
+
+-- Empty-snapshot variant for the empty-selection case.
+local empty_selection_module = {
+    snapshot = function()
+        return { ok=true, timestamp_utc='2026-05-03T12:00:00Z', selection_mode='multi',
+                 groups={}, statics={}, zones={}, drawings={}, nav_points={}, raw={} }
+    end,
+}
+
+package.path = '../lua/dcs_sms_me/?.lua;../lua/?.lua;' .. package.path
+local prefab_ops = require('prefab_ops')
+
+local failures = 0
+local function check(name, ok, msg)
+    if ok then print('PASS ' .. name)
+    else print('FAIL ' .. name .. ': ' .. tostring(msg)); failures = failures + 1
+    end
+end
+
+-- Case: save_selection with valid selection produces a file at the right path.
+do
+    captured.path, captured.content = nil, nil
+    local ok, path = prefab_ops.save_selection('test_jet')
+    check('save_selection returns ok', ok == true, 'got ' .. tostring(ok))
+    check('save_selection returns path', path == fake_writedir .. 'dcs-sms\\prefabs\\test_jet.lua',
+          'got ' .. tostring(path))
+    check('io.open was called with that path', captured.path == path, 'got ' .. tostring(captured.path))
+    check('content begins with "return {"',
+          type(captured.content) == 'string' and captured.content:sub(1,8) == 'return {',
+          'got ' .. (captured.content and captured.content:sub(1,30) or 'nil'))
+    check('content has meta.name',
+          captured.content and captured.content:find('%["name"%]%s*=%s*"test_jet"', 1) ~= nil,
+          'meta.name not found in content')
+end
+
+-- Case: save_selection with empty selection returns nil + reason.
+do
+    package.loaded['dcs_sms_me.selection'] = empty_selection_module
+    package.loaded['prefab_ops'] = nil  -- force re-require so it picks up new selection module
+    local prefab_ops2 = require('prefab_ops')
+    local ok, err = prefab_ops2.save_selection('empty')
+    check('empty save returns nil',  ok == nil, 'got ' .. tostring(ok))
+    check('empty save returns error', type(err) == 'string' and err:find('selection'), 'got ' .. tostring(err))
+end
+
+-- Case: exists() with a file present.
+do
+    -- Simulate file presence by stubbing io.open in read mode for the path.
+    local target = fake_writedir .. 'dcs-sms\\prefabs\\already_here.lua'
+    local missing = fake_writedir .. 'dcs-sms\\prefabs\\not_here.lua'
+    io.open = function(path, mode)
+        if mode == 'r' or mode == nil then
+            if path == target then return { close = function() end } end
+            return nil, 'not found'
+        end
+        return real_open(path, mode)
+    end
+    package.loaded['prefab_ops'] = nil
+    local prefab_ops3 = require('prefab_ops')
+    check('exists() true for present file', prefab_ops3.exists('already_here') == true,
+          'expected true')
+    check('exists() false for absent file', prefab_ops3.exists('not_here') == false,
+          'expected false')
+end
+
+if failures > 0 then
+    print(string.format('%d failure(s)', failures))
+    os.exit(1)
+end
+print('All prefab_ops save tests passed.')

@@ -24,7 +24,7 @@ try {
         exit 2
     }
     Write-Host "Using Lua interpreter: $lua"
-    $tests = @('test_serializer.lua', 'test_serializer_parity.lua', 'test_distill_parity.lua')
+    $tests = @('test_serializer.lua', 'test_serializer_parity.lua', 'test_distill_parity.lua', 'test_prefab_ops_save.lua')
     $anyFailed = $false
     foreach ($t in $tests) {
         if (-not (Test-Path $t)) { continue }
