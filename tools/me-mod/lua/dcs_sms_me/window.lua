@@ -219,14 +219,141 @@ local function on_list_select(_, idx)
     end)
 end
 
+-- ---------------------------------------------------------------------------
+-- Place-pending state machine
+-- ---------------------------------------------------------------------------
+
+local exit_place_pending  -- forward declaration; assigned below
+
+local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
+    W.place_pending = true
+    W.place_pending_name = prefab_name
+    pcall(function()
+        if W.window and W.window.setText then W.window:setText('Click on map to place ' .. prefab_name .. ' (Esc to cancel)') end
+    end)
+    pcall(function()
+        if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Cancel') end
+    end)
+    set_status('Click on the map to place ' .. prefab_name .. '...')
+
+    -- Map-click hook via me_map_window state machine.
+    -- We create a plain table that satisfies the NewMapView state interface
+    -- (onMouseDown / onMouseUp / onMouseDrag / onMouseMove / onMouseWheel).
+    -- me_map_window.setState() installs it; exit_place_pending restores panState.
+    -- Coord conversion: me_map_window.getMapPoint(screen_x, screen_y) → world x, y.
+    local ok = pcall(function()
+        local MapWindow = require('me_map_window')
+        if not (MapWindow and MapWindow.setState and MapWindow.getPanState and MapWindow.getMapPoint) then
+            error('me_map_window missing required symbols')
+        end
+
+        local place_state = {}
+
+        function place_state:onMouseDown(x, y, button)
+            pcall(function()
+                if not W.place_pending then return end
+                if button ~= 1 then return end  -- only left-click places
+                local wx, wy = MapWindow.getMapPoint(x, y)
+                if not (wx and wy) then
+                    set_status('Place failed: getMapPoint returned nil')
+                    log.write('sms.me.prefab', log.ERROR, 'place: getMapPoint returned nil')
+                    exit_place_pending()
+                    return
+                end
+                local rec, err = prefab_ops.place(prefab_table, { anchor = { x = wx, y = wy }, rotation = rotation_deg })
+                if rec then
+                    undo.record(rec)
+                    set_status(string.format('Placed %s (%dg %ds %dz %dd) at (%.0f, %.0f)',
+                        prefab_name, #rec.groups, #rec.statics, #rec.zones, #rec.drawings, wx, wy))
+                    log.write('sms.me.prefab', log.INFO, 'placed ' .. prefab_name)
+                else
+                    set_status('Place failed: ' .. tostring(err))
+                    log.write('sms.me.prefab', log.ERROR, 'place failed: ' .. tostring(err))
+                end
+                exit_place_pending()
+            end)
+        end
+
+        function place_state:onMouseUp(x, y, button) end
+        function place_state:onMouseDrag(dx, dy, button, x, y) end
+        function place_state:onMouseMove(x, y) end
+        function place_state:onMouseWheel(x, y, clicks) end
+
+        MapWindow.setState(place_state)
+    end)
+    if not ok then
+        set_status('Place at click unavailable — try Place at original. See dcs.log.')
+        log.write('sms.me.prefab', log.ERROR, 'map-click hook unavailable')
+        exit_place_pending()
+    end
+end
+
+exit_place_pending = function()
+    W.place_pending = false
+    W.place_pending_name = nil
+    pcall(function()
+        if W.window and W.window.setText then W.window:setText('dcs-sms — Prefab Manager') end
+    end)
+    pcall(function()
+        if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Place at click') end
+    end)
+    pcall(function()
+        local MapWindow = require('me_map_window')
+        if MapWindow and MapWindow.setState and MapWindow.getPanState then
+            MapWindow.setState(MapWindow.getPanState())
+        end
+    end)
+end
+
+local function get_rotation_deg()
+    local s = '0'
+    pcall(function()
+        if W.rotation_input and W.rotation_input.getText then s = W.rotation_input:getText() or '0' end
+    end)
+    local n = tonumber(s)
+    if not n then return 0 end
+    return n
+end
+
 local function on_place_click()
-    if not require_selection('place') then return end
-    set_status('Place at click — wired in Task 12')
+    if W.place_pending then
+        -- Acting as Cancel.
+        set_status('Place cancelled.')
+        exit_place_pending()
+        return
+    end
+    local row = require_selection('place')
+    if not row then return end
+    local prefab, lerr = prefab_ops.load(row.path)
+    if not prefab then
+        set_status('Load failed: ' .. tostring(lerr))
+        log.write('sms.me.prefab', log.ERROR, 'load failed for ' .. row.path .. ': ' .. tostring(lerr))
+        return
+    end
+    enter_place_pending(row.name, prefab, get_rotation_deg())
 end
 
 local function on_place_origin_click()
-    if not require_selection('place at original') then return end
-    set_status('Place at original — wired in Task 12')
+    local row = require_selection('place at original')
+    if not row then return end
+    local prefab, lerr = prefab_ops.load(row.path)
+    if not prefab then
+        set_status('Load failed: ' .. tostring(lerr))
+        log.write('sms.me.prefab', log.ERROR, 'load failed for ' .. row.path .. ': ' .. tostring(lerr))
+        return
+    end
+    local rotation_deg = get_rotation_deg()
+    local rec, err = prefab_ops.place(prefab, { keep_position = true, rotation = rotation_deg })
+    if rec then
+        undo.record(rec)
+        local wa = prefab.meta and prefab.meta.world_anchor or { x = 0, y = 0 }
+        set_status(string.format('Placed %s at original (%dg %ds %dz %dd) at (%.0f, %.0f)',
+            row.name, #rec.groups, #rec.statics, #rec.zones, #rec.drawings, wa.x, wa.y))
+        log.write('sms.me.prefab', log.INFO, 'placed ' .. row.name .. ' at original')
+    else
+        set_status('Place failed: ' .. tostring(err))
+        log.write('sms.me.prefab', log.ERROR, 'place at original failed: ' .. tostring(err))
+    end
 end
 
 local function on_rename_click()
@@ -267,6 +394,21 @@ function M.show()
         W.window:setDraggable(true)
         W.window:setResizable(false)
         W.window:setZOrder(190)
+
+        -- Esc cancels place-pending if window has focus.
+        if W.window.addKeyDownCallback then
+            W.window:addKeyDownCallback(function(_, key)
+                pcall(function()
+                    if not W.place_pending then return end
+                    -- Match by numeric code 27 (ASCII Esc) or by key name string —
+                    -- dxgui doesn't expose a stable cross-version key constant.
+                    if key == 27 or key == 'KEY_ESCAPE' or key == 'Escape' then
+                        set_status('Place cancelled.')
+                        exit_place_pending()
+                    end
+                end)
+            end)
+        end
 
         -- Save panel (top): "Name: [______] [Save]"
         local section_label_save = Static.new()
