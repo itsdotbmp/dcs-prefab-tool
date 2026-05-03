@@ -510,16 +510,28 @@ function M.show()
         W.window:setResizable(false)
         W.window:setZOrder(190)
 
-        -- Esc cancels place-pending if window has focus.
         if W.window.addKeyDownCallback then
-            W.window:addKeyDownCallback(function(_, key)
+            W.window:addKeyDownCallback(function(_, key, modifiers)
                 pcall(function()
-                    if not W.place_pending then return end
-                    -- Match by numeric code 27 (ASCII Esc) or by key name string —
-                    -- dxgui doesn't expose a stable cross-version key constant.
-                    if key == 27 or key == 'KEY_ESCAPE' or key == 'Escape' then
+                    -- Esc cancels place-pending.
+                    if W.place_pending and (key == 27 or key == 'KEY_ESCAPE' or key == 'Escape') then
                         set_status('Place cancelled.')
                         exit_place_pending()
+                        return
+                    end
+
+                    -- Ctrl-Z → undo. Modifier handling varies across dxgui
+                    -- builds — accept either an explicit ctrl flag or just
+                    -- the Z key (window must be focused for the hook to
+                    -- fire, which is our scope guard).
+                    local is_z = (key == 'Z' or key == 'z' or key == 90 or key == 'KEY_Z')
+                    if is_z then
+                        local ctrl = false
+                        if type(modifiers) == 'table' then ctrl = modifiers.ctrl or modifiers.control end
+                        if type(modifiers) == 'number' then ctrl = (modifiers % 8) >= 4 end  -- best-effort bitmask
+                        if ctrl or modifiers == nil then
+                            on_undo_click()
+                        end
                     end
                 end)
             end)
