@@ -116,21 +116,32 @@ end
 function M.scan_dir()
     paths.ensure_prefabs()
     local rows = {}
-    local ok, iter = pcall(lfs.dir, paths.PREFABS_DIR)
-    if not ok then return rows end
 
-    for entry in iter do
-        if entry ~= '.' and entry ~= '..' and entry:match('%.lua$') then
-            local name = entry:gsub('%.lua$', '')
-            local path = paths.PREFABS_DIR .. entry
-            local prefab, err = M.load(path)
-            if prefab then
-                rows[#rows + 1] = row_from_prefab(name, path, prefab)
-            else
-                rows[#rows + 1] = { name = name, path = path, error = err }
+    -- lfs.dir returns (iterator, state) — both must be passed to the for
+    -- loop or DCS's vfs lfs aborts with "bad argument #1 to '(for generator)'".
+    -- pcall the whole walk so a missing dir or VFS error returns an empty
+    -- list instead of throwing.
+    local ok, err = pcall(function()
+        for entry in lfs.dir(paths.PREFABS_DIR) do
+            if entry ~= '.' and entry ~= '..' and entry:match('%.lua$') then
+                local name = entry:gsub('%.lua$', '')
+                local path = paths.PREFABS_DIR .. entry
+                local prefab, lerr = M.load(path)
+                if prefab then
+                    rows[#rows + 1] = row_from_prefab(name, path, prefab)
+                else
+                    rows[#rows + 1] = { name = name, path = path, error = lerr }
+                end
             end
         end
+    end)
+    if not ok then
+        if log and log.write then
+            log.write('sms.me.prefab', log.WARNING, 'scan_dir failed: ' .. tostring(err))
+        end
+        return rows
     end
+
     table.sort(rows, function(a, b) return a.name < b.name end)
     return rows
 end
