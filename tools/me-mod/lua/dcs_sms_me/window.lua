@@ -15,10 +15,20 @@ local Button  = require('Button')
 local Gui     = require('dxgui')
 local Skin    = require('Skin')
 
--- TextBox and ListBox may not be exposed in every DCS ME GUI build.
--- Loaded via pcall and falling back to Static placeholders so module
--- load never fails on a missing widget.
-local TextBox; do local ok, mod = pcall(require, 'TextBox'); if ok then TextBox = mod end end
+-- Text-input + list widgets vary slightly across DCS dxgui builds.
+-- Real installs ship `EditBox` and `ListBox` under dxgui/bind/. We try
+-- both `EditBox` (the canonical) and `TextBox` (an older alias seen in
+-- the plan) so the module loads either way; whichever resolves becomes
+-- our text-input class.
+local TextBox
+do
+    local ok, mod = pcall(require, 'EditBox')
+    if ok then TextBox = mod
+    else
+        local ok2, mod2 = pcall(require, 'TextBox')
+        if ok2 then TextBox = mod2 end
+    end
+end
 local ListBox; do local ok, mod = pcall(require, 'ListBox'); if ok then ListBox = mod end end
 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
@@ -58,19 +68,24 @@ M._set_status = set_status  -- exposed for later tasks
 
 local function refresh_list()
     W.rows = prefab_ops.scan_dir() or {}
+    W.list_items = {}      -- index → ListBoxItem widget, parallel to W.rows
     pcall(function()
         if W.list_label and W.list_label.setText then
             W.list_label:setText(string.format('Prefabs (%d)', #W.rows))
         end
     end)
     pcall(function()
-        if W.list_box and W.list_box.removeItems then W.list_box:removeItems() end
-        for _, r in ipairs(W.rows) do
+        if not W.list_box then return end
+        -- Clear existing items: real ListBox API is removeAllItems / clear.
+        if W.list_box.removeAllItems then W.list_box:removeAllItems()
+        elseif W.list_box.clear then W.list_box:clear() end
+
+        for i, r in ipairs(W.rows) do
             local label
             if r.error then
                 label = string.format('%s    [ERROR: %s]', r.name, tostring(r.error):sub(1, 40))
             else
-                label = string.format('%s    %s · %dg %ds %dz %dd',
+                label = string.format('%s    %s | %dg %ds %dz %dd',
                     r.name,
                     r.theatre or '?',
                     r.group_count or 0,
@@ -78,8 +93,11 @@ local function refresh_list()
                     r.zone_count or 0,
                     r.drawing_count or 0)
             end
-            if W.list_box and W.list_box.insertItem then
-                W.list_box:insertItem(label)
+            -- Real ListBox API: newItem(text) creates and inserts a
+            -- ListBoxItem; insertItem(text) (string arg) does NOT exist.
+            if W.list_box.newItem then
+                local item = W.list_box:newItem(label)
+                W.list_items[i] = item
             end
         end
     end)
@@ -207,13 +225,27 @@ local function require_selection(action_label)
 end
 
 -- List-row select callback.
-local function on_list_select(_, idx)
+-- ListBox's selection-change callback fires with the ListBox widget itself
+-- as `self`; the selected ListBoxItem is fetched via getSelectedItem().
+-- Map back to the row index via the W.list_items parallel array (set in
+-- refresh_list).
+local function on_list_select(self_listbox)
     pcall(function()
-        if type(idx) == 'number' then
-            W.selected_idx = idx
-            local row = selected_row()
-            if row then
-                set_status('Selected: ' .. tostring(row.name))
+        local picked
+        if self_listbox and self_listbox.getSelectedItem then
+            picked = self_listbox:getSelectedItem()
+        elseif W.list_box and W.list_box.getSelectedItem then
+            picked = W.list_box:getSelectedItem()
+        end
+        if not picked then return end
+        for i, item in ipairs(W.list_items or {}) do
+            if item == picked then
+                W.selected_idx = i
+                local row = selected_row()
+                if row then
+                    set_status('Selected: ' .. tostring(row.name))
+                end
+                return
             end
         end
     end)
@@ -500,7 +532,10 @@ function M.show()
     end
     local ok, err = pcall(function()
         local screen_w, _ = Gui.GetWindowSize()
-        local w, h = 420, 320
+        -- Height needs ~30px reserved for the title bar + ~12px for the
+        -- bottom border under the status label, on top of the content
+        -- layout. The previous 320 clipped the status bar.
+        local w, h = 440, 360
         local x = screen_w - w - 20
         local y = 80
 
@@ -584,7 +619,12 @@ function M.show()
             if W.list_box.setText then W.list_box:setText('ListBox not available') end
         end
         W.list_box:setBounds(10, 80, w - 20, 130)
-        if W.list_box.addChangeCallback then
+        -- Real ListBox API uses addSelectionChangeCallback. addChangeCallback
+        -- exists on simpler widgets like Button but does not fire on ListBox
+        -- selection. Try the real one first, fall back to the older alias.
+        if W.list_box.addSelectionChangeCallback then
+            W.list_box:addSelectionChangeCallback(on_list_select)
+        elseif W.list_box.addChangeCallback then
             W.list_box:addChangeCallback(on_list_select)
         end
         W.window:insertWidget(W.list_box)
