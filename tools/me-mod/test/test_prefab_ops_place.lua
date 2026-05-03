@@ -44,6 +44,52 @@ do
           approx(x4, 400) and approx(y4, 500), 'got ' .. x4 .. ', ' .. y4)
 end
 
+-- Drawing rotation: vertices inside mapData get rotated around the local
+-- origin; mapData.{x,y} itself stays untouched (it's the polygon anchor and
+-- rotates downstream via _place_xy).
+do
+    local md = {
+        x = 100, y = 200,
+        points = {
+            { x = 100, y = 0   },   -- east
+            { x = 0,   y = 100 },   -- north
+        },
+    }
+    prefab_ops._rotate_mapData_geometry(md, 90)
+    -- 90deg rotation: (x, y) → (-y, x). So (100, 0) → (0, 100); (0, 100) → (-100, 0).
+    check('rotate 90: mapData.x untouched', md.x == 100, 'got ' .. md.x)
+    check('rotate 90: mapData.y untouched', md.y == 200, 'got ' .. md.y)
+    check('rotate 90: points[1] (100,0) → (0,100)',
+          approx(md.points[1].x, 0) and approx(md.points[1].y, 100),
+          'got ' .. md.points[1].x .. ', ' .. md.points[1].y)
+    check('rotate 90: points[2] (0,100) → (-100,0)',
+          approx(md.points[2].x, -100) and approx(md.points[2].y, 0),
+          'got ' .. md.points[2].x .. ', ' .. md.points[2].y)
+
+    -- 0deg rotation: no-op.
+    local md2 = { x = 5, y = 5, points = { { x = 7, y = 9 } } }
+    prefab_ops._rotate_mapData_geometry(md2, 0)
+    check('rotate 0: vertex unchanged',
+          md2.points[1].x == 7 and md2.points[1].y == 9,
+          'got ' .. md2.points[1].x .. ', ' .. md2.points[1].y)
+
+    -- nil mapData: no-op (no error).
+    prefab_ops._rotate_mapData_geometry(nil, 90)
+    check('rotate nil mapData: no error', true)
+
+    -- Recurses into nested geometry sub-arrays (e.g. arc_points).
+    local md3 = {
+        x = 0, y = 0,
+        arc_points = {
+            sub = { { x = 100, y = 0 } },
+        },
+    }
+    prefab_ops._rotate_mapData_geometry(md3, 180)
+    check('rotate 180: nested vertex (100,0) → (-100,0)',
+          approx(md3.arc_points.sub[1].x, -100) and approx(md3.arc_points.sub[1].y, 0),
+          'got ' .. md3.arc_points.sub[1].x .. ', ' .. md3.arc_points.sub[1].y)
+end
+
 -- Heading composition: world_heading_deg = (file_heading_deg + rotation_deg) mod 360
 do
     check('heading 30 + rotation 60 = 90', prefab_ops._heading_world(30, 60) == 90)

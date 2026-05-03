@@ -18,7 +18,11 @@
 
 local M = {}
 
-local PREFAB_VERSION = "0.1.0"
+-- 0.2.0: distill no longer subtracts the centroid from polygon vertices
+-- inside `drawing.mapData.points` (and other geometry sub-arrays). Files
+-- saved at 0.1.0 had broken vertex deltas; me-mod's place path keeps a
+-- compensating un-rebase shim for those, gated on this version field.
+local PREFAB_VERSION = "0.2.0"
 
 -- Shape-inference catalog. Currently empty; mirrors framework's
 -- sms.K.statics population (also currently empty). If the framework adds
@@ -88,15 +92,25 @@ local function convert_headings(t)
     end
 end
 
+-- See framework/prefab_distill.lua for the comment block on why mapData
+-- gets special-cased here. Both copies must stay in sync byte-for-byte
+-- inside the function body so test_distill_parity stays green.
 local function rebase_xy(t, ax, ay)
     if type(t) ~= 'table' then return end
     if type(t.x) == 'number' and type(t.y) == 'number' then
         t.x = t.x - ax
         t.y = t.y - ay
     end
-    for _, v in pairs(t) do
+    for k, v in pairs(t) do
         if type(v) == 'table' then
-            rebase_xy(v, ax, ay)
+            if k == 'mapData' then
+                if type(v.x) == 'number' and type(v.y) == 'number' then
+                    v.x = v.x - ax
+                    v.y = v.y - ay
+                end
+            else
+                rebase_xy(v, ax, ay)
+            end
         end
     end
 end

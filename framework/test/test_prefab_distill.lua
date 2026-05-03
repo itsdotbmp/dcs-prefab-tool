@@ -116,12 +116,38 @@ do
     check('zone radius preserved', z and z.radius == 1500, 'got ' .. tostring(z and z.radius))
 end
 
--- 9. Drawing fidelity: vertices and color preserved.
+-- 9. Drawing fidelity:
+--    * mapData.{x,y} is rebased relative to the centroid (= polygon anchor).
+--    * mapData.points (vertex deltas) MUST be left untouched. distill 0.2.0+
+--      special-cases mapData so the relative-to-mapData invariant survives.
+--    * top-level color/fillColor preserved.
+-- Centroid for the fixture is (62.5, 125); mapData starts at (100, 200) so
+-- the rebased mapData should be (37.5, 75).
 do
     local prefab = distill('fixtures/dump_synthetic_aerial.lua', {name = 'test_prefab'})
     local d = prefab and prefab.drawings[1]
-    check('drawing has 3 points', d and #d.points == 3,
-        'got ' .. tostring(d and #d.points))
+    check('drawing has mapData', d and d.mapData ~= nil, 'mapData missing')
+    check('mapData.x rebased to ~37.5',
+        d and d.mapData and approx(d.mapData.x, 37.5),
+        'got ' .. tostring(d and d.mapData and d.mapData.x))
+    check('mapData.y rebased to ~75',
+        d and d.mapData and approx(d.mapData.y, 75),
+        'got ' .. tostring(d and d.mapData and d.mapData.y))
+    check('mapData.points has 3 entries',
+        d and d.mapData and d.mapData.points and #d.mapData.points == 3,
+        'got ' .. tostring(d and d.mapData and d.mapData.points and #d.mapData.points))
+    check('mapData.points[1] preserved as delta (0,0)',
+        d and d.mapData and d.mapData.points
+        and approx(d.mapData.points[1].x, 0) and approx(d.mapData.points[1].y, 0),
+        'got ' .. tostring(d and d.mapData and d.mapData.points and d.mapData.points[1] and d.mapData.points[1].x))
+    check('mapData.points[2] preserved as delta (100,0)',
+        d and d.mapData and d.mapData.points
+        and approx(d.mapData.points[2].x, 100) and approx(d.mapData.points[2].y, 0),
+        'got ' .. tostring(d and d.mapData and d.mapData.points and d.mapData.points[2] and d.mapData.points[2].x))
+    check('mapData.points[3] preserved as delta (50,100)',
+        d and d.mapData and d.mapData.points
+        and approx(d.mapData.points[3].x, 50) and approx(d.mapData.points[3].y, 100),
+        'got ' .. tostring(d and d.mapData and d.mapData.points and d.mapData.points[3] and d.mapData.points[3].x))
     check('drawing color preserved', d and d.color and d.color[1] == 1,
         'color missing')
 end

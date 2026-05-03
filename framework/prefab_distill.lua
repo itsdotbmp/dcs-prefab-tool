@@ -24,7 +24,11 @@ sms.prefab = sms.prefab or {}
 
 local log = sms.log.module("sms.prefab.distill")
 
-local PREFAB_VERSION = "0.1.0"
+-- 0.2.0: distill no longer subtracts the centroid from polygon vertices
+-- inside `drawing.mapData.points` (and other geometry sub-arrays). Files
+-- saved at 0.1.0 had broken vertex deltas; me-mod's place path keeps a
+-- compensating un-rebase shim for those, gated on this version field.
+local PREFAB_VERSION = "0.2.0"
 
 -- ---------------------------------------------------------------------------
 -- Helpers
@@ -99,15 +103,30 @@ local function convert_headings(t)
     end
 end
 
+-- Rebase any {x,y} pair found in `t` (and recursively in its sub-tables) by
+-- subtracting the centroid (ax, ay). Drawings are special-cased: ME stores
+-- polygon vertices inside `mapData.points[i].{x,y}` as DELTAS relative to
+-- `mapData.{x,y}`, not absolute world coords. Subtracting the centroid from
+-- each vertex would break the relative-to-mapData invariant the renderer
+-- relies on (`world_pos = mapData.x + points[i].x`). When we descend into a
+-- child keyed `mapData`, we therefore rebase only its top-level x/y and
+-- skip recursing into its geometry sub-arrays (points / arc_points / …).
 local function rebase_xy(t, ax, ay)
     if type(t) ~= 'table' then return end
     if type(t.x) == 'number' and type(t.y) == 'number' then
         t.x = t.x - ax
         t.y = t.y - ay
     end
-    for _, v in pairs(t) do
+    for k, v in pairs(t) do
         if type(v) == 'table' then
-            rebase_xy(v, ax, ay)
+            if k == 'mapData' then
+                if type(v.x) == 'number' and type(v.y) == 'number' then
+                    v.x = v.x - ax
+                    v.y = v.y - ay
+                end
+            else
+                rebase_xy(v, ax, ay)
+            end
         end
     end
 end

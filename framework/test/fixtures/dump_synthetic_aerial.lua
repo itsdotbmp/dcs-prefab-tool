@@ -77,15 +77,20 @@ local zone_no_fly = {
     ["properties"] = { ["alarm"] = "yes" },
 }
 
--- Drawing: a polygon with three vertices.
+-- Drawing: a polygon with three vertices in the real ME shape — vertices
+-- live INSIDE mapData.points as deltas relative to mapData.{x,y}, not as
+-- absolute world coords. distill at 0.2.0+ preserves this relativity by
+-- rebasing only mapData.{x,y} and skipping its geometry sub-arrays.
 local drawing_perimeter = {
     ["name"]          = "perimeter",
     ["primitiveType"] = "Polygon",
-    ["mapData"] = { ["x"] = 100, ["y"] = 200 },
-    ["points"]  = {
-        [1] = { ["x"] = 0,   ["y"] = 0   },
-        [2] = { ["x"] = 100, ["y"] = 0   },
-        [3] = { ["x"] = 50,  ["y"] = 100 },
+    ["mapData"] = {
+        ["x"] = 100, ["y"] = 200,
+        ["points"]  = {
+            [1] = { ["x"] = 0,   ["y"] = 0   },
+            [2] = { ["x"] = 100, ["y"] = 0   },
+            [3] = { ["x"] = 50,  ["y"] = 100 },
+        },
     },
     ["color"]      = { 1, 0, 0, 1 },
     ["fillColor"]  = { 1, 0, 0, 0.2 },
