@@ -60,14 +60,15 @@ function M.save_selection(name)
 
     -- Capture the current theatre via Mission.TheatreOfWarData.getName(); same
     -- accessor ME core uses when serializing a mission (me_mission.lua ~4505)
-    -- and when MissionEditor.lua bootstraps (require path is `Mission.TheatreOfWarData`,
-    -- NOT bare `TheatreOfWarData` — the bare path silently fails the require).
+    -- and when MissionEditor.lua bootstraps. The require path is
+    -- `Mission.TheatreOfWarData`, NOT bare `TheatreOfWarData` — the bare path
+    -- silently fails the require (was an actual bug here, fixed 2026-05-03).
     -- pcall-guarded so the standalone test VM (no DCS modules) and any future
     -- API rename degrade to no-theatre rather than failing the save.
     local theatre
     pcall(function()
         local TheatreOfWarData = require('Mission.TheatreOfWarData')
-        if TheatreOfWarData and TheatreOfWarData.getName then
+        if TheatreOfWarData and type(TheatreOfWarData.getName) == 'function' then
             theatre = TheatreOfWarData.getName()
         end
     end)
