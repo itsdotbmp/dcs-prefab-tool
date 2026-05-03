@@ -219,6 +219,7 @@ For one-shot (re)loading of the whole framework in a mission, use [`framework/lo
 | `sms.task` | `task.lua` | [`docs/api/task.md`](docs/api/task.md) | Task-table builders (`move_to`, `attack`, `orbit`, `combo`, ...) + `group:set_task` / `:push_task` apply. |
 | `sms.commands` | `commands.lua` | [`docs/api/commands.md`](docs/api/commands.md) | One-shot controller commands + `group:set_command` apply. |
 | `sms.options` | `options.lua` | [`docs/api/options.md`](docs/api/options.md) | Persistent controller options (ROE, formation, alarm state, ...) + `group:set_option` apply. |
+| `sms.prefab` | `prefab.lua` (+ `prefab_distill.lua`) | [`docs/api/prefab.md`](docs/api/prefab.md) | Portable bundles of groups + statics + zones + drawings. Distill ME selection dumps; load/save prefab files; spawn at any anchor + rotation + (optional) country override; per-instance lifecycle. |
 
 For end-to-end recipes that combine multiple modules, see [`docs/api/examples.md`](docs/api/examples.md).
 

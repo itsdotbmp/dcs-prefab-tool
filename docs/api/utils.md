@@ -319,3 +319,22 @@ cfg.name      = "red-cas-2"
 cfg.units[1].x = 5000
 -- template is untouched; cfg can be mutated freely before sms.group.create(cfg)
 ```
+
+---
+
+### `sms.utils.serialize(value, opts) → string`
+
+Returns a Lua chunk string that, when `loadstring()`'d / `dofile()`'d, reconstructs `value`. Round-trips losslessly through tables with mixed numeric/string keys (the DCS `callsign` shape), cycles (replaced with marker), inf/NaN numbers (`1/0`, `-1/0`, `0/0`). Functions, userdata, threads serialize as `nil` with a comment.
+
+- `opts.indent` (string, optional, default `"  "`) — indentation unit for nested tables.
+
+Output always wraps in `return ...\n` so the chunk is directly loadable.
+
+Example:
+
+```lua
+local s = sms.utils.serialize({callsign = {[1]=1, [2]=1, [3]=1, name="Enfield11"}})
+-- s == 'return {\n  ["callsign"] = {\n    [1] = 1,\n    [2] = 1,\n    [3] = 1,\n    ["name"] = "Enfield11",\n  },\n}\n'
+local back = loadstring(s)()
+assert(back.callsign.name == "Enfield11")
+```
