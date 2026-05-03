@@ -114,7 +114,7 @@ local function install_floating_fallback()
         local y = 8
 
         local fb = Window.new(x, y, w, h, 'dcs-sms')
-        fb:setSkin(Skin.windowSkin())
+        fb:setSkin((Skin.windowSkinME and Skin.windowSkinME()) or Skin.windowSkin())
         fb:setVisible(true)
         fb:setDraggable(true)
         fb:setResizable(false)
