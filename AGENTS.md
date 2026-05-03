@@ -270,6 +270,8 @@ When you need behavior the framework doesn't cover, this is the workflow:
 The `tools/` directory is host-side Go. It produces `dcs-sms` / `dcs-sms.exe`, a CLI that:
 
 - `install-hook` — drops `dcs-sms-hook.lua` into `<Saved Games>/DCS*/Scripts/Hooks/`.
+- `install-me-mod` — installs the Mission Editor mod into `<DCS install>/MissionEditor/`. Patches `MissionEditor.lua` with sentinel-marker delimited `require('dcs_sms_me')`, copies the mod files to `MissionEditor/modules/dcs_sms_me/`. Backs up `MissionEditor.lua` first. Idempotent. Cache `--dcs-path` in `%AppData%\dcs-sms\config.toml` (or env `DCS_SMS_DCS_INSTALL`).
+- `uninstall-me-mod` — reverses `install-me-mod`. Removes the patch block from `MissionEditor.lua` (surgically, by markers; falls back to backup-restore), deletes the modules dir, deletes the backup file.
 - `status` — confirms the hook is alive and reports current mission name.
 - `exec --code "<lua>"` — runs Lua in the running mission and returns structured JSON `{ok, return_value, output, error}`.
 - `tail-log -n <N>` — last N lines of `dcs.log`.
