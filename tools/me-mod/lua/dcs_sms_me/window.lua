@@ -34,6 +34,20 @@ local ListBox; do local ok, mod = pcall(require, 'ListBox'); if ok then ListBox 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
 local undo       = require('dcs_sms_me.undo')
 
+-- Apply an ME-native skin by name. The Skin module auto-generates one
+-- function per entry in dxgui/skins/skinME/skin_names.lua, so calling
+-- e.g. Skin.buttonSkin_ME() returns the dark-blue ME button skin. Falls
+-- back silently if either the function isn't registered or the widget
+-- doesn't accept setSkin.
+local function try_skin(widget, skin_name)
+    pcall(function()
+        local fn = Skin[skin_name]
+        if not (fn and widget and widget.setSkin) then return end
+        local s = fn()
+        if s then widget:setSkin(s) end
+    end)
+end
+
 local M = {}
 
 local W = {
@@ -143,6 +157,7 @@ local function show_overlay(message, buttons)
         local msg = Static.new()
         msg:setBounds(10, 14, w - 20, h - 70)
         msg:setText(tostring(message or ''))
+        try_skin(msg, 'staticSkin_ME')
         overlay:insertWidget(msg)
 
         local n = #buttons
@@ -151,6 +166,7 @@ local function show_overlay(message, buttons)
             local btn = Button.new()
             btn:setBounds(10 + (i - 1) * (bw + 10), h - 42, bw, 22)
             btn:setText(b.label or '?')
+            try_skin(btn, 'buttonSkin_ME')
             btn:addChangeCallback(function()
                 pcall(b.on_click or function() end)
                 close()
@@ -440,17 +456,20 @@ local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
         local lbl = Static.new()
         lbl:setBounds(10, 14, w - 20, 20)
         lbl:setText(tostring(prompt or 'New name:'))
+        try_skin(lbl, 'staticSkin_ME')
         overlay:insertWidget(lbl)
 
         input = TextBox.new()
         input:setBounds(10, 40, w - 20, 22)
         if input.setText then input:setText(tostring(current_name or '')) end
         if input.setFocused then input:setFocused(true) end
+        try_skin(input, 'editBoxSkin_ME')
         overlay:insertWidget(input)
 
         local ok_btn = Button.new()
         ok_btn:setBounds(w - 200, h - 42, 90, 22)
         ok_btn:setText('OK')
+        try_skin(ok_btn, 'buttonSkin_ME')
         ok_btn:addChangeCallback(function()
             local new_name = (input.getText and input:getText()) or ''
             close()
@@ -461,6 +480,7 @@ local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
         local cancel_btn = Button.new()
         cancel_btn:setBounds(w - 100, h - 42, 90, 22)
         cancel_btn:setText('Cancel')
+        try_skin(cancel_btn, 'buttonSkin_ME')
         cancel_btn:addChangeCallback(function()
             close()
             pcall(on_cancel or function() end)
@@ -600,11 +620,13 @@ function M.show()
         local section_label_save = Static.new()
         section_label_save:setBounds(10, 6, w - 20, 16)
         section_label_save:setText('Save current selection')
+        try_skin(section_label_save, 'staticSkin_ME')
         W.window:insertWidget(section_label_save)
 
         local name_label = Static.new()
         name_label:setBounds(10, 26, 50, 22)
         name_label:setText('Name:')
+        try_skin(name_label, 'staticSkin_ME')
         W.window:insertWidget(name_label)
 
         if TextBox then
@@ -615,11 +637,13 @@ function M.show()
         end
         W.name_input:setBounds(64, 26, w - 64 - 80 - 16, 22)
         if W.name_input.setText then W.name_input:setText('') end
+        try_skin(W.name_input, 'editBoxSkin_ME')
         W.window:insertWidget(W.name_input)
 
         W.save_btn = Button.new()
         W.save_btn:setBounds(w - 90, 26, 80, 22)
         W.save_btn:setText('Save')
+        try_skin(W.save_btn, 'buttonSkin_ME')
         W.save_btn:addChangeCallback(on_save_click)
         W.window:insertWidget(W.save_btn)
 
@@ -627,11 +651,13 @@ function M.show()
         W.list_label = Static.new()
         W.list_label:setBounds(10, 60, w - 20 - 80, 16)
         W.list_label:setText('Prefabs (0)')
+        try_skin(W.list_label, 'staticSkin_ME')
         W.window:insertWidget(W.list_label)
 
         W.reload_btn = Button.new()
         W.reload_btn:setBounds(w - 90, 56, 80, 22)
         W.reload_btn:setText('Reload')
+        try_skin(W.reload_btn, 'buttonSkin_ME')
         W.reload_btn:addChangeCallback(on_reload_click)
         W.window:insertWidget(W.reload_btn)
 
@@ -642,6 +668,7 @@ function M.show()
             if W.list_box.setText then W.list_box:setText('ListBox not available') end
         end
         W.list_box:setBounds(10, 80, w - 20, 130)
+        try_skin(W.list_box, 'listBoxSkin_ME')
         -- DCS ListBox routes USER clicks through `onChange(self, item, dbl)`
         -- (called from onItemMouseUp → onChangeNew). The selection-change
         -- callback fires only for programmatic selections. Override onChange
@@ -662,6 +689,7 @@ function M.show()
         local rotation_label = Static.new()
         rotation_label:setBounds(10, 218, 60, 22)
         rotation_label:setText('Rotation:')
+        try_skin(rotation_label, 'staticSkin_ME')
         W.window:insertWidget(rotation_label)
 
         if TextBox then
@@ -672,23 +700,27 @@ function M.show()
         end
         W.rotation_input:setBounds(70, 218, 50, 22)
         if W.rotation_input.setText then W.rotation_input:setText('0') end
+        try_skin(W.rotation_input, 'editBoxSkin_ME')
         W.window:insertWidget(W.rotation_input)
 
         local rotation_unit = Static.new()
         rotation_unit:setBounds(122, 218, 20, 22)
         rotation_unit:setText('°')
+        try_skin(rotation_unit, 'staticSkin_ME')
         W.window:insertWidget(rotation_unit)
 
         local btn_y_1 = 244
         W.place_click_btn = Button.new()
         W.place_click_btn:setBounds(10, btn_y_1, 130, 22)
         W.place_click_btn:setText('Place at click')
+        try_skin(W.place_click_btn, 'buttonSkin_ME')
         W.place_click_btn:addChangeCallback(on_place_click)
         W.window:insertWidget(W.place_click_btn)
 
         W.place_origin_btn = Button.new()
         W.place_origin_btn:setBounds(146, btn_y_1, 130, 22)
         W.place_origin_btn:setText('Place at original')
+        try_skin(W.place_origin_btn, 'buttonSkin_ME')
         W.place_origin_btn:addChangeCallback(on_place_origin_click)
         W.window:insertWidget(W.place_origin_btn)
 
@@ -696,18 +728,21 @@ function M.show()
         W.rename_btn = Button.new()
         W.rename_btn:setBounds(10, btn_y_2, 80, 22)
         W.rename_btn:setText('Rename')
+        try_skin(W.rename_btn, 'buttonSkin_ME')
         W.rename_btn:addChangeCallback(on_rename_click)
         W.window:insertWidget(W.rename_btn)
 
         W.delete_btn = Button.new()
         W.delete_btn:setBounds(96, btn_y_2, 80, 22)
         W.delete_btn:setText('Delete')
+        try_skin(W.delete_btn, 'buttonSkin_ME')
         W.delete_btn:addChangeCallback(on_delete_click)
         W.window:insertWidget(W.delete_btn)
 
         W.undo_btn = Button.new()
         W.undo_btn:setBounds(182, btn_y_2, 130, 22)
         W.undo_btn:setText('Undo last place')
+        try_skin(W.undo_btn, 'buttonSkin_ME')
         W.undo_btn:addChangeCallback(on_undo_click)
         W.window:insertWidget(W.undo_btn)
 
@@ -715,6 +750,7 @@ function M.show()
         W.status = Static.new()
         W.status:setBounds(10, 296, w - 20, 16)
         W.status:setText('Ready.')
+        try_skin(W.status, 'staticSkin_ME')
         W.window:insertWidget(W.status)
 
         refresh_list()

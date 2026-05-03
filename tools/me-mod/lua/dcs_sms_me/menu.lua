@@ -123,6 +123,11 @@ local function install_floating_fallback()
         local btn = Button.new()
         btn:setBounds(8, 26, w - 16, 30)   -- y=26 leaves room for the title bar
         btn:setText('Prefab Manager')
+        -- Match the ME-native button skin (same palette as Customize
+        -- menu items / waypoint buttons).
+        pcall(function()
+            if Skin.buttonSkin_ME then btn:setSkin(Skin.buttonSkin_ME()) end
+        end)
         btn:addChangeCallback(function()
             pcall(function() get_window().toggle() end)
         end)
