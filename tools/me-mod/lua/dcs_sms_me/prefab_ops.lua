@@ -614,10 +614,34 @@ function M.place(prefab, opts)
         end
     end
 
-    -- Drawings.
+    -- Drawings — special-cased because their inner points (polygon
+    -- vertices, line segments, etc.) are stored relative to mapData.x/y
+    -- by the ME's draw renderer. transform_coords would absolute-ize
+    -- them and the renderer would then double-apply the offset (placing
+    -- a drawing 2000m east shifts its inner geometry ~4000m east). The
+    -- ME's own copy/paste at me_copy_paste.lua:651-653 just adjusts
+    -- mapData.x/y and leaves points untouched — we do the same.
+    --
+    -- Rotation is not yet applied to drawings (would require rotating
+    -- inner points around mapData center). Deferred to v2.
     for _, d_template in ipairs(prefab.drawings or {}) do
         local d = deep_copy(d_template)
-        transform_coords(d, anchor, rotation)
+
+        -- Compute world coords from the (anchor-relative) drawing center.
+        local rel_x = (d.mapData and d.mapData.x) or d.x or 0
+        local rel_y = (d.mapData and d.mapData.y) or d.y or 0
+        local world_x, world_y = M._place_xy(rel_x, rel_y, anchor, rotation)
+
+        -- Update only the center fields. Inner points stay relative.
+        if d.mapData then
+            d.mapData.x = world_x
+            d.mapData.y = world_y
+        end
+        if type(d.x) == 'number' and type(d.y) == 'number' then
+            d.x = world_x; d.y = world_y
+        end
+
+        -- inject_drawing reads d.mapData.x/y itself; no separate args needed.
         local drawing_obj, err = inject_drawing(d)
         if drawing_obj then
             record.drawings[#record.drawings + 1] = {
