@@ -1,17 +1,27 @@
--- menu.lua — Tools-menu entry registration with floating-button fallback.
+-- menu.lua — Customize-menu entry registration with floating-button fallback.
 --
--- ME-API investigation result (2026-05-03):
---   me_menubar.lua uses module('me_menubar') and keeps its menuBar variable
---   module-local — no getToolsMenu(), getMenu(), or any menu accessor is
---   exported.  The setModMEMenu() plugin hook requires being registered in
---   base.plugins[*].callbacksME, which is only available to compiled DCS
---   modules, not to Lua mod injections.  There is also no 'tools' top-level
---   menu in the menubar at all (keys: file, view, edit, flight, campaign,
---   customize, generator, help, dymMission).
+-- ME-API path (discovered 2026-05-03 by re-reading me_menubar.lua):
+--   me_menubar's `menuBar` table IS module-public — set without `local` at
+--   line 467: `menuBar = window.menuBar`. So `require('me_menubar').menuBar`
+--   resolves once me_menubar.create_() has run (which it does when
+--   me_menubar.show() is first called).
 --
--- Therefore try_install_menu() always returns false, and the guaranteed
--- fallback — a small floating toggle button — is the v1 UI entry point.
--- Either way, clicking the entry/button calls window.toggle().
+--   The Customize menu has a public-stable shape:
+--     menuBar.customize.menu  -- a Menu widget with :newItem(label, pos)
+--     existing items (missionOptions, mapOptions, setPosition, logbook)
+--     can be queried via :getSkin() to skin our new item consistently.
+--
+--   me_menubar's setCustomizeMenu() already wires `menu:onChange` to call
+--   `item.func` for any clicked item — so we just set our item's `.func`
+--   and it fires on click.
+--
+-- Strategy:
+--   1. At install time, try to add the menu entry immediately (in case the
+--      menubar is already constructed).
+--   2. If menuBar isn't ready yet, monkey-patch me_menubar.show so the
+--      entry is added the next time ME shows the menubar.
+--   3. If me_menubar isn't accessible at all, fall back to a floating
+--      toggle window.
 
 local M = {}
 
@@ -19,31 +29,67 @@ local function get_window()
     return require('dcs_sms_me.window')
 end
 
--- try_install_menu --------------------------------------------------------
--- Attempts to register an entry in the ME's Tools menu using whatever
--- menu API is available.  Returns true on success, false if nothing works.
--- All access is pcall-guarded so a missing/wrong API is a silent no-op.
+-- Add our entry to me_menubar.menuBar.customize.menu. Idempotent.
+-- Returns true if the entry exists in the menu after this call.
+local function add_menu_entry()
+    local ok, mb = pcall(require, 'me_menubar')
+    if not ok or not mb or not mb.menuBar then return false end
+    local customize = mb.menuBar.customize
+    if not customize or not customize.menu then return false end
+    local menu = customize.menu
+    if menu._dcs_sms_prefab_added then return true end  -- idempotency
 
-local function try_install_menu()
-    -- me_menubar does not export any menu accessor, and there is no
-    -- 'me_main_window' module in DCS World (confirmed by file search).
-    -- The setModMEMenu() plugin hook requires base.plugins registration
-    -- (compiled DCS module path), which is not available here.
-    -- Return false unconditionally so the floating-button fallback runs.
-    local ok, menubar = pcall(require, 'me_menubar')
-    if not ok or not menubar then return false end
+    local item
+    local ok_new, err = pcall(function()
+        item = menu:newItem('PREFAB MANAGER')
+    end)
+    if not ok_new or not item then
+        log.write('sms.me', log.ERROR, 'menu:newItem failed: ' .. tostring(err))
+        return false
+    end
 
-    -- me_menubar is a module() style module; its menuBar table is local.
-    -- None of the exported symbols expose a menu item factory.
-    -- If a future DCS version adds an accessor, add the attempt here:
-    --   if menubar.getToolsMenu then ... end
+    -- Copy the skin from an existing item so our entry visually matches.
+    pcall(function()
+        local sibling = menu.missionOptions or menu.mapOptions
+                     or menu.setPosition  or menu.logbook
+        if sibling and sibling.getSkin then
+            local skin = sibling:getSkin()
+            if skin and item.setSkin then item:setSkin(skin) end
+        end
+    end)
 
-    return false
+    -- The Customize menu's onChange already calls item.func on click
+    -- (set up by me_menubar.setMenuCallback / setCustomizeMenu).
+    item.func = function()
+        pcall(function() get_window().toggle() end)
+    end
+
+    menu._dcs_sms_prefab_added = true
+    return true
 end
 
--- install_floating_fallback -----------------------------------------------
--- Creates a small draggable button at the top-right of the ME screen.
--- Clicking it calls window.toggle().  Errors are logged but never thrown.
+-- Monkey-patch me_menubar.show so add_menu_entry runs after the menubar
+-- is constructed. Idempotent — only patches once.
+local function patch_menubar_show()
+    local ok, mb = pcall(require, 'me_menubar')
+    if not ok or not mb or type(mb.show) ~= 'function' then return false end
+    if mb._dcs_sms_show_patched then return true end
+
+    local orig_show = mb.show
+    mb.show = function(...)
+        local result = orig_show(...)
+        pcall(add_menu_entry)
+        return result
+    end
+    mb._dcs_sms_show_patched = true
+    return true
+end
+
+-- install_floating_fallback ------------------------------------------------
+-- Last-resort floating window with a Prefab Manager toggle button.
+-- Sized to fit the title bar + a button below it. The earlier 36-tall
+-- window had its content clipped under the title bar, which is why the
+-- previous build looked half-cut-off.
 
 local function install_floating_fallback()
     local ok, err = pcall(function()
@@ -53,11 +99,11 @@ local function install_floating_fallback()
         local Gui    = require('dxgui')
 
         local screen_w, _ = Gui.GetWindowSize()
-        local w, h = 200, 36
+        local w, h = 220, 64        -- enough for the title bar + button below
         local x = screen_w - w - 20
         local y = 8
 
-        local fb = Window.new(x, y, w, h, '')
+        local fb = Window.new(x, y, w, h, 'dcs-sms')
         fb:setSkin(Skin.windowSkin())
         fb:setVisible(true)
         fb:setDraggable(true)
@@ -65,7 +111,7 @@ local function install_floating_fallback()
         fb:setZOrder(195)
 
         local btn = Button.new()
-        btn:setBounds(0, 0, w, h)
+        btn:setBounds(8, 26, w - 16, 30)   -- y=26 leaves room for the title bar
         btn:setText('Prefab Manager')
         btn:addChangeCallback(function()
             pcall(function() get_window().toggle() end)
@@ -78,19 +124,28 @@ local function install_floating_fallback()
 end
 
 -- M.install ---------------------------------------------------------------
--- Public entry point.  Call once during ME startup.
--- Returns true if a native menu entry was installed, false if the
--- floating-button fallback was used instead.
-
+-- Public entry point. Returns:
+--   "menu"     — added entry to Customize menu (immediately or via patch)
+--   "fallback" — me_menubar wasn't accessible; floating button installed
 function M.install()
-    if try_install_menu() then
-        log.write('sms.me', log.INFO, 'Tools menu entry installed')
-        return true
+    -- Try to add immediately. If menubar already exists we're done.
+    if add_menu_entry() then
+        log.write('sms.me', log.INFO, 'Prefab Manager added to Customize menu')
+        return 'menu'
     end
+
+    -- Otherwise, schedule via show-patch — entry will appear the next time
+    -- the menubar is shown (usually right after init, on first ME paint).
+    if patch_menubar_show() then
+        log.write('sms.me', log.INFO,
+            'Prefab Manager will be added to Customize menu when menubar shows')
+        return 'menu'
+    end
+
     log.write('sms.me', log.WARNING,
-        'Tools menu API unavailable; using floating-button fallback')
+        'me_menubar inaccessible; using floating-button fallback')
     install_floating_fallback()
-    return false
+    return 'fallback'
 end
 
 return M
