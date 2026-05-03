@@ -91,20 +91,26 @@ CI runs the parity + unit tests under `tools/me-mod/test/run-tests.ps1`. This ch
 
 ### Library
 
-14. Save 3 prefabs with names `a`, `m`, `z`. Verify list is sorted A-Z.
-15. Rename `m` to `middle`. Verify the file is renamed AND `meta.name` is updated inside (open the file).
-16. Delete `middle`. Confirmation modal. Confirm. Verify file gone, list refreshed.
-17. Manually drop a malformed `.lua` file into the prefabs dir. Click **Reload**. Verify it appears in the list with `[ERROR: ...]` rather than breaking the list.
+14. Save 3 prefabs with names `a`, `m`, `z`. Verify the grid is sorted A-Z and shows six columns: **Name / Theatre / G / S / Z / D**.
+15. Verify the **Theatre** column shows the current theatre name (e.g. `Caucasus`) for prefabs saved under this branch — *not* `?`. Prefabs saved before this change still show `?` until re-saved.
+16. Click a row. Verify it highlights and the status bar shows `Selected: <name>`. Click another. Selection moves.
+17. Rename `m` to `middle`. Verify the file is renamed AND `meta.name` is updated inside (open the file).
+18. Delete `middle`. Confirmation modal. Confirm. Verify file gone, list refreshed.
+19. Manually drop a malformed `.lua` file into the prefabs dir. Click **Reload**. Verify it appears as a row with `[ERROR] <name>` in the Name column and a truncated error message in the Theatre column (rather than breaking the list).
 
 ### Undo
 
-18. Place a prefab. Press **Ctrl-Z** (window focused). Verify removal.
-19. Press **Ctrl-Z** again. Status: `Nothing to undo.`
-20. Place. Click somewhere outside the Prefab Manager window to remove its focus. Press **Ctrl-Z**. Verify nothing happens (window not focused — broad ME-wide undo is [issue #25](https://github.com/nielsvaes/dcs-sms/issues/25)).
+20. Place a prefab. Press **Ctrl-Z** (window focused). Verify removal.
+21. Press **Ctrl-Z** again. Status: `Nothing to undo.`
+22. Place. Click somewhere outside the Prefab Manager window to remove its focus. Press **Ctrl-Z**. Verify nothing happens (window not focused — broad ME-wide undo is [issue #25](https://github.com/nielsvaes/dcs-sms/issues/25)).
+
+### Dev reload
+
+23. With the Prefab Manager window focused, press **Ctrl+Shift+R**. Verify the window briefly disappears and reopens (status bar shows `Ready.`). `dcs.log` should contain `dev reload triggered` → `cleared N modules from package.loaded` → `dev reload completed`. Subsequent edits to the mod's Lua files are picked up by another Ctrl+Shift+R, no DCS restart required.
 
 ### Cleanup
 
-21. Run `tools/dcs-sms.exe uninstall-me-mod`. Verify everything removed (modules dir gone, `MissionEditor.lua` patch reverted from backup).
+24. Run `tools/dcs-sms.exe uninstall-me-mod`. Verify everything removed (modules dir gone, `MissionEditor.lua` patch reverted from backup).
 
 ## Running the unit tests
 
@@ -134,6 +140,7 @@ tools/me-mod/
 │       ├── prefab_ops.lua      ← save / load / scan_dir / place + ME-API injection
 │       ├── undo.lua            ← single-slot undo for the most recent place
 │       ├── serializer.lua      ← Lua value → Lua chunk string
+│       ├── dtc_skins.lua       ← DTC-dialog-style button + grid skin builders
 │       └── paths.lua           ← output dir constants (me/, prefabs/)
 ├── test/
 │   ├── fixtures/

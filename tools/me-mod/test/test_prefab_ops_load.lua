@@ -54,16 +54,17 @@ end
 -- Case: scan_dir returns one row per .lua file.
 do
     local rows = prefab_ops.scan_dir()
-    check('scan_dir returns array of length 3', type(rows) == 'table' and #rows == 3,
+    check('scan_dir returns array of length 4', type(rows) == 'table' and #rows == 4,
           'got ' .. tostring(rows and #rows or nil))
 
     -- Find each row by name.
     local by_name = {}
     for _, r in ipairs(rows) do by_name[r.name] = r end
 
-    check('farp_alpha row present', by_name['farp_alpha'] ~= nil)
-    check('sam_site row present',   by_name['sam_site']   ~= nil)
-    check('broken row present',     by_name['broken']     ~= nil)
+    check('farp_alpha row present',   by_name['farp_alpha']   ~= nil)
+    check('sam_site row present',     by_name['sam_site']     ~= nil)
+    check('broken row present',       by_name['broken']       ~= nil)
+    check('modern_mixed row present', by_name['modern_mixed'] ~= nil)
 
     if by_name['farp_alpha'] then
         local r = by_name['farp_alpha']
@@ -82,6 +83,17 @@ do
         local r = by_name['broken']
         check('broken row has error', type(r.error) == 'string',
               'expected error string, got ' .. tostring(r.error))
+    end
+    if by_name['modern_mixed'] then
+        -- 3 entries inside `groups`: vehicle + plane + static. The static
+        -- should be pulled out of group_count and surface as static_count.
+        local r = by_name['modern_mixed']
+        check('modern_mixed group_count == 2 (excludes type=static)',
+              r.group_count == 2, 'got ' .. tostring(r.group_count))
+        check('modern_mixed static_count == 1 (from inline type=static)',
+              r.static_count == 1, 'got ' .. tostring(r.static_count))
+        check('modern_mixed zone_count == 1',
+              r.zone_count == 1, 'got ' .. tostring(r.zone_count))
     end
 end
 

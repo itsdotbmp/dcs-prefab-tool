@@ -57,7 +57,22 @@ function M.save_selection(name)
     end
 
     local dump = selection_to_dump(snap)
-    local prefab = distill(dump, { name = name })
+
+    -- Capture the current theatre via Mission.TheatreOfWarData.getName(); same
+    -- accessor ME core uses when serializing a mission (me_mission.lua ~4505)
+    -- and when MissionEditor.lua bootstraps (require path is `Mission.TheatreOfWarData`,
+    -- NOT bare `TheatreOfWarData` — the bare path silently fails the require).
+    -- pcall-guarded so the standalone test VM (no DCS modules) and any future
+    -- API rename degrade to no-theatre rather than failing the save.
+    local theatre
+    pcall(function()
+        local TheatreOfWarData = require('Mission.TheatreOfWarData')
+        if TheatreOfWarData and TheatreOfWarData.getName then
+            theatre = TheatreOfWarData.getName()
+        end
+    end)
+
+    local prefab = distill(dump, { name = name, theatre = theatre })
     if not prefab then
         return nil, 'distill returned nil — check log for details'
     end
@@ -99,15 +114,36 @@ local function count(t)
     return #t
 end
 
+-- Split a `groups` array into (non-static, static) counts. DCS represents
+-- statics as groups with type='static' (see me_copy_paste.duplicateGroup
+-- and the merge in `inject_group`), so prefab.statics is typically empty
+-- and statics live inside prefab.groups. Counting them separately is what
+-- lets the library's S column show a meaningful number.
+local function split_group_counts(groups)
+    if type(groups) ~= 'table' then return 0, 0 end
+    local g, s = 0, 0
+    for _, entry in ipairs(groups) do
+        if type(entry) == 'table' and entry.type == 'static' then
+            s = s + 1
+        else
+            g = g + 1
+        end
+    end
+    return g, s
+end
+
 local function row_from_prefab(name, path, prefab)
     local meta = prefab.meta
+    local g_count, s_inline = split_group_counts(prefab.groups)
     return {
         name          = meta.name or name,
         path          = path,
         theatre       = meta.theatre,
         source_dump   = meta.source_dump,
-        group_count   = count(prefab.groups),
-        static_count  = count(prefab.statics),
+        group_count   = g_count,
+        -- Statics from inline `type='static'` groups + any in the legacy
+        -- top-level statics array (older fixtures / hand-written prefabs).
+        static_count  = s_inline + count(prefab.statics),
         zone_count    = count(prefab.zones),
         drawing_count = count(prefab.drawings),
     }

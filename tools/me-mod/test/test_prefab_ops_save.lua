@@ -24,6 +24,13 @@ io.open = function(path, mode)
     return real_open(path, mode)
 end
 
+-- Stub Mission.TheatreOfWarData.getName so save_selection captures a theatre.
+-- The real module path is `Mission.TheatreOfWarData` (per MissionEditor.lua); a
+-- bare `require('TheatreOfWarData')` silently fails — that was the bug.
+package.preload['Mission.TheatreOfWarData'] = function()
+    return { getName = function() return 'Caucasus' end }
+end
+
 -- Stub selection.snapshot.
 package.preload['dcs_sms_me.selection'] = function()
     return {
@@ -79,6 +86,9 @@ do
     check('content has meta.name',
           captured.content and captured.content:find('%["name"%]%s*=%s*"test_jet"', 1) ~= nil,
           'meta.name not found in content')
+    check('content has meta.theatre captured from TheatreOfWarData',
+          captured.content and captured.content:find('%["theatre"%]%s*=%s*"Caucasus"', 1) ~= nil,
+          'meta.theatre not found in content')
 end
 
 -- Case: save_selection with empty selection returns nil + reason.

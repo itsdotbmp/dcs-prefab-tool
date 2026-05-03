@@ -29,21 +29,39 @@ do
         if ok2 then TextBox = mod2 end
     end
 end
-local ListBox; do local ok, mod = pcall(require, 'ListBox'); if ok then ListBox = mod end end
+-- Grid + GridHeaderCell are the multi-column equivalents of ListBox. We use
+-- Grid for the prefab library so each prefab's metadata gets its own column
+-- (Name / Theatre / G / S / Z / D) instead of being stuffed into a single
+-- formatted line. pcall-guarded so the module still loads in environments
+-- where these widgets aren't bound (e.g. test VMs or older dxgui builds).
+local Grid;            do local ok, mod = pcall(require, 'Grid');            if ok then Grid            = mod end end
+local GridHeaderCell;  do local ok, mod = pcall(require, 'GridHeaderCell');  if ok then GridHeaderCell  = mod end end
 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
 local undo       = require('dcs_sms_me.undo')
+local dtc_skins  = require('dcs_sms_me.dtc_skins')
 
--- Apply an ME-native skin by name. The Skin module auto-generates one
--- function per entry in dxgui/skins/skinME/skin_names.lua, so calling
--- e.g. Skin.buttonSkin_ME() returns the dark-blue ME button skin. Falls
--- back silently if either the function isn't registered or the widget
--- doesn't accept setSkin.
+-- Apply a skin by name. Resolves in this order:
+--   * 'dtc_button' / 'dtc_grid' / 'dtc_grid_header' → DTC-dialog-style skins
+--     built at runtime in dtc_skins.lua. These give the small dark-blue
+--     ADD/EDIT button look + the navy grid look from me_DTCnew.dlg.
+--   * any other name → looked up in the Skin module, which auto-generates
+--     one function per entry in dxgui/skins/skinME/skin_names.lua (e.g.
+--     Skin.staticSkin_ME, Skin.editBoxSkin_ME).
+-- Failures (missing skin builder, widget without setSkin, runtime error)
+-- degrade silently so the widget keeps its default skin.
 local function try_skin(widget, skin_name)
     pcall(function()
-        local fn = Skin[skin_name]
-        if not (fn and widget and widget.setSkin) then return end
-        local s = fn()
+        if not (widget and widget.setSkin) then return end
+        local s
+        if     skin_name == 'dtc_button'      then s = dtc_skins.button()
+        elseif skin_name == 'dtc_grid'        then s = dtc_skins.grid()
+        elseif skin_name == 'dtc_grid_header' then s = dtc_skins.grid_header()
+        else
+            local fn = Skin[skin_name]
+            if not fn then return end
+            s = fn()
+        end
         if s then widget:setSkin(s) end
     end)
 end
@@ -56,7 +74,7 @@ local W = {
     name_input = nil,
     save_btn   = nil,
     reload_btn = nil,
-    list_box   = nil,
+    grid       = nil,
     list_label = nil,
     rotation_input = nil,
     place_click_btn   = nil,
@@ -80,38 +98,51 @@ local function set_status(text)
 end
 M._set_status = set_status  -- exposed for later tasks
 
+-- Build a Static cell widget for a Grid cell. Inline helper so the cell
+-- skin and the optional tooltip are applied consistently.
+local function make_cell(text, tooltip)
+    local s = Static.new(tostring(text or ''))
+    try_skin(s, 'staticSkin_ME')
+    if tooltip and s.setTooltipText then
+        pcall(function() s:setTooltipText(tostring(tooltip)) end)
+    end
+    return s
+end
+
 local function refresh_list()
     W.rows = prefab_ops.scan_dir() or {}
-    W.list_items = {}      -- index → ListBoxItem widget, parallel to W.rows
     pcall(function()
         if W.list_label and W.list_label.setText then
             W.list_label:setText(string.format('Prefabs (%d)', #W.rows))
         end
     end)
     pcall(function()
-        if not W.list_box then return end
-        -- Clear existing items: real ListBox API is removeAllItems / clear.
-        if W.list_box.removeAllItems then W.list_box:removeAllItems()
-        elseif W.list_box.clear then W.list_box:clear() end
+        if not W.grid then return end
+        -- removeAllRows wipes both row structures and any cell widgets we
+        -- inserted in the previous refresh — equivalent to ListBox's
+        -- removeAllItems for our purposes.
+        if W.grid.removeAllRows then W.grid:removeAllRows() end
 
         for i, r in ipairs(W.rows) do
-            local label
+            -- Grid is 0-indexed for both columns and rows.
+            W.grid:insertRow(nil)  -- nil → use rowHeight from gridSkin_ME (30px)
+            local row = i - 1
+
             if r.error then
-                label = string.format('%s    [ERROR: %s]', r.name, tostring(r.error):sub(1, 40))
+                local err_text = tostring(r.error)
+                W.grid:setCell(0, row, make_cell('[ERROR] ' .. r.name, err_text))
+                W.grid:setCell(1, row, make_cell(err_text:sub(1, 40), err_text))
+                W.grid:setCell(2, row, make_cell(''))
+                W.grid:setCell(3, row, make_cell(''))
+                W.grid:setCell(4, row, make_cell(''))
+                W.grid:setCell(5, row, make_cell(''))
             else
-                label = string.format('%s    %s | %dg %ds %dz %dd',
-                    r.name,
-                    r.theatre or '?',
-                    r.group_count or 0,
-                    r.static_count or 0,
-                    r.zone_count or 0,
-                    r.drawing_count or 0)
-            end
-            -- Real ListBox API: newItem(text) creates and inserts a
-            -- ListBoxItem; insertItem(text) (string arg) does NOT exist.
-            if W.list_box.newItem then
-                local item = W.list_box:newItem(label)
-                W.list_items[i] = item
+                W.grid:setCell(0, row, make_cell(r.name, r.name))
+                W.grid:setCell(1, row, make_cell(r.theatre or '?'))
+                W.grid:setCell(2, row, make_cell(r.group_count   or 0))
+                W.grid:setCell(3, row, make_cell(r.static_count  or 0))
+                W.grid:setCell(4, row, make_cell(r.zone_count    or 0))
+                W.grid:setCell(5, row, make_cell(r.drawing_count or 0))
             end
         end
     end)
@@ -166,7 +197,7 @@ local function show_overlay(message, buttons)
             local btn = Button.new()
             btn:setBounds(10 + (i - 1) * (bw + 10), h - 42, bw, 22)
             btn:setText(b.label or '?')
-            try_skin(btn, 'buttonSkin_ME')
+            try_skin(btn, 'dtc_button')
             btn:addChangeCallback(function()
                 pcall(b.on_click or function() end)
                 close()
@@ -244,36 +275,32 @@ local function require_selection(action_label)
     return row
 end
 
--- List-row select callback.
--- ListBox's selection-change callback fires with no args (the registered
--- callback in ListBox.construct is `function() self:onSelectionChange() end`).
--- Read the current selection directly from W.list_box.
+-- Grid-row select callback.
+-- Grid:getSelectedRow() returns the 0-based row index, or -1 if nothing is
+-- selected. Map to W.rows[idx+1]. The callback is wired both via
+-- addSelectRowCallback (fires on keyboard arrow-key changes) and via an
+-- onMouseDown override that calls grid:selectRow(row) — Grid's built-in
+-- mouse handler does not auto-select on click; see me_openfile.lua's
+-- setupCallbacksAddGrid for the pattern we mirror.
 local function on_list_select(...)
     pcall(function()
-        local picked = W.list_box and W.list_box.getSelectedItem
-                       and W.list_box:getSelectedItem()
-        log.write('sms.me', log.INFO,
-            'on_list_select fired (picked=' .. tostring(picked)
-            .. ', n_items=' .. tostring(#(W.list_items or {})) .. ')')
-        if not picked then
+        if not (W.grid and W.grid.getSelectedRow) then
             W.selected_idx = nil
             return
         end
-        for i, item in ipairs(W.list_items or {}) do
-            if item == picked then
-                W.selected_idx = i
-                local row = selected_row()
-                if row then
-                    set_status('Selected: ' .. tostring(row.name))
-                end
-                log.write('sms.me', log.INFO,
-                    'on_list_select matched index ' .. i
-                    .. ' (' .. tostring(row and row.name or '?') .. ')')
-                return
-            end
+        local idx = W.grid:getSelectedRow()
+        if type(idx) ~= 'number' or idx < 0 then
+            W.selected_idx = nil
+            return
         end
-        log.write('sms.me', log.WARNING,
-            'on_list_select: picked item not found in W.list_items')
+        W.selected_idx = idx + 1
+        local row = selected_row()
+        if row then
+            set_status('Selected: ' .. tostring(row.name))
+        end
+        log.write('sms.me', log.INFO,
+            'on_list_select grid row=' .. tostring(idx)
+            .. ' (' .. tostring(row and row.name or '?') .. ')')
     end)
 end
 
@@ -469,7 +496,7 @@ local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
         local ok_btn = Button.new()
         ok_btn:setBounds(w - 200, h - 42, 90, 22)
         ok_btn:setText('OK')
-        try_skin(ok_btn, 'buttonSkin_ME')
+        try_skin(ok_btn, 'dtc_button')
         ok_btn:addChangeCallback(function()
             local new_name = (input.getText and input:getText()) or ''
             close()
@@ -480,7 +507,7 @@ local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
         local cancel_btn = Button.new()
         cancel_btn:setBounds(w - 100, h - 42, 90, 22)
         cancel_btn:setText('Cancel')
-        try_skin(cancel_btn, 'buttonSkin_ME')
+        try_skin(cancel_btn, 'dtc_button')
         cancel_btn:addChangeCallback(function()
             close()
             pcall(on_cancel or function() end)
@@ -582,10 +609,11 @@ function M.show()
     end
     local ok, err = pcall(function()
         local screen_w, _ = Gui.GetWindowSize()
-        -- Height needs ~30px reserved for the title bar + ~12px for the
-        -- bottom border under the status label, on top of the content
-        -- layout. The previous 320 clipped the status bar.
-        local w, h = 440, 360
+        -- Title bar (~30px) + bottom border (~12px) sit outside the content
+        -- layout, so total height = content y-extent + ~42. Grid block ends
+        -- at y=260 (h=180 → 6 rows at gridSkin_ME's rowHeight=30); status
+        -- label ends at ~362; +~42 → 410.
+        local w, h = 440, 410
         local x = screen_w - w - 20
         local y = 80
 
@@ -612,6 +640,13 @@ function M.show()
             pcall(function()
                 W.window:addHotKeyCallback('Ctrl+Z', function()
                     on_undo_click()
+                end)
+            end)
+            -- Dev reload: drop all dcs_sms_me modules from package.loaded
+            -- and re-bootstrap. Saves a full DCS restart while iterating.
+            pcall(function()
+                W.window:addHotKeyCallback('Ctrl+Shift+R', function()
+                    M.reload()
                 end)
             end)
         end
@@ -643,7 +678,7 @@ function M.show()
         W.save_btn = Button.new()
         W.save_btn:setBounds(w - 90, 26, 80, 22)
         W.save_btn:setText('Save')
-        try_skin(W.save_btn, 'buttonSkin_ME')
+        try_skin(W.save_btn, 'dtc_button')
         W.save_btn:addChangeCallback(on_save_click)
         W.window:insertWidget(W.save_btn)
 
@@ -657,37 +692,66 @@ function M.show()
         W.reload_btn = Button.new()
         W.reload_btn:setBounds(w - 90, 56, 80, 22)
         W.reload_btn:setText('Reload')
-        try_skin(W.reload_btn, 'buttonSkin_ME')
+        try_skin(W.reload_btn, 'dtc_button')
         W.reload_btn:addChangeCallback(on_reload_click)
         W.window:insertWidget(W.reload_btn)
 
-        if ListBox then
-            W.list_box = ListBox.new()
-        else
-            W.list_box = Static.new()
-            if W.list_box.setText then W.list_box:setText('ListBox not available') end
-        end
-        W.list_box:setBounds(10, 80, w - 20, 130)
-        try_skin(W.list_box, 'listBoxSkin_ME')
-        -- DCS ListBox routes USER clicks through `onChange(self, item, dbl)`
-        -- (called from onItemMouseUp → onChangeNew). The selection-change
-        -- callback fires only for programmatic selections. Override onChange
-        -- so user clicks update our W.selected_idx; also register on
-        -- selection-change as a belt-and-braces.
-        W.list_box.onChange = function(_self, item, _dbl)
-            on_list_select(W.list_box)
-        end
-        if W.list_box.addSelectionChangeCallback then
-            pcall(function() W.list_box:addSelectionChangeCallback(on_list_select) end)
-        end
-        if W.list_box.addItemMouseUpCallback then
-            pcall(function() W.list_box:addItemMouseUpCallback(on_list_select) end)
-        end
-        W.window:insertWidget(W.list_box)
+        if Grid and GridHeaderCell then
+            W.grid = Grid.new()
+            try_skin(W.grid, 'dtc_grid')
 
-        -- Action panel
+            -- Six columns, sized for the 420px content area (440 - 20px padding).
+            -- Numeric counter columns are tight (35px) since they hold one or
+            -- two digits; Name gets the lion's share.
+            local cols = {
+                { name = 'Name',     width = 190 },
+                { name = 'Theatre',  width = 90  },
+                { name = 'G',        width = 35  },
+                { name = 'S',        width = 35  },
+                { name = 'Z',        width = 35  },
+                { name = 'D',        width = 35  },
+            }
+            for _, c in ipairs(cols) do
+                local hc = GridHeaderCell.new()
+                try_skin(hc, 'dtc_grid_header')
+                if hc.setText then hc:setText(c.name) end
+                W.grid:insertColumn(c.width, hc)
+            end
+
+            -- Mirror me_openfile.lua: Grid's default onMouseDown is empty, so
+            -- mouse clicks don't change the selected row. Override it to call
+            -- selectRow(row) for the clicked row, which then triggers
+            -- addSelectRowCallback.
+            W.grid.onMouseDown = function(self, x, y, button)
+                if button ~= 1 then return end
+                pcall(function()
+                    local _, row = self:getMouseCursorColumnRow(x, y)
+                    if row and row >= 0 then
+                        self:selectRow(row)
+                        on_list_select()
+                    end
+                end)
+            end
+            if W.grid.addSelectRowCallback then
+                pcall(function()
+                    W.grid:addSelectRowCallback(function(_grid, _curr, _prev)
+                        on_list_select()
+                    end)
+                end)
+            end
+        else
+            -- Fallback: minimal Static so the window still constructs in
+            -- environments missing Grid (older dxgui builds, test VMs).
+            W.grid = Static.new()
+            if W.grid.setText then W.grid:setText('Grid widget not available') end
+        end
+        W.grid:setBounds(10, 80, w - 20, 180)
+        W.window:insertWidget(W.grid)
+
+        -- Action panel (y-offsets shifted down 50px because the grid above
+        -- is now h=180 instead of the ListBox's h=130).
         local rotation_label = Static.new()
-        rotation_label:setBounds(10, 218, 60, 22)
+        rotation_label:setBounds(10, 268, 60, 22)
         rotation_label:setText('Rotation:')
         try_skin(rotation_label, 'staticSkin_ME')
         W.window:insertWidget(rotation_label)
@@ -698,57 +762,57 @@ function M.show()
             W.rotation_input = Static.new()
             W.rotation_input.setText = W.rotation_input.setText  -- API parity stub
         end
-        W.rotation_input:setBounds(70, 218, 50, 22)
+        W.rotation_input:setBounds(70, 268, 50, 22)
         if W.rotation_input.setText then W.rotation_input:setText('0') end
         try_skin(W.rotation_input, 'editBoxSkin_ME')
         W.window:insertWidget(W.rotation_input)
 
         local rotation_unit = Static.new()
-        rotation_unit:setBounds(122, 218, 20, 22)
+        rotation_unit:setBounds(122, 268, 20, 22)
         rotation_unit:setText('°')
         try_skin(rotation_unit, 'staticSkin_ME')
         W.window:insertWidget(rotation_unit)
 
-        local btn_y_1 = 244
+        local btn_y_1 = 294
         W.place_click_btn = Button.new()
         W.place_click_btn:setBounds(10, btn_y_1, 130, 22)
         W.place_click_btn:setText('Place at click')
-        try_skin(W.place_click_btn, 'buttonSkin_ME')
+        try_skin(W.place_click_btn, 'dtc_button')
         W.place_click_btn:addChangeCallback(on_place_click)
         W.window:insertWidget(W.place_click_btn)
 
         W.place_origin_btn = Button.new()
         W.place_origin_btn:setBounds(146, btn_y_1, 130, 22)
         W.place_origin_btn:setText('Place at original')
-        try_skin(W.place_origin_btn, 'buttonSkin_ME')
+        try_skin(W.place_origin_btn, 'dtc_button')
         W.place_origin_btn:addChangeCallback(on_place_origin_click)
         W.window:insertWidget(W.place_origin_btn)
 
-        local btn_y_2 = 270
+        local btn_y_2 = 320
         W.rename_btn = Button.new()
         W.rename_btn:setBounds(10, btn_y_2, 80, 22)
         W.rename_btn:setText('Rename')
-        try_skin(W.rename_btn, 'buttonSkin_ME')
+        try_skin(W.rename_btn, 'dtc_button')
         W.rename_btn:addChangeCallback(on_rename_click)
         W.window:insertWidget(W.rename_btn)
 
         W.delete_btn = Button.new()
         W.delete_btn:setBounds(96, btn_y_2, 80, 22)
         W.delete_btn:setText('Delete')
-        try_skin(W.delete_btn, 'buttonSkin_ME')
+        try_skin(W.delete_btn, 'dtc_button')
         W.delete_btn:addChangeCallback(on_delete_click)
         W.window:insertWidget(W.delete_btn)
 
         W.undo_btn = Button.new()
         W.undo_btn:setBounds(182, btn_y_2, 130, 22)
         W.undo_btn:setText('Undo last place')
-        try_skin(W.undo_btn, 'buttonSkin_ME')
+        try_skin(W.undo_btn, 'dtc_button')
         W.undo_btn:addChangeCallback(on_undo_click)
         W.window:insertWidget(W.undo_btn)
 
         -- Status
         W.status = Static.new()
-        W.status:setBounds(10, 296, w - 20, 16)
+        W.status:setBounds(10, 346, w - 20, 16)
         W.status:setText('Ready.')
         try_skin(W.status, 'staticSkin_ME')
         W.window:insertWidget(W.status)
@@ -777,6 +841,60 @@ function M.toggle()
     else
         M.show()
     end
+end
+
+-- Tear down the visible window. Used by the dev reload before clearing
+-- package.loaded — the dxgui Lua bind has no explicit destroy(), but
+-- hiding + dropping our reference removes the window from the visible
+-- scene graph and lets the next module instance start from scratch.
+-- The OLD W table goes away with the module when package.loaded clears.
+function M.dispose()
+    pcall(function()
+        if W.window and W.window.setVisible then W.window:setVisible(false) end
+    end)
+end
+
+-- Dev-loop helper: dispose, clear package.loaded for our modules, then
+-- re-require the bootstrap. Lets you iterate on Lua without restarting
+-- DCS. Works cleanly because the Customize-menu item's click callback
+-- (set in menu.lua) does `require('dcs_sms_me.window')` AT CLICK TIME,
+-- not at registration — so once package.loaded is cleared, the menu
+-- entry naturally picks up the new code on the next click. Same for
+-- the floating-button fallback. The menu widget itself is in the dxgui
+-- scene and outlives the require, and add_menu_entry's `_dcs_sms_prefab_added`
+-- idempotency flag prevents a duplicate entry on the re-bootstrap.
+function M.reload()
+    log.write('sms.me', log.INFO, 'dev reload triggered')
+    pcall(M.dispose)
+
+    local cleared = {}
+    for k in pairs(package.loaded) do
+        if type(k) == 'string' and k:find('^dcs_sms_me') then
+            cleared[#cleared + 1] = k
+        end
+    end
+    for _, k in ipairs(cleared) do package.loaded[k] = nil end
+    log.write('sms.me', log.INFO, 'cleared ' .. #cleared .. ' modules from package.loaded')
+
+    -- Re-require the bootstrap. Any error surfaces in dcs.log; the old
+    -- window is already gone so a failed reload leaves the user with
+    -- "no Prefab Manager" rather than a half-broken one.
+    local ok, err = pcall(require, 'dcs_sms_me.init')
+    if not ok then
+        log.write('sms.me', log.ERROR, 'reload failed: ' .. tostring(err))
+        return false, tostring(err)
+    end
+    log.write('sms.me', log.INFO, 'dev reload completed')
+
+    -- Show the freshly reloaded window. We have to go through the new
+    -- module — our M is the OLD one; the just-required init.lua already
+    -- reset package.loaded['dcs_sms_me.window'], so a fresh require picks
+    -- up the new code.
+    pcall(function()
+        local fresh = require('dcs_sms_me.window')
+        if fresh and fresh.show then fresh.show() end
+    end)
+    return true
 end
 
 return M
