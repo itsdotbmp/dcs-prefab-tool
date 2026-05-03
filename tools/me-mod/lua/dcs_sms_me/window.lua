@@ -92,31 +92,100 @@ local function selected_row()
 end
 M._selected_row = selected_row
 
--- Save click handler (wired in this task).
+-- ---------------------------------------------------------------------------
+-- Modal overlay helper. Shows a small centered window with a message and
+-- up to 3 buttons. Each button calls the supplied callback then closes the
+-- overlay. Buttons:
+--   { {label='OK',  on_click=function() ... end}, ... }
+-- ---------------------------------------------------------------------------
+
+local function show_overlay(message, buttons)
+    local screen_w, screen_h = Gui.GetWindowSize()
+    local w, h = 420, 130
+    local x = (screen_w - w) / 2
+    local y = (screen_h - h) / 2
+
+    local overlay = nil
+    local function close()
+        pcall(function() if overlay and overlay.setVisible then overlay:setVisible(false) end end)
+    end
+
+    local ok, err = pcall(function()
+        overlay = Window.new(x, y, w, h, '')
+        overlay:setSkin(Skin.windowSkin())
+        overlay:setVisible(true)
+        overlay:setDraggable(true)
+        overlay:setResizable(false)
+        overlay:setZOrder(220)
+
+        local msg = Static.new()
+        msg:setBounds(10, 10, w - 20, h - 60)
+        msg:setText(tostring(message or ''))
+        overlay:insertWidget(msg)
+
+        local n = #buttons
+        local bw = math.floor((w - 20 - (n - 1) * 10) / n)
+        for i, b in ipairs(buttons) do
+            local btn = Button.new()
+            btn:setBounds(10 + (i - 1) * (bw + 10), h - 36, bw, 22)
+            btn:setText(b.label or '?')
+            btn:addChangeCallback(function()
+                pcall(b.on_click or function() end)
+                close()
+            end)
+            overlay:insertWidget(btn)
+        end
+    end)
+    if not ok then
+        log.write('sms.me', log.ERROR, 'overlay construction failed: ' .. tostring(err))
+        -- Best-effort: just call the first (default) button to keep flow.
+        if buttons[1] and buttons[1].on_click then pcall(buttons[1].on_click) end
+    end
+end
+M._show_overlay = show_overlay  -- exposed for later tasks
+
+local function focus_name_input()
+    pcall(function()
+        if W.name_input and W.name_input.setFocused then W.name_input:setFocused(true) end
+    end)
+end
+
+local function do_save(name)
+    local ok, path_or_err = prefab_ops.save_selection(name)
+    if ok then
+        set_status('Saved ' .. name .. ' → ' .. tostring(path_or_err))
+        log.write('sms.me.prefab', log.INFO, 'saved ' .. name)
+        refresh_list()
+    else
+        set_status('Save failed: ' .. tostring(path_or_err))
+        log.write('sms.me.prefab', log.ERROR, 'save failed: ' .. tostring(path_or_err))
+    end
+end
+
 local function on_save_click()
     pcall(function()
         local name = ''
         if W.name_input and W.name_input.getText then name = W.name_input:getText() or '' end
         if name == '' then
-            set_status('Empty name — falling back to timestamped filename. See dcs.log.')
+            set_status('Empty name — using timestamped fallback. See dcs.log.')
             name = 'prefab-' .. os.date('!%Y%m%dT%H%M%SZ')
             log.write('sms.me.prefab', log.WARNING, 'save with empty name → ' .. name)
-        end
-        if prefab_ops.exists(name) then
-            -- Modal handling lands in Task 13. For now, log and refuse.
-            set_status('Name "' .. name .. '" already exists. Pick a different name (Overwrite UI lands later).')
-            log.write('sms.me.prefab', log.WARNING, 'save refused — collision: ' .. name)
+            do_save(name)
             return
         end
-        local ok, path_or_err = prefab_ops.save_selection(name)
-        if ok then
-            set_status('Saved ' .. name .. ' → ' .. tostring(path_or_err))
-            log.write('sms.me.prefab', log.INFO, 'saved ' .. name)
-            refresh_list()
-        else
-            set_status('Save failed: ' .. tostring(path_or_err))
-            log.write('sms.me.prefab', log.ERROR, 'save failed: ' .. tostring(path_or_err))
+
+        if prefab_ops.exists(name) then
+            show_overlay(
+                'Prefab "' .. name .. '" already exists.\n\nOverwrite, rename, or cancel?',
+                {
+                    { label = 'Overwrite', on_click = function() do_save(name) end },
+                    { label = 'Rename',    on_click = function() focus_name_input(); set_status('Type a new name and click Save.') end },
+                    { label = 'Cancel',    on_click = function() set_status('Save cancelled.') end },
+                })
+            return
         end
+
+        do_save(name)
     end)
 end
 
