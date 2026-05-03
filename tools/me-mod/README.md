@@ -56,35 +56,55 @@ skeleton. To assemble a usable OvGME mod by hand:
 
 Automation for this is deferred. The CLI is the supported install path.
 
-## Manual smoke checklist
+## Manual smoke checklist (Sub-project 3 — Prefab Manager)
 
-After install, run through this list to verify the mod works end-to-end.
+CI runs the parity + unit tests under `tools/me-mod/test/run-tests.ps1`. This checklist is the release gate; run by hand against a fresh DCS install before merging significant changes to the mod.
 
-1. **Install:** run `dcs-sms install-me-mod`. Verify
-   `<DCS>\MissionEditor\MissionEditor.lua.dcs-sms.bak` exists. Verify the
-   `require('dcs_sms_me.init')` line was appended (between sentinel markers).
-   Verify `<DCS>\MissionEditor\modules\dcs_sms_me\` contains all five files.
-2. **Cold start:** open the Mission Editor. Verify the small "dcs-sms ME"
-   window appears in the upper right. Verify `dcs.log` shows
-   `[sms.me] window opened`.
-3. **Empty selection:** with nothing selected, click the button. Verify
-   the in-window status reads "No selection — nothing dumped". Verify
-   `dcs.log` shows a `WARNING` line. Verify NO file is written under
-   `Saved Games\DCS\dcs-sms\me\`.
-4. **Single group:** place one ground unit, select it, click the button.
-   Verify a dump file appears. Open it in a text editor; confirm the unit
-   table contains expected keys (`units`, `route`, `x`, `y`) and that
-   mixed-key fields like `callsign` look right.
-5. **Multi-selection:** open the multi-select panel, select several groups,
-   a trigger zone, a drawing. Click. Verify all categories appear in the
-   dump.
-6. **Failure path:** rename `me_multiSelection.getSelectedObjects` (or stub
-   it to throw) to simulate a DCS patch breakage. Click. Verify the status
-   label shows "Failed: ..." and `dcs.log` shows the error. Verify the ME
-   does not crash.
-7. **Uninstall:** run `dcs-sms uninstall-me-mod`. Verify
-   `MissionEditor.lua` is restored. Verify the modules dir is gone. Verify
-   the `.bak` file is gone.
+### Setup
+
+1. Run `tools/dcs-sms.exe install-me-mod`. Open the ME. Verify the Tools menu has a "DCS-SMS Prefab Manager" entry. Verify the window does NOT appear automatically.
+   - If the floating-button fallback fires instead (visible in `dcs.log` as `Tools menu API unavailable; using floating-button fallback`), that's expected on builds where the menu API isn't exposed — verify the floating button appears at top-right and clicking it opens the Manager.
+2. Open Tools → "DCS-SMS Prefab Manager". Window appears with all panels (Save / Library / Action / Status).
+
+### Save flow
+
+3. Place one A-10C in the ME. Select it. Type `test_jet` in the name field. Click **Save**. Verify file at `Saved Games\DCS\dcs-sms\prefabs\test_jet.lua` and the library refreshes to show it.
+4. With nothing selected, click **Save** with name `empty`. Status: `No selection — nothing to save`. No file written.
+5. With selection, click **Save** with name `test_jet` (collision). Modal appears with **Overwrite / Rename / Cancel**. Pick Cancel — no change. Pick Overwrite — file overwritten.
+6. Multi-selection: select two groups + one trigger zone + one drawing. Save as `complex_test`. Open the saved file and verify all four sections are populated.
+
+### Place flow — at click
+
+7. Library shows `test_jet` sorted A-Z. Select it, set rotation 0, click **Place at click**. Verify the title bar text changes to `Click on map to place test_jet (Esc to cancel)` and the button text becomes `Cancel`.
+8. Click somewhere on the map. Verify the A-10C appears at that location, status confirms placement, **Ctrl-Z** removes it (group disappears from the ME).
+9. Re-place `test_jet`. Save the `.miz`, close the ME, reopen the `.miz`. Verify the placed group survived (no dcs-sms-specific state needed at runtime).
+10. Place at click with rotation 90. Verify the group is rotated 90° from how it was saved.
+11. Place at click then press **Esc**. Verify exit from place-pending, no entity injected.
+
+### Place flow — at original
+
+12. Save a prefab that includes a group near a specific map building. Click **Place at original**. Verify it lands at the original `meta.world_anchor`, not at any clicked location.
+
+### Best-effort partial-failure
+
+13. Manually corrupt a prefab file to have one valid group + one group with a bogus DCS type. Place it. Verify status: `Placed N of M entities — see dcs.log`. The valid group is in the mission; the corrupt one is logged.
+
+### Library
+
+14. Save 3 prefabs with names `a`, `m`, `z`. Verify list is sorted A-Z.
+15. Rename `m` to `middle`. Verify the file is renamed AND `meta.name` is updated inside (open the file).
+16. Delete `middle`. Confirmation modal. Confirm. Verify file gone, list refreshed.
+17. Manually drop a malformed `.lua` file into the prefabs dir. Click **Reload**. Verify it appears in the list with `[ERROR: ...]` rather than breaking the list.
+
+### Undo
+
+18. Place a prefab. Press **Ctrl-Z** (window focused). Verify removal.
+19. Press **Ctrl-Z** again. Status: `Nothing to undo.`
+20. Place. Click somewhere outside the Prefab Manager window to remove its focus. Press **Ctrl-Z**. Verify nothing happens (window not focused — broad ME-wide undo is [issue #25](https://github.com/nielsvaes/dcs-sms/issues/25)).
+
+### Cleanup
+
+21. Run `tools/dcs-sms.exe uninstall-me-mod`. Verify everything removed (modules dir gone, `MissionEditor.lua` patch reverted from backup).
 
 ## Running the unit tests
 
