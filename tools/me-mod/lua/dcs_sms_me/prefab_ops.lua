@@ -272,49 +272,163 @@ end
 -- pcall guards degrade missing symbols to per-entity logged failures;
 -- the overall place() still returns a partial record.
 
--- Groups (and statics, which are groups of type='static').
--- Blessed insertion path from me_copy_paste.lua:duplicateGroup lines 378-382:
---   Mission.create_group_objects(group)
---   table.insert(country[group.type].group, group)
---   Mission.create_group_map_objects(group)
--- We need Mission.missionCountry to resolve country; group.boss should carry
--- the country name when the prefab was distilled from the selection.
-local function inject_group(group)
-    local ok_req, Mission = pcall(require, 'me_mission')
-    if not ok_req or not Mission then
-        return nil, 'me_mission not available'
-    end
-    local country_name = (type(group.boss) == 'table' and group.boss.name)
-                      or (type(group.boss) == 'string' and group.boss)
-    if not country_name then
-        return nil, 'group has no boss.name — cannot resolve country'
-    end
-    local missionCountry = Mission.missionCountry
-    if type(missionCountry) ~= 'table' then
-        return nil, 'Mission.missionCountry not available'
-    end
-    local country = missionCountry[country_name]
-    if not country then
-        return nil, 'country "' .. country_name .. '" not found in mission'
-    end
-    local group_type = group.type
-    if not group_type then
-        return nil, 'group.type is nil'
-    end
-    if not country[group_type] then
-        country[group_type] = { group = {} }
+-- Resolve the country object + name from a prefab group's stored country
+-- info. distill captures the numeric country id (group.country); the ME
+-- mutation API needs the country NAME (as a key into Mission.missionCountry).
+-- Order of attempts:
+--   1. group.country_name (forward-compat — if a future distill writes it)
+--   2. iterate Mission.missionCountry to find a country whose .id == ours
+--   3. CoalitionController.getCountryNameById as a fallback
+-- Returns: country_obj, country_name | nil, error_string
+local function resolve_country(group)
+    local Mission = require('me_mission')
+    if type(Mission.missionCountry) ~= 'table' then
+        return nil, 'Mission.missionCountry unavailable'
     end
 
+    if type(group.country_name) == 'string'
+        and Mission.missionCountry[group.country_name] then
+        return Mission.missionCountry[group.country_name], group.country_name
+    end
+
+    if type(group.country) == 'number' then
+        local id = group.country
+        for name, c in pairs(Mission.missionCountry) do
+            if type(c) == 'table' and c.id == id then
+                return c, name
+            end
+        end
+        local ok, ctrl = pcall(require, 'Mission.CoalitionController')
+        if ok and ctrl and type(ctrl.getCountryNameById) == 'function' then
+            local ok2, name = pcall(ctrl.getCountryNameById, id)
+            if ok2 and type(name) == 'string' then
+                local c = Mission.missionCountry[name]
+                if c then return c, name end
+            end
+        end
+        return nil, 'no country with id=' .. tostring(id) .. ' in current mission'
+    end
+
+    return nil, 'group has no country id or name'
+end
+
+-- Groups (and statics, which are groups of type='static') — full
+-- duplicateGroup-style injection: regenerate ids, set boss links,
+-- prep mapObjects, then create + insert + create_map_objects.
+--
+-- Mirrors the behavior of me_copy_paste.duplicateGroup but:
+--   - resolves country from numeric id (we strip boss during distill)
+--   - skips the Surface check (would pop a UI warning on water-placed)
+--   - skips EPLRS / INUFixPoints / NavTargetPoints regeneration (rare;
+--     v2 work if a real prefab needs them)
+--   - skips link-waypoint resolution (linkUnit/linkParent reference IDs
+--     from the source mission and won't resolve here — nilled out)
+--
+-- Removal (undo) goes through Mission.remove_group(group_obj) — see the
+-- M._remove.group wrapper below.
+local function inject_group(group)
+    local Mission = require('me_mission')
+
+    local country, country_name_or_err = resolve_country(group)
+    if not country then return nil, country_name_or_err end
+    local country_name = country_name_or_err
+
+    if not group.type or group.type == '' then
+        return nil, 'group has no type field'
+    end
+    if not country[group.type] then country[group.type] = { group = {} } end
+    if not country[group.type].group then country[group.type].group = {} end
+
+    -- Regenerate group identity. check_group_name appends -1, -2, ... if
+    -- the name is taken; getNewGroupId reserves a fresh id. Both are
+    -- module-public functions in me_mission.
+    local fresh_name = group.name or 'group'
+    if type(Mission.check_group_name) == 'function' then
+        local ok, n = pcall(Mission.check_group_name, fresh_name)
+        if ok and type(n) == 'string' then fresh_name = n end
+    end
+    group.name = fresh_name
+    if type(Mission.getNewGroupId) == 'function' then
+        local ok, gid = pcall(Mission.getNewGroupId)
+        if ok then group.groupId = gid end
+    end
+    if type(Mission.group_by_name) == 'table' then
+        Mission.group_by_name[group.name] = group
+    end
+    if type(Mission.group_by_id) == 'table' and group.groupId then
+        Mission.group_by_id[group.groupId] = group
+    end
+    group.boss = country
+    group.mapObjects = group.mapObjects or { units = {}, zones = {}, route = {} }
+
+    -- Color (best-effort — non-static groups carry color from coalition)
+    if type(Mission.countryCoalition) == 'table'
+        and Mission.countryCoalition[country_name]
+        and Mission.countryCoalition[country_name].color then
+        group.color = Mission.countryCoalition[country_name].color
+    end
+
+    -- Regenerate units. Each unit needs a fresh name+id and back-link to
+    -- the group. Strip parking links — they reference airfield slots from
+    -- the source mission that won't be valid at the new anchor.
+    if type(group.units) == 'table' then
+        for _, u in pairs(group.units) do
+            if type(u) == 'table' then
+                if type(Mission.getUnitName) == 'function' then
+                    local ok, nm = pcall(Mission.getUnitName, group.name)
+                    if ok and type(nm) == 'string' then u.name = nm end
+                end
+                if type(Mission.getNewUnitId) == 'function' then
+                    local ok, uid = pcall(Mission.getNewUnitId)
+                    if ok then u.unitId = uid end
+                end
+                u.boss = group
+                u.parking = nil
+                u.parking_landing = nil
+                u.parking_id = nil
+                u.parking_landing_id = nil
+                if type(Mission.unit_by_name) == 'table' and u.name then
+                    Mission.unit_by_name[u.name] = u
+                end
+                if type(Mission.unit_by_id) == 'table' and u.unitId then
+                    Mission.unit_by_id[u.unitId] = u
+                end
+            end
+        end
+    end
+
+    -- Reset route waypoints (only present on non-static groups). Clear
+    -- linkUnit/linkParent — they reference units from the source mission
+    -- that don't exist here. Targets array also gets cleared (per
+    -- duplicateGroup line 306) since target IDs are source-mission-scoped.
+    if type(group.route) == 'table' and type(group.route.points) == 'table' then
+        for _, wpt in pairs(group.route.points) do
+            if type(wpt) == 'table' then
+                wpt.boss = group
+                wpt.linkUnit = nil
+                wpt.linkParent = nil
+                wpt.targets = {}
+                wpt.airdromeId = nil
+                wpt.helipadId = nil
+            end
+        end
+    end
+
+    -- Insertion sequence (me_copy_paste.duplicateGroup lines 380-382)
     local ok_cgo, cgo_err = pcall(Mission.create_group_objects, group)
     if not ok_cgo then
-        return nil, 'create_group_objects failed: ' .. tostring(cgo_err)
+        return nil, 'create_group_objects: ' .. tostring(cgo_err)
     end
-    table.insert(country[group_type].group, group)
+
+    table.insert(country[group.type].group, group)
+
     local ok_cgmo, cgmo_err = pcall(Mission.create_group_map_objects, group)
     if not ok_cgmo then
-        -- Group is in the data table but map objects failed; still partial success.
-        return group.groupId or true, 'create_group_map_objects failed (map may need refresh): ' .. tostring(cgmo_err)
+        -- Already in the country's group table; visuals failed though.
+        return group.groupId or true,
+            'create_group_map_objects: ' .. tostring(cgmo_err)
     end
+
     return group.groupId or true
 end
 
@@ -512,6 +626,15 @@ function M.place(prefab, opts)
             }
         else
             record.errors[#record.errors + 1] = 'drawing ' .. tostring(d_template.name) .. ': ' .. tostring(err)
+        end
+    end
+
+    -- Log per-entity errors so the user can see WHY entities failed,
+    -- not just a count. The 'see log' message above only helps if the
+    -- log actually has the lines.
+    if log and log.write and #record.errors > 0 then
+        for _, e in ipairs(record.errors) do
+            log.write('sms.me.prefab', log.ERROR, 'place: ' .. tostring(e))
         end
     end
 
