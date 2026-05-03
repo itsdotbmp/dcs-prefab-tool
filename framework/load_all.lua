@@ -40,6 +40,9 @@ local modules = {
   "task.lua",
   "commands.lua",
   "options.lua",
+  "utils_serialize.lua",
+  "prefab_distill.lua",
+  "prefab.lua",
 }
 
 for _, name in ipairs(modules) do
