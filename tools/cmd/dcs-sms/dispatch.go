@@ -56,6 +56,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  status        report whether the hook is alive and a mission is loaded")
 	fmt.Fprintln(w, "  tail-log      read recent lines from dcs.log")
 	fmt.Fprintln(w, "  install-hook  install/update the Lua hook in Saved Games/DCS*/Scripts/Hooks/")
+	fmt.Fprintln(w, "  install-me-mod   install/update the Mission Editor mod into <DCS install>/MissionEditor/")
 	fmt.Fprintln(w, "  gen-units     regenerate framework/constants/{units,statics}.lua from dcs-lua-datamine")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Run `dcs-sms <command> --help` for command-specific flags.")
