@@ -627,25 +627,73 @@ function M.place(prefab, opts)
         end
     end
 
-    -- Drawings: copyObjToCoord(drawing, target_x, target_y) eventually
-    -- calls MapWindow.updateDrawObject(mapId, {target_x, target_y}),
-    -- which shifts the visual by (target_x - drawing.mapData.x). For
-    -- that shift to land the drawing at the new world anchor, we must
-    -- LEAVE mapData.x at its post-distill (anchor-relative) value and
-    -- pass target_x = anchor + that value. Pre-setting mapData.x to
-    -- world coords made the shift zero — the bug the user hit twice.
+    -- Drawings — pipeline analysis:
     --
-    -- We also must not run transform_coords on drawings, because it
-    -- would absolute-ize the inner geometry (polygon vertices etc.).
-    -- The renderer treats those geometry x/y as absolute world coords
-    -- already; distill rebased them to anchor-relative; so leaving them
-    -- untouched here means after the moveObject shift they end up at
-    -- (anchor-relative + anchor) = correct world position.
+    -- ME stores polygon vertices (mapData.points[i].{x,y}) RELATIVE to
+    -- mapData.{x,y}. The renderer computes vertex world position as
+    -- `mapData.x + points[i].x`. That's why ME's own copy/paste
+    -- (me_copy_paste.lua:651-653) just translates mapData.{x,y} and
+    -- never touches points.
+    --
+    -- Distill's rebase_xy walks recursively and subtracts the centroid
+    -- from every {x,y} pair — including each polygon vertex. That step
+    -- is wrong for drawings because the vertices are deltas, not
+    -- absolute coords. The mapData.{x,y} subtraction is correct; the
+    -- per-vertex subtraction shifts each vertex by -C, breaking the
+    -- "relative-to-mapData" invariant the renderer relies on.
+    --
+    -- Net effect at place time: vertices end up at (r_i - C) instead of
+    -- r_i, and the renderer's `mapData.x + points[i]` formula yields
+    -- a final position offset by -C from where it should be.
+    --
+    -- Tactical fix here: after deep_copy, undo the distill subtraction
+    -- by adding world_anchor (= centroid C) back to each polygon vertex.
+    -- This restores the relative-to-mapData invariant before the
+    -- drawing reaches copyObjToCoord. Cleaner long-term fix would be to
+    -- exclude geometry sub-arrays from distill's rebase walk; revisit
+    -- when re-saving prefabs becomes acceptable.
+    --
+    -- copyObjToCoord internals: it calls MapWindow.createDrawObject
+    -- (renders using mapData) then moveObject(target_x, target_y) which
+    -- updates mapData.{x,y} via updateDrawObject. So we must LEAVE
+    -- mapData.{x,y} at the post-distill value and pass target = anchor +
+    -- post_distill_xy. That's what M._place_xy with rotation=0 returns.
     --
     -- Rotation of drawings is not handled (would require rotating each
     -- inner point around mapData center). Deferred to v2.
+    local ax, ay = 0, 0
+    if prefab.meta and prefab.meta.world_anchor then
+        ax = prefab.meta.world_anchor.x or 0
+        ay = prefab.meta.world_anchor.y or 0
+    end
+
     for _, d_template in ipairs(prefab.drawings or {}) do
         local d = deep_copy(d_template)
+
+        -- Undo distill's incorrect subtraction on polygon vertices /
+        -- other geometry sub-arrays by adding the prefab's world_anchor
+        -- back to each {x,y}. mapData.{x,y} (the center) is the only
+        -- field we DON'T touch here — it stays anchor-relative for the
+        -- copyObjToCoord shift to land it at the right world position.
+        if d.mapData then
+            for k, v in pairs(d.mapData) do
+                if k ~= 'x' and k ~= 'y' and type(v) == 'table' then
+                    -- Walks into points / vertices / arc_points / etc.
+                    -- Adds (ax, ay) to every {x,y} pair found.
+                    local function unrebase(t)
+                        if type(t) ~= 'table' then return end
+                        if type(t.x) == 'number' and type(t.y) == 'number' then
+                            t.x = t.x + ax
+                            t.y = t.y + ay
+                        end
+                        for _, sub in pairs(t) do
+                            if type(sub) == 'table' then unrebase(sub) end
+                        end
+                    end
+                    unrebase(v)
+                end
+            end
+        end
 
         -- mapData.x/y is at anchor-relative coords from distill. Compute
         -- the new world center; pass it to copyObjToCoord as the target.
