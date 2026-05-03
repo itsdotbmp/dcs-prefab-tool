@@ -43,6 +43,65 @@ func DiscoverFromEnv() (string, bool) {
 // DiscoverFromConfig parses the config file and returns the saved_games
 // value. Returns an error if the file is missing or the key isn't set.
 func DiscoverFromConfig(configPath string) (string, error) {
+	return discoverConfigKey(configPath, "saved_games")
+}
+
+// SaveConfig writes saved_games = "<path>" to configPath, creating parent
+// directories as needed. Preserves any other keys (e.g. dcs_install) already
+// present.
+func SaveConfig(configPath, savedGamesPath string) error {
+	return upsertConfigKey(configPath, "saved_games", savedGamesPath)
+}
+
+// DiscoverFromInstallEnv returns the path from the DCS_SMS_DCS_INSTALL env var.
+func DiscoverFromInstallEnv() (string, bool) {
+	v := os.Getenv("DCS_SMS_DCS_INSTALL")
+	if v == "" {
+		return "", false
+	}
+	return v, true
+}
+
+// DiscoverFromInstallConfig parses the config file and returns the dcs_install
+// value. Returns an error if the file is missing or the key isn't set.
+func DiscoverFromInstallConfig(configPath string) (string, error) {
+	return discoverConfigKey(configPath, "dcs_install")
+}
+
+// SaveInstallConfig writes (or updates) the dcs_install key in configPath.
+// Preserves any other keys (e.g. saved_games) already present.
+func SaveInstallConfig(configPath, installPath string) error {
+	return upsertConfigKey(configPath, "dcs_install", installPath)
+}
+
+// DiscoverInstall applies the priority order for DCS install dir:
+//  1. override (e.g. --dcs-path flag)
+//  2. DCS_SMS_DCS_INSTALL env var
+//  3. configPath's dcs_install key
+//
+// No automatic discovery — DCS install dirs vary too much.
+func DiscoverInstall(override, configPath string) (string, error) {
+	if override != "" {
+		return override, nil
+	}
+	if v, ok := DiscoverFromInstallEnv(); ok {
+		return v, nil
+	}
+	if configPath != "" {
+		v, err := DiscoverFromInstallConfig(configPath)
+		if err == nil {
+			return v, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", fmt.Errorf("reading %s: %w", configPath, err)
+		}
+	}
+	return "", errors.New("could not discover DCS install path; pass --dcs-path or set DCS_SMS_DCS_INSTALL")
+}
+
+// discoverConfigKey is the shared scanner for both saved_games and
+// dcs_install.
+func discoverConfigKey(configPath, key string) (string, error) {
 	f, err := os.Open(configPath)
 	if err != nil {
 		return "", err
@@ -61,7 +120,7 @@ func DiscoverFromConfig(configPath string) (string, error) {
 		if !ok {
 			continue
 		}
-		if strings.TrimSpace(k) != "saved_games" {
+		if strings.TrimSpace(k) != key {
 			continue
 		}
 		return parseTomlString(strings.TrimSpace(v))
@@ -69,17 +128,50 @@ func DiscoverFromConfig(configPath string) (string, error) {
 	if err := scanner.Err(); err != nil {
 		return "", err
 	}
-	return "", errors.New("saved_games key not found in config")
+	return "", fmt.Errorf("%s key not found in config", key)
 }
 
-// SaveConfig writes saved_games = "<path>" to configPath, creating parent
-// directories as needed.
-func SaveConfig(configPath, savedGamesPath string) error {
+// upsertConfigKey writes key = "value" into configPath, replacing any prior
+// line for the same key and preserving everything else. Creates the file
+// (and parent dirs) if needed.
+func upsertConfigKey(configPath, key, value string) error {
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
 		return err
 	}
-	content := fmt.Sprintf("saved_games = %s\n", encodeTomlString(savedGamesPath))
-	return os.WriteFile(configPath, []byte(content), 0o644)
+	var existing []byte
+	if data, err := os.ReadFile(configPath); err == nil {
+		existing = data
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	lines := strings.Split(string(existing), "\n")
+	newLine := fmt.Sprintf("%s = %s", key, encodeTomlString(value))
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		k, _, ok := strings.Cut(trimmed, "=")
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(k) == key {
+			lines[i] = newLine
+			found = true
+			break
+		}
+	}
+	if !found {
+		// Append, ensuring exactly one trailing newline.
+		if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+			lines[len(lines)-1] = newLine
+		} else {
+			lines = append(lines, newLine)
+		}
+		lines = append(lines, "")
+	}
+	return os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0o644)
 }
 
 // DiscoverDefault returns the conventional Windows path:
