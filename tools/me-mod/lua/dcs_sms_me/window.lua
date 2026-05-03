@@ -1,159 +1,307 @@
--- window.lua — dxgui window with a "Print selection" button + status label.
+-- window.lua — Prefab Manager.
 --
--- Imperative widget construction (Button.new, Static.new) for v1 — one
--- button + one label has no real layout. Sub-project 3 will switch to .dlg
--- files when there is real layout to describe.
+-- Single window, all panels visible. Constructed lazily on first show().
+-- All callbacks are pcall-guarded so dxgui or DCS-API failures degrade to
+-- a status-label message rather than crashing the editor.
 --
 -- Public:
---   M.show()    — construct and display the window. Idempotent.
+--   M.show()    — idempotent
+--   M.hide()    — idempotent
+--   M.toggle()  — show if hidden, hide if shown
 
-local Window = require('Window')
-local Static = require('Static')
-local Button = require('Button')
-local Gui    = require('dxgui')
-local Skin   = require('Skin')
+local Window  = require('Window')
+local Static  = require('Static')
+local Button  = require('Button')
+local Gui     = require('dxgui')
+local Skin    = require('Skin')
 
-local selection  = require('dcs_sms_me.selection')
-local serializer = require('dcs_sms_me.serializer')
-local paths      = require('dcs_sms_me.paths')
+-- TextBox and ListBox may not be exposed in every DCS ME GUI build.
+-- Loaded via pcall and falling back to Static placeholders so module
+-- load never fails on a missing widget.
+local TextBox; do local ok, mod = pcall(require, 'TextBox'); if ok then TextBox = mod end end
+local ListBox; do local ok, mod = pcall(require, 'ListBox'); if ok then ListBox = mod end end
+
+local prefab_ops = require('dcs_sms_me.prefab_ops')
+local undo       = require('dcs_sms_me.undo')
 
 local M = {}
 
-local window      = nil
-local statusLabel = nil
+local W = {
+    -- dxgui handles
+    window     = nil,
+    name_input = nil,
+    save_btn   = nil,
+    reload_btn = nil,
+    list_box   = nil,
+    list_label = nil,
+    rotation_input = nil,
+    place_click_btn   = nil,
+    place_origin_btn  = nil,
+    rename_btn = nil,
+    delete_btn = nil,
+    undo_btn   = nil,
+    status     = nil,
 
-local VERSION = '0.1.0'
+    -- runtime state
+    rows           = {},        -- last scan_dir result
+    selected_idx   = nil,        -- index into rows of currently selected library row
+    place_pending  = false,      -- in place-pending mode (Task 12)
+    place_pending_name = nil,    -- name of prefab being placed
+}
 
-local function utc_filename_stamp()
-    -- e.g. "2026-05-03T141728Z" — no colons (Windows-safe).
-    local stamp = os.date('!%Y-%m-%dT%H%M%SZ')
-    return stamp
-end
-
-local function truncate(s, max)
-    s = tostring(s or '')
-    if #s <= max then return s end
-    return s:sub(1, max - 1) .. '…'
-end
-
-local function is_empty(snap)
-    return snap.ok
-        and #snap.groups == 0
-        and #snap.zones == 0
-        and #snap.drawings == 0
-        and #snap.nav_points == 0
-end
-
-local function envelope(snap)
-    return {
-        meta = {
-            dcs_sms_me_version = VERSION,
-            timestamp_utc      = snap.timestamp_utc,
-            selection_mode     = snap.selection_mode,
-            ok                 = snap.ok,
-            error              = snap.error,
-        },
-        groups     = snap.groups     or {},
-        zones      = snap.zones      or {},
-        drawings   = snap.drawings   or {},
-        nav_points = snap.nav_points or {},
-        raw        = snap.raw        or {},
-    }
-end
-
-local function summarize(snap, fullpath)
-    return string.format(
-        'mode=%s, groups=%d, zones=%d, drawings=%d, nav_points=%d',
-        snap.selection_mode or 'unknown',
-        #(snap.groups or {}),
-        #(snap.zones or {}),
-        #(snap.drawings or {}),
-        #(snap.nav_points or {}))
-end
-
-function M._set_status(text)
+local function set_status(text)
     pcall(function()
-        if statusLabel and statusLabel.setText then
-            statusLabel:setText(text)
+        if W.status and W.status.setText then W.status:setText(tostring(text or '')) end
+    end)
+end
+M._set_status = set_status  -- exposed for later tasks
+
+local function refresh_list()
+    W.rows = prefab_ops.scan_dir() or {}
+    pcall(function()
+        if W.list_label and W.list_label.setText then
+            W.list_label:setText(string.format('Prefabs (%d)', #W.rows))
+        end
+    end)
+    pcall(function()
+        if W.list_box and W.list_box.removeItems then W.list_box:removeItems() end
+        for _, r in ipairs(W.rows) do
+            local label
+            if r.error then
+                label = string.format('%s    [ERROR: %s]', r.name, tostring(r.error):sub(1, 40))
+            else
+                label = string.format('%s    %s · %dg %ds %dz %dd',
+                    r.name,
+                    r.theatre or '?',
+                    r.group_count or 0,
+                    r.static_count or 0,
+                    r.zone_count or 0,
+                    r.drawing_count or 0)
+            end
+            if W.list_box and W.list_box.insertItem then
+                W.list_box:insertItem(label)
+            end
+        end
+    end)
+end
+M._refresh_list = refresh_list  -- exposed for later tasks
+
+local function selected_row()
+    if not W.selected_idx then return nil end
+    return W.rows[W.selected_idx]
+end
+M._selected_row = selected_row
+
+-- Save click handler (wired in this task).
+local function on_save_click()
+    pcall(function()
+        local name = ''
+        if W.name_input and W.name_input.getText then name = W.name_input:getText() or '' end
+        if name == '' then
+            set_status('Empty name — falling back to timestamped filename. See dcs.log.')
+            name = 'prefab-' .. os.date('!%Y%m%dT%H%M%SZ')
+            log.write('sms.me.prefab', log.WARNING, 'save with empty name → ' .. name)
+        end
+        if prefab_ops.exists(name) then
+            -- Modal handling lands in Task 13. For now, log and refuse.
+            set_status('Name "' .. name .. '" already exists. Pick a different name (Overwrite UI lands later).')
+            log.write('sms.me.prefab', log.WARNING, 'save refused — collision: ' .. name)
+            return
+        end
+        local ok, path_or_err = prefab_ops.save_selection(name)
+        if ok then
+            set_status('Saved ' .. name .. ' → ' .. tostring(path_or_err))
+            log.write('sms.me.prefab', log.INFO, 'saved ' .. name)
+            refresh_list()
+        else
+            set_status('Save failed: ' .. tostring(path_or_err))
+            log.write('sms.me.prefab', log.ERROR, 'save failed: ' .. tostring(path_or_err))
         end
     end)
 end
 
-function M._on_print_clicked()
-    local snap = selection.snapshot()
+local function on_reload_click()
+    pcall(function() refresh_list(); set_status('Library reloaded.') end)
+end
 
-    -- (1) Empty selection: no file, just log + status.
-    if snap.ok and is_empty(snap) then
-        log.write('sms.me', log.WARNING, 'no selection — nothing dumped')
-        M._set_status('No selection — nothing dumped')
-        return
-    end
+-- List-row select callback.
+local function on_list_select(_, idx)
+    pcall(function()
+        if type(idx) == 'number' then
+            W.selected_idx = idx
+        end
+    end)
+end
 
-    -- (2) Open file. Failure means we can't write anything, return.
-    paths.ensure_outbox()
-    local filename = 'selection-' .. utc_filename_stamp() .. '.lua'
-    local fullpath = paths.OUTBOX_DIR .. filename
-    local f, err   = io.open(fullpath, 'w')
-    if not f then
-        local msg = 'open failed: ' .. tostring(err)
-        log.write('sms.me', log.ERROR, msg)
-        M._set_status('Failed: ' .. truncate(msg, 80) .. ' (see dcs.log)')
-        return
-    end
-    f:write(serializer.serialize(envelope(snap)))
-    f:close()
-
-    -- (3) Snapshot itself failed: file written with ok=false, surface that.
-    if not snap.ok then
-        local msg = 'selection lookup failed: ' .. tostring(snap.error)
-        log.write('sms.me', log.ERROR, msg .. ' (file: ' .. fullpath .. ')')
-        M._set_status('Failed: ' .. truncate(snap.error or '', 80) .. ' (see dcs.log)')
-        return
-    end
-
-    -- (4) Success.
-    local summary = summarize(snap, fullpath)
-    log.write('sms.me', log.INFO, 'selection dumped to ' .. fullpath
-                                   .. ' (' .. summary .. ')')
-    M._set_status('Dumped ' .. summary .. ' → ' .. filename)
+-- Stub click handlers for Task 9 — wired in later tasks.
+local function on_place_click() set_status('Place at click — wired in Task 12') end
+local function on_place_origin_click() set_status('Place at original — wired in Task 12') end
+local function on_rename_click() set_status('Rename — wired in Task 13') end
+local function on_delete_click() set_status('Delete — wired in Task 13') end
+local function on_undo_click()
+    pcall(function()
+        if not undo.has_record() then set_status('Nothing to undo.'); return end
+        local ok, err = undo.undo()
+        if ok then
+            set_status('Undid last place' .. (err and (' (' .. err .. ')') or ''))
+        else
+            set_status('Undo failed: ' .. tostring(err))
+        end
+    end)
 end
 
 function M.show()
-    if window then return end
+    if W.window then
+        pcall(function() W.window:setVisible(true) end)
+        return
+    end
     local ok, err = pcall(function()
-        -- Build the window imperatively. Window is the only widget with
-        -- insertWidget — Static is just a label. The window auto-attaches
-        -- to the GUI surface on construction; setVisible(true) shows it.
-        local screen_w, screen_h = Gui.GetWindowSize()
-        local w, h = 360, 100
+        local screen_w, _ = Gui.GetWindowSize()
+        local w, h = 420, 320
         local x = screen_w - w - 20
         local y = 80
 
-        window = Window.new(x, y, w, h, 'dcs-sms ME — hello world')
-        window:setSkin(Skin.windowSkin())
-        window:setVisible(true)
-        window:setDraggable(true)
-        window:setResizable(false)
-        window:setZOrder(190)
+        W.window = Window.new(x, y, w, h, 'dcs-sms — Prefab Manager')
+        W.window:setSkin(Skin.windowSkin())
+        W.window:setVisible(true)
+        W.window:setDraggable(true)
+        W.window:setResizable(false)
+        W.window:setZOrder(190)
 
-        local button = Button.new()
-        button:setBounds(10, 6, w - 20, 28)
-        button:setText('Print selection')
-        button:addChangeCallback(M._on_print_clicked)
-        window:insertWidget(button)
+        -- Save panel (top): "Name: [______] [Save]"
+        local section_label_save = Static.new()
+        section_label_save:setBounds(10, 6, w - 20, 16)
+        section_label_save:setText('Save current selection')
+        W.window:insertWidget(section_label_save)
 
-        statusLabel = Static.new()
-        statusLabel:setBounds(10, 40, w - 20, 36)
-        statusLabel:setText('Ready.')
-        window:insertWidget(statusLabel)
+        local name_label = Static.new()
+        name_label:setBounds(10, 26, 50, 22)
+        name_label:setText('Name:')
+        W.window:insertWidget(name_label)
+
+        if TextBox then
+            W.name_input = TextBox.new()
+        else
+            W.name_input = Static.new()
+            W.name_input.setText = W.name_input.setText  -- API parity stub
+        end
+        W.name_input:setBounds(64, 26, w - 64 - 80 - 16, 22)
+        if W.name_input.setText then W.name_input:setText('') end
+        W.window:insertWidget(W.name_input)
+
+        W.save_btn = Button.new()
+        W.save_btn:setBounds(w - 90, 26, 80, 22)
+        W.save_btn:setText('Save')
+        W.save_btn:addChangeCallback(on_save_click)
+        W.window:insertWidget(W.save_btn)
+
+        -- Library section
+        W.list_label = Static.new()
+        W.list_label:setBounds(10, 60, w - 20 - 80, 16)
+        W.list_label:setText('Prefabs (0)')
+        W.window:insertWidget(W.list_label)
+
+        W.reload_btn = Button.new()
+        W.reload_btn:setBounds(w - 90, 56, 80, 22)
+        W.reload_btn:setText('Reload')
+        W.reload_btn:addChangeCallback(on_reload_click)
+        W.window:insertWidget(W.reload_btn)
+
+        if ListBox then
+            W.list_box = ListBox.new()
+        else
+            W.list_box = Static.new()
+            if W.list_box.setText then W.list_box:setText('ListBox not available') end
+        end
+        W.list_box:setBounds(10, 80, w - 20, 130)
+        if W.list_box.addChangeCallback then
+            W.list_box:addChangeCallback(on_list_select)
+        end
+        W.window:insertWidget(W.list_box)
+
+        -- Action panel
+        local rotation_label = Static.new()
+        rotation_label:setBounds(10, 218, 60, 22)
+        rotation_label:setText('Rotation:')
+        W.window:insertWidget(rotation_label)
+
+        if TextBox then
+            W.rotation_input = TextBox.new()
+        else
+            W.rotation_input = Static.new()
+            W.rotation_input.setText = W.rotation_input.setText  -- API parity stub
+        end
+        W.rotation_input:setBounds(70, 218, 50, 22)
+        if W.rotation_input.setText then W.rotation_input:setText('0') end
+        W.window:insertWidget(W.rotation_input)
+
+        local rotation_unit = Static.new()
+        rotation_unit:setBounds(122, 218, 20, 22)
+        rotation_unit:setText('°')
+        W.window:insertWidget(rotation_unit)
+
+        local btn_y_1 = 244
+        W.place_click_btn = Button.new()
+        W.place_click_btn:setBounds(10, btn_y_1, 130, 22)
+        W.place_click_btn:setText('Place at click')
+        W.place_click_btn:addChangeCallback(on_place_click)
+        W.window:insertWidget(W.place_click_btn)
+
+        W.place_origin_btn = Button.new()
+        W.place_origin_btn:setBounds(146, btn_y_1, 130, 22)
+        W.place_origin_btn:setText('Place at original')
+        W.place_origin_btn:addChangeCallback(on_place_origin_click)
+        W.window:insertWidget(W.place_origin_btn)
+
+        local btn_y_2 = 270
+        W.rename_btn = Button.new()
+        W.rename_btn:setBounds(10, btn_y_2, 80, 22)
+        W.rename_btn:setText('Rename')
+        W.rename_btn:addChangeCallback(on_rename_click)
+        W.window:insertWidget(W.rename_btn)
+
+        W.delete_btn = Button.new()
+        W.delete_btn:setBounds(96, btn_y_2, 80, 22)
+        W.delete_btn:setText('Delete')
+        W.delete_btn:addChangeCallback(on_delete_click)
+        W.window:insertWidget(W.delete_btn)
+
+        W.undo_btn = Button.new()
+        W.undo_btn:setBounds(182, btn_y_2, 130, 22)
+        W.undo_btn:setText('Undo last place')
+        W.undo_btn:addChangeCallback(on_undo_click)
+        W.window:insertWidget(W.undo_btn)
+
+        -- Status
+        W.status = Static.new()
+        W.status:setBounds(10, 296, w - 20, 16)
+        W.status:setText('Ready.')
+        W.window:insertWidget(W.status)
+
+        refresh_list()
     end)
     if not ok then
         log.write('sms.me', log.ERROR, 'window construction failed: ' .. tostring(err))
-        window = nil
-        statusLabel = nil
+        W.window = nil
         return
     end
-    log.write('sms.me', log.INFO, 'window opened')
+    log.write('sms.me', log.INFO, 'Prefab Manager window opened')
+end
+
+function M.hide()
+    pcall(function()
+        if W.window and W.window.setVisible then W.window:setVisible(false) end
+    end)
+end
+
+function M.toggle()
+    if W.window then
+        local visible = false
+        pcall(function() if W.window.isVisible then visible = W.window:isVisible() end end)
+        if visible then M.hide() else pcall(function() W.window:setVisible(true) end) end
+    else
+        M.show()
+    end
 end
 
 return M
