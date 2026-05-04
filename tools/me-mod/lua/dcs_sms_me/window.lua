@@ -87,11 +87,29 @@ local W = {
     status     = nil,
 
     -- runtime state
-    rows           = {},        -- last scan_dir result
+    rows           = {},        -- last scan_dir result (post-sort)
     selected_idx   = nil,        -- index into rows of currently selected library row
     place_pending  = false,      -- in place-pending mode (Task 12)
     place_pending_name = nil,    -- name of prefab being placed
+    sort_key       = 'name',     -- column key to sort rows by
+    sort_dir       = 'asc',      -- 'asc' or 'desc'
+    grid_headers   = {},         -- parallel to COLS; lets us re-text headers on sort change
 }
+
+-- Column definitions for the prefab grid. Module-level so refresh_list and the
+-- header-click handlers can share key + numeric-flag metadata.
+local COLS = {
+    { key = 'name',          label = 'Name',    width = 190, numeric = false },
+    { key = 'theatre',       label = 'Theatre', width = 90,  numeric = false },
+    { key = 'group_count',   label = 'G',       width = 35,  numeric = true  },
+    { key = 'static_count',  label = 'S',       width = 35,  numeric = true  },
+    { key = 'zone_count',    label = 'Z',       width = 35,  numeric = true  },
+    { key = 'drawing_count', label = 'D',       width = 35,  numeric = true  },
+}
+
+local function find_col(key)
+    for i, c in ipairs(COLS) do if c.key == key then return c, i end end
+end
 
 local function set_status(text)
     pcall(function()
@@ -111,13 +129,73 @@ local function make_cell(text, tooltip)
     return s
 end
 
+-- Stable in-place sort. Lua's table.sort isn't stable by default, so we tag
+-- each row with its pre-sort index and use that as the tiebreaker.
+local function sort_rows(rows, key, dir)
+    local col = find_col(key)
+    local numeric = col and col.numeric
+    local asc = (dir ~= 'desc')
+    for i, r in ipairs(rows) do r._stable_idx = i end
+    table.sort(rows, function(a, b)
+        -- Error rows sink to the bottom regardless of direction so they
+        -- don't get scattered through the list.
+        if a.error and not b.error then return false end
+        if b.error and not a.error then return true end
+        local av, bv = a[key], b[key]
+        if numeric then
+            av, bv = tonumber(av) or 0, tonumber(bv) or 0
+        else
+            av, bv = tostring(av or ''):lower(), tostring(bv or ''):lower()
+        end
+        if av == bv then return a._stable_idx < b._stable_idx end
+        if asc then return av < bv else return av > bv end
+    end)
+    for _, r in ipairs(rows) do r._stable_idx = nil end
+end
+
+-- Re-text every header so the active column gets an arrow glyph and the rest
+-- are reset back to their plain label.
+local function update_header_labels()
+    pcall(function()
+        for i, c in ipairs(COLS) do
+            local hc = W.grid_headers[i]
+            if hc and hc.setText then
+                local label = c.label
+                if c.key == W.sort_key then
+                    label = label .. (W.sort_dir == 'desc' and ' ▼' or ' ▲')
+                end
+                hc:setText(label)
+            end
+        end
+    end)
+end
+
 local function refresh_list()
+    -- Remember the selected row by name so we can restore selection across
+    -- the re-sort that scan_dir + sort_rows produces.
+    local prev_name = nil
+    if W.selected_idx and W.rows[W.selected_idx] then
+        prev_name = W.rows[W.selected_idx].name
+    end
+
     W.rows = prefab_ops.scan_dir() or {}
+    sort_rows(W.rows, W.sort_key, W.sort_dir)
+
+    W.selected_idx = nil
+    if prev_name then
+        for i, r in ipairs(W.rows) do
+            if r.name == prev_name then W.selected_idx = i; break end
+        end
+    end
+
     pcall(function()
         if W.list_label and W.list_label.setText then
             W.list_label:setText(string.format('Prefabs (%d)', #W.rows))
         end
     end)
+
+    update_header_labels()
+
     pcall(function()
         if not W.grid then return end
         -- removeAllRows wipes both row structures and any cell widgets we
@@ -146,6 +224,10 @@ local function refresh_list()
                 W.grid:setCell(4, row, make_cell(r.zone_count    or 0))
                 W.grid:setCell(5, row, make_cell(r.drawing_count or 0))
             end
+        end
+
+        if W.selected_idx and W.grid.selectRow then
+            pcall(function() W.grid:selectRow(W.selected_idx - 1) end)
         end
     end)
 end
@@ -724,21 +806,31 @@ function M.show()
             W.grid = Grid.new()
             try_skin(W.grid, 'dtc_grid')
 
-            -- Six columns, sized for the 420px content area (440 - 20px padding).
-            -- Numeric counter columns are tight (35px) since they hold one or
-            -- two digits; Name gets the lion's share.
-            local cols = {
-                { name = 'Name',     width = 190 },
-                { name = 'Theatre',  width = 90  },
-                { name = 'G',        width = 35  },
-                { name = 'S',        width = 35  },
-                { name = 'Z',        width = 35  },
-                { name = 'D',        width = 35  },
-            }
-            for _, c in ipairs(cols) do
+            -- Columns sized for the 420px content area (440 - 20px padding).
+            -- Numeric counter columns are tight (35px); Name gets the lion's
+            -- share. Definitions live module-level in COLS so refresh_list
+            -- and the header-click handlers share key/numeric metadata.
+            W.grid_headers = {}
+            for i, c in ipairs(COLS) do
                 local hc = GridHeaderCell.new()
                 try_skin(hc, 'dtc_grid_header')
-                if hc.setText then hc:setText(c.name) end
+                if hc.setText then hc:setText(c.label) end
+                if hc.addChangeCallback then
+                    local idx = i
+                    pcall(function()
+                        hc:addChangeCallback(function()
+                            local key = COLS[idx].key
+                            if W.sort_key == key then
+                                W.sort_dir = (W.sort_dir == 'asc') and 'desc' or 'asc'
+                            else
+                                W.sort_key = key
+                                W.sort_dir = 'asc'
+                            end
+                            refresh_list()
+                        end)
+                    end)
+                end
+                W.grid_headers[i] = hc
                 W.grid:insertColumn(c.width, hc)
             end
 
