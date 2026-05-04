@@ -88,6 +88,14 @@ local W = {
     save_btn   = nil,
     reload_btn = nil,
     grid       = nil,
+    name_label     = nil,
+    search_label   = nil,
+    country_label  = nil,
+    rotation_label = nil,
+    rotation_unit  = nil,        -- fallback "°" Static (no Dial/SpinBox path)
+    sep1           = nil,
+    sep2           = nil,
+    sep3           = nil,
     rotation_input = nil,        -- legacy TextBox; only used when Dial/SpinBox unavailable
     rotation_dial  = nil,
     rotation_spin  = nil,
@@ -943,6 +951,90 @@ local function on_undo_click()
     end)
 end
 
+-- Minimum window size below which the layout starts overlapping. Acts as a
+-- floor for #32's resize support (no setMinSize() in dxgui — the size
+-- callback re-sets bounds if the user shrinks past this).
+local MIN_W, MIN_H = 440, 460
+
+-- Single source of truth for child geometry. Called once at construction and
+-- from the Window:addSizeCallback. Top band (Name + Search) sticks to the
+-- top, status sticks to the bottom, action panel anchors to the bottom too,
+-- the grid in the middle stretches with both dimensions.
+local function relayout(w, h)
+    if not W.window then return end
+    local function set(widget, x, y, ww, hh)
+        if widget and widget.setBounds then
+            pcall(function() widget:setBounds(x, y, ww, hh) end)
+        end
+    end
+
+    -- Row 0: Name row at top.
+    set(W.name_label, 10, 8, 50, 22)
+    set(W.name_input, 60, 8, w - 60 - 90 - 6, 22)
+    set(W.save_btn,   w - 90, 8, 80, 22)
+
+    -- Separator + Row 1: Search.
+    set(W.sep1, 10, 36, w - 20, 1)
+    set(W.search_label, 10, 42, 50, 22)
+    set(W.filter_input, 60, 42, w - 60 - 10, 22)
+
+    -- Bottom band offsets relative to h. Locked to the bottom so resizing
+    -- the window grows the grid, not the action panel.
+    local row3_y   = h - 184
+    local sep2_y   = h - 158
+    local row4_y   = h - 154
+    local row5_y   = h - 124
+    local sep3_y   = h - 77
+    local status_y = h - 73
+
+    -- Grid stretches between the top band and row 3.
+    local grid_y = 68
+    local grid_h = math.max(60, row3_y - grid_y - 8)
+    local grid_w = w - 20
+    set(W.grid, 10, grid_y, grid_w, grid_h)
+    -- Name column absorbs the leftover horizontal space; numeric/Theatre
+    -- columns stay at their COLS-defined widths. Resizing the window
+    -- widens just the Name column.
+    if W.grid and W.grid.setColumnWidth then
+        local fixed_w = 0
+        for i, c in ipairs(COLS) do
+            if i > 1 then fixed_w = fixed_w + c.width end
+        end
+        local name_w = math.max(80, grid_w - fixed_w)
+        pcall(function() W.grid:setColumnWidth(0, name_w) end)
+    end
+
+    -- Row 3: Reload | Undo (left) | gap | Rename | Delete (right).
+    set(W.reload_btn, 10,                row3_y, 70,  22)
+    set(W.undo_btn,   84,                row3_y, 110, 22)
+    set(W.rename_btn, w - 90 - 80 - 4,   row3_y, 80,  22)
+    set(W.delete_btn, w - 90,            row3_y, 80,  22)
+
+    set(W.sep2, 10, sep2_y, w - 20, 1)
+
+    -- Row 4: Country picker.
+    set(W.country_label, 10, row4_y, 100, 22)
+    local combo_x = 114
+    local combo_w = (W.country_filter_btn) and (w - combo_x - 90 - 6) or (w - combo_x - 10)
+    set(W.country_combo, combo_x, row4_y, combo_w, 22)
+    set(W.country_filter_btn, w - 90, row4_y, 80, 22)
+
+    -- Row 5: Rotation gizmo + place buttons. Row is 43px tall (dial); the
+    -- spinbox/label/place-buttons are vertically centered against it.
+    set(W.rotation_label, 10, row5_y + 10, 60, 22)
+    set(W.rotation_spin,  70, row5_y + 10, 50, 22)
+    set(W.rotation_dial,  122, row5_y, 47, 43)
+    set(W.rotation_input, 70, row5_y + 10, 50, 22)   -- fallback path
+    set(W.rotation_unit,  122, row5_y + 10, 20, 22)  -- fallback path
+    -- place_click_btn right-edge at w-10 (122 wide), place_origin_btn 4px
+    -- to its left (130 wide). Both stay anchored to the right edge.
+    set(W.place_origin_btn, w - 266, row5_y + 10, 130, 22)
+    set(W.place_click_btn,  w - 132, row5_y + 10, 122, 22)
+
+    set(W.sep3, 10, sep3_y, w - 20, 1)
+    set(W.status, 10, status_y, w - 20, 16)
+end
+
 function M.show()
     log.write('sms.me', log.INFO, 'window.show() called (W.window present=' .. tostring(W.window ~= nil) .. ')')
     if W.window then
@@ -972,7 +1064,7 @@ function M.show()
         W.window:setSkin((Skin.windowSkinME and Skin.windowSkinME()) or Skin.windowSkin())
         W.window:setVisible(true)
         W.window:setDraggable(true)
-        W.window:setResizable(false)
+        W.window:setResizable(true)
         W.window:setZOrder(190)
 
         -- Esc cancels place-pending; Ctrl-Z undoes the last place.
@@ -1002,12 +1094,12 @@ function M.show()
             end)
         end
 
-        -- Row 0: Name + Save.
-        local name_label = Static.new()
-        name_label:setBounds(10, 8, 50, 22)
-        name_label:setText('Name:')
-        try_skin(name_label, 'staticSkin_ME')
-        W.window:insertWidget(name_label)
+        -- Row 0: Name + Save. Bounds for every widget below are set by
+        -- relayout(w, h) at the end of build (and on every Window resize).
+        W.name_label = Static.new()
+        W.name_label:setText('Name:')
+        try_skin(W.name_label, 'staticSkin_ME')
+        W.window:insertWidget(W.name_label)
 
         if TextBox then
             W.name_input = TextBox.new()
@@ -1015,39 +1107,33 @@ function M.show()
             W.name_input = Static.new()
             W.name_input.setText = W.name_input.setText  -- API parity stub
         end
-        W.name_input:setBounds(60, 8, w - 60 - 90 - 6, 22)
         if W.name_input.setText then W.name_input:setText('') end
         try_skin(W.name_input, 'editBoxSkin_ME')
         W.window:insertWidget(W.name_input)
 
         W.save_btn = Button.new()
-        W.save_btn:setBounds(w - 90, 8, 80, 22)
         W.save_btn:setText('Save')
         try_skin(W.save_btn, 'dtc_button')
         W.save_btn:addChangeCallback(on_save_click)
         W.window:insertWidget(W.save_btn)
 
-        -- Section separator below the Name row.
-        local sep1 = Static.new()
-        sep1:setBounds(10, 36, w - 20, 1)
-        try_skin(sep1, 'dtc_separator')
-        W.window:insertWidget(sep1)
+        W.sep1 = Static.new()
+        try_skin(W.sep1, 'dtc_separator')
+        W.window:insertWidget(W.sep1)
 
         -- Row 1: "Search:" label + filter input. Count of prefabs lives in
         -- the hint/placeholder text — but if the dxgui build doesn't
         -- render hints, the label keeps the row labelled.
-        local search_label = Static.new()
-        search_label:setBounds(10, 42, 50, 22)
-        search_label:setText('Search:')
-        try_skin(search_label, 'staticSkin_ME')
-        W.window:insertWidget(search_label)
+        W.search_label = Static.new()
+        W.search_label:setText('Search:')
+        try_skin(W.search_label, 'staticSkin_ME')
+        W.window:insertWidget(W.search_label)
 
         if TextBox then
             W.filter_input = TextBox.new()
         else
             W.filter_input = Static.new()
         end
-        W.filter_input:setBounds(60, 42, w - 60 - 10, 22)
         if W.filter_input.setText then W.filter_input:setText('') end
         try_skin(W.filter_input, 'editBoxSkin_ME')
         if W.filter_input.addChangeCallback then
@@ -1125,51 +1211,43 @@ function M.show()
             W.grid = Static.new()
             if W.grid.setText then W.grid:setText('Grid widget not available') end
         end
-        W.grid:setBounds(10, 68, w - 20, 200)
         W.window:insertWidget(W.grid)
 
         -- Row 3: library/selection actions. Reload + Undo on the left
         -- (library-wide), Rename + Delete on the right (per-selection).
         W.reload_btn = Button.new()
-        W.reload_btn:setBounds(10, 276, 70, 22)
         W.reload_btn:setText('Reload')
         try_skin(W.reload_btn, 'dtc_button')
         W.reload_btn:addChangeCallback(on_reload_click)
         W.window:insertWidget(W.reload_btn)
 
         W.undo_btn = Button.new()
-        W.undo_btn:setBounds(84, 276, 110, 22)
         W.undo_btn:setText('Undo last place')
         try_skin(W.undo_btn, 'dtc_button')
         W.undo_btn:addChangeCallback(on_undo_click)
         W.window:insertWidget(W.undo_btn)
 
         W.rename_btn = Button.new()
-        W.rename_btn:setBounds(w - 90 - 80 - 4, 276, 80, 22)
         W.rename_btn:setText('Rename')
         try_skin(W.rename_btn, 'dtc_button')
         W.rename_btn:addChangeCallback(on_rename_click)
         W.window:insertWidget(W.rename_btn)
 
         W.delete_btn = Button.new()
-        W.delete_btn:setBounds(w - 90, 276, 80, 22)
         W.delete_btn:setText('Delete')
         try_skin(W.delete_btn, 'dtc_button')
         W.delete_btn:addChangeCallback(on_delete_click)
         W.window:insertWidget(W.delete_btn)
 
-        -- Section separator below the Reload/Undo/Rename/Delete row.
-        local sep2 = Static.new()
-        sep2:setBounds(10, 302, w - 20, 1)
-        try_skin(sep2, 'dtc_separator')
-        W.window:insertWidget(sep2)
+        W.sep2 = Static.new()
+        try_skin(W.sep2, 'dtc_separator')
+        W.window:insertWidget(W.sep2)
 
         -- Row 4: Country picker.
-        local country_label = Static.new()
-        country_label:setBounds(10, 306, 100, 22)
-        country_label:setText('Place as country:')
-        try_skin(country_label, 'staticSkin_ME')
-        W.window:insertWidget(country_label)
+        W.country_label = Static.new()
+        W.country_label:setText('Place as country:')
+        try_skin(W.country_label, 'staticSkin_ME')
+        W.window:insertWidget(W.country_label)
 
         -- Combat/All toggle on the right edge of the row, mirroring the
         -- ME's airplane-group panel (tbFilter). State=false → "Combat"
@@ -1177,7 +1255,6 @@ function M.show()
         -- including neutrals).
         if ToggleButton then
             W.country_filter_btn = ToggleButton.new()
-            W.country_filter_btn:setBounds(w - 90, 306, 80, 22)
             W.country_filter_btn:setText('Combat')
             try_skin(W.country_filter_btn, 'dtc_button')
             if W.country_filter_btn.addChangeCallback then
@@ -1192,21 +1269,17 @@ function M.show()
             W.window:insertWidget(W.country_filter_btn)
         end
 
-        local combo_x = 114
-        local combo_w = ToggleButton and (w - combo_x - 90 - 6) or (w - combo_x - 10)
         if ComboList then
             W.country_combo = ComboList.new()
-            W.country_combo:setBounds(combo_x, 306, combo_w, 22)
             try_skin(W.country_combo, 'comboListSkinNew_')
             W.window:insertWidget(W.country_combo)
         else
             -- Fallback: a Static so the row still renders. populate is a
             -- no-op without ComboList; place falls back to stored country.
-            local stub = Static.new()
-            stub:setBounds(combo_x, 306, combo_w, 22)
-            stub:setText('(ComboList unavailable)')
-            try_skin(stub, 'staticSkin_ME')
-            W.window:insertWidget(stub)
+            W.country_combo = Static.new()
+            W.country_combo:setText('(ComboList unavailable)')
+            try_skin(W.country_combo, 'staticSkin_ME')
+            W.window:insertWidget(W.country_combo)
         end
 
         -- Row 5: Rotation gizmo + place buttons. Row is 43px tall (dial
@@ -1214,15 +1287,13 @@ function M.show()
         -- dial. Dial + SpinBox wired via W.rotation_deg, mirroring
         -- me_static.lua's d_heading / e_heading; TextBox fallback when
         -- Dial / SpinBox aren't available (test VMs).
-        local rotation_label = Static.new()
-        rotation_label:setBounds(10, 346, 60, 22)
-        rotation_label:setText('Rotation:')
-        try_skin(rotation_label, 'staticSkin_ME')
-        W.window:insertWidget(rotation_label)
+        W.rotation_label = Static.new()
+        W.rotation_label:setText('Rotation:')
+        try_skin(W.rotation_label, 'staticSkin_ME')
+        W.window:insertWidget(W.rotation_label)
 
         if SpinBox and Dial then
             W.rotation_spin = SpinBox.new()
-            W.rotation_spin:setBounds(70, 346, 50, 22)
             try_skin(W.rotation_spin, 'spinBoxSkin_MENew')
             pcall(function() W.rotation_spin:setRange(-1, 360) end)
             pcall(function() W.rotation_spin:setStep(1) end)
@@ -1237,7 +1308,6 @@ function M.show()
             W.window:insertWidget(W.rotation_spin)
 
             W.rotation_dial = Dial.new()
-            W.rotation_dial:setBounds(122, 336, 47, 43)
             try_skin(W.rotation_dial, 'dtc_dial')
             pcall(function() W.rotation_dial:setRange(0, 359) end)
             pcall(function() W.rotation_dial:setStep(1) end)
@@ -1258,7 +1328,6 @@ function M.show()
             else
                 W.rotation_input = Static.new()
             end
-            W.rotation_input:setBounds(70, 346, 50, 22)
             if W.rotation_input.setText then W.rotation_input:setText('0') end
             try_skin(W.rotation_input, 'editBoxSkin_ME')
             if W.rotation_input.addChangeCallback then
@@ -1270,39 +1339,57 @@ function M.show()
             end
             W.window:insertWidget(W.rotation_input)
 
-            local rotation_unit = Static.new()
-            rotation_unit:setBounds(122, 346, 20, 22)
-            rotation_unit:setText('°')
-            try_skin(rotation_unit, 'staticSkin_ME')
-            W.window:insertWidget(rotation_unit)
+            W.rotation_unit = Static.new()
+            W.rotation_unit:setText('°')
+            try_skin(W.rotation_unit, 'staticSkin_ME')
+            W.window:insertWidget(W.rotation_unit)
         end
 
         W.place_origin_btn = Button.new()
-        W.place_origin_btn:setBounds(174, 346, 130, 22)
         W.place_origin_btn:setText('Place at original')
         try_skin(W.place_origin_btn, 'dtc_button')
         W.place_origin_btn:addChangeCallback(on_place_origin_click)
         W.window:insertWidget(W.place_origin_btn)
 
         W.place_click_btn = Button.new()
-        W.place_click_btn:setBounds(308, 346, w - 308 - 10, 22)
         W.place_click_btn:setText('Place at click')
         try_skin(W.place_click_btn, 'dtc_button')
         W.place_click_btn:addChangeCallback(on_place_click)
         W.window:insertWidget(W.place_click_btn)
 
-        -- Section separator above the status bar.
-        local sep3 = Static.new()
-        sep3:setBounds(10, 383, w - 20, 1)
-        try_skin(sep3, 'dtc_separator')
-        W.window:insertWidget(sep3)
+        W.sep3 = Static.new()
+        try_skin(W.sep3, 'dtc_separator')
+        W.window:insertWidget(W.sep3)
 
-        -- Status
         W.status = Static.new()
-        W.status:setBounds(10, 387, w - 20, 16)
         W.status:setText('Ready.')
         try_skin(W.status, 'staticSkin_ME')
         W.window:insertWidget(W.status)
+
+        -- Initial layout pass + size callback for resize support. dxgui has
+        -- no setMinSize, so the callback clamps via setBounds when the user
+        -- shrinks past MIN_W/MIN_H — that re-fires the callback with the
+        -- clamped size, which is fine.
+        relayout(w, h)
+        if W.window.addSizeCallback then
+            pcall(function()
+                W.window:addSizeCallback(function()
+                    pcall(function()
+                        local cw, ch = W.window:getSize()
+                        if cw < MIN_W or ch < MIN_H then
+                            local px, py = W.window:getBounds()
+                            W.window:setBounds(px, py, math.max(cw, MIN_W), math.max(ch, MIN_H))
+                            return
+                        end
+                        relayout(cw, ch)
+                        -- Grid cells sometimes render at stale positions
+                        -- after a column-width change; render_grid is cheap
+                        -- (in-memory only, no disk rescan) and fixes that.
+                        render_grid()
+                    end)
+                end)
+            end)
+        end
 
         refresh_list()
         populate_country_combo()
