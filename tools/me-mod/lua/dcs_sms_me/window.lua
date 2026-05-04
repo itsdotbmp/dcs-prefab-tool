@@ -57,6 +57,8 @@ local function try_skin(widget, skin_name)
         if     skin_name == 'dtc_button'      then s = dtc_skins.button()
         elseif skin_name == 'dtc_grid'        then s = dtc_skins.grid()
         elseif skin_name == 'dtc_grid_header' then s = dtc_skins.grid_header()
+        elseif skin_name == 'icon_warning'    then s = dtc_skins.icon_static('warning')
+        elseif skin_name == 'icon_question'   then s = dtc_skins.icon_static('question')
         else
             local fn = Skin[skin_name]
             if not fn then return end
@@ -162,15 +164,18 @@ M._selected_row = selected_row
 --   { {label='OK',  on_click=function() ... end}, ... }
 -- ---------------------------------------------------------------------------
 
-local function show_overlay(message, buttons)
+local function show_overlay(message, buttons, icon)
     local screen_w, screen_h = Gui.GetWindowSize()
-    -- h grew 130 → 170 so the buttons sit clear of the skin's bottom
-    -- border. The ~26px title bar at the top + ~14px bottom border
-    -- means content area is roughly h - 40 = 130; buttons at y=128
-    -- (h - 42) leave 22px above the bottom border.
-    local w, h = 420, 170
+    -- windowSkinME's title bar + bottom border consume more than the bare
+    -- arithmetic suggests, so h is sized to leave ~30px between the
+    -- buttons (y = h - 52) and the window's bottom edge after the skin
+    -- frame is drawn. Icon, if any, is a 64x64 ME glyph at (10, 14).
+    local w, h = 420, 210
     local x = (screen_w - w) / 2
     local y = (screen_h - h) / 2
+    local msg_x = icon and 68 or 10
+    local msg_w = w - msg_x - 10
+    local btn_y = h - 92
 
     local overlay = nil
     local function close()
@@ -185,8 +190,15 @@ local function show_overlay(message, buttons)
         overlay:setResizable(false)
         overlay:setZOrder(220)
 
+        if icon then
+            local ico = Static.new()
+            ico:setBounds(10, 14, 48, 48)
+            try_skin(ico, 'icon_' .. icon)
+            overlay:insertWidget(ico)
+        end
+
         local msg = Static.new()
-        msg:setBounds(10, 14, w - 20, h - 70)
+        msg:setBounds(msg_x, 14, msg_w, btn_y - 24)
         msg:setText(tostring(message or ''))
         try_skin(msg, 'staticSkin_ME')
         overlay:insertWidget(msg)
@@ -195,7 +207,7 @@ local function show_overlay(message, buttons)
         local bw = math.floor((w - 20 - (n - 1) * 10) / n)
         for i, b in ipairs(buttons) do
             local btn = Button.new()
-            btn:setBounds(10 + (i - 1) * (bw + 10), h - 42, bw, 22)
+            btn:setBounds(10 + (i - 1) * (bw + 10), btn_y, bw, 22)
             btn:setText(b.label or '?')
             try_skin(btn, 'dtc_button')
             btn:addChangeCallback(function()
@@ -253,7 +265,8 @@ local function on_save_click()
                     { label = 'Overwrite', on_click = function() do_save(name) end },
                     { label = 'Rename',    on_click = function() focus_name_input(); set_status('Type a new name and click Save.') end },
                     { label = 'Cancel',    on_click = function() set_status('Save cancelled.') end },
-                })
+                },
+                'question')
             return
         end
 
@@ -467,8 +480,10 @@ end
 -- on_ok receives the new name string; on_cancel takes no args.
 local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
     local screen_w, screen_h = Gui.GetWindowSize()
-    -- Same skin-bottom-border accommodation as show_overlay above.
-    local w, h = 460, 180
+    -- Slightly taller than show_overlay because rename has prompt + input
+    -- stacked. Same icon convention: 64x64 question glyph at (10, 14),
+    -- prompt + input shifted to x=84.
+    local w, h = 460, 220
     local x = (screen_w - w) / 2
     local y = (screen_h - h) / 2
     local overlay, input = nil, nil
@@ -483,21 +498,26 @@ local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
         overlay:setResizable(false)
         overlay:setZOrder(220)
 
+        local ico = Static.new()
+        ico:setBounds(10, 14, 48, 48)
+        try_skin(ico, 'icon_question')
+        overlay:insertWidget(ico)
+
         local lbl = Static.new()
-        lbl:setBounds(10, 14, w - 20, 20)
+        lbl:setBounds(68, 14, w - 78, 20)
         lbl:setText(tostring(prompt or 'New name:'))
         try_skin(lbl, 'staticSkin_ME')
         overlay:insertWidget(lbl)
 
         input = TextBox.new()
-        input:setBounds(10, 40, w - 20, 22)
+        input:setBounds(68, 40, w - 78, 22)
         if input.setText then input:setText(tostring(current_name or '')) end
         if input.setFocused then input:setFocused(true) end
         try_skin(input, 'editBoxSkin_ME')
         overlay:insertWidget(input)
 
         local ok_btn = Button.new()
-        ok_btn:setBounds(w - 200, h - 42, 90, 22)
+        ok_btn:setBounds(w - 200, h - 92, 90, 22)
         ok_btn:setText('OK')
         try_skin(ok_btn, 'dtc_button')
         ok_btn:addChangeCallback(function()
@@ -508,7 +528,7 @@ local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
         overlay:insertWidget(ok_btn)
 
         local cancel_btn = Button.new()
-        cancel_btn:setBounds(w - 100, h - 42, 90, 22)
+        cancel_btn:setBounds(w - 100, h - 92, 90, 22)
         cancel_btn:setText('Cancel')
         try_skin(cancel_btn, 'dtc_button')
         cancel_btn:addChangeCallback(function()
@@ -590,7 +610,8 @@ local function on_delete_click()
                 refresh_list()
             end },
             { label = 'Cancel', on_click = function() set_status('Delete cancelled.') end },
-        })
+        },
+        'warning')
 end
 local function on_undo_click()
     pcall(function()

@@ -61,4 +61,35 @@ function M.grid_header()
     return Skin.gridHeaderCellSkinNew and Skin.gridHeaderCellSkinNew() or nil
 end
 
+-- Icon-bearing Static skin: clone staticSkin and inject a 64x64 picture into
+-- released[1] so a plain Static renders the ME's warning/question glyph.
+-- Mirrors how msg_window.dlg's staticWarning / staticQuestion declare an
+-- inline picture override on top of the staticSkin base.
+local ICON_PATHS = {
+    warning  = 'dxgui\\skins\\skinME\\images\\mission_editor\\static_ME_Warning.png',
+    question = 'dxgui\\skins\\skinME\\images\\mission_editor\\static_ME_Question.png',
+}
+
+function M.icon_static(kind)
+    local file = ICON_PATHS[kind]
+    if not file then return nil end
+    local s = Skin.staticSkin and Skin.staticSkin() or nil
+    if not (s and s.skinData and s.skinData.states) then return nil end
+    -- rect={0,0,0,0} + size={0,0} = "render at the texture's natural size",
+    -- the same idiom msg_window.dlg's staticWarning/staticQuestion use. The
+    -- ME PNGs are 49x41 / 42x42, not 64x64, so an explicit 64 source rect
+    -- reads off the texture edge and tiles/wraps.
+    s.skinData.states.released = s.skinData.states.released or {}
+    s.skinData.states.released[1] = s.skinData.states.released[1] or {}
+    s.skinData.states.released[1].picture = {
+        color     = '0xffffffff',
+        file      = file,
+        horzAlign = { type = 'middle', offset = 0 },
+        vertAlign = { type = 'middle', offset = 0 },
+        rect      = { x1 = 0, x2 = 0, y1 = 0, y2 = 0 },
+        size      = { horz = 0, vert = 0 },
+    }
+    return s
+end
+
 return M
