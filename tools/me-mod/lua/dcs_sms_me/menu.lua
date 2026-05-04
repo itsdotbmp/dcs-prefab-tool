@@ -95,6 +95,32 @@ local function patch_menubar_show()
     return true
 end
 
+-- Monkey-patch me_menubar.hideME so our window auto-hides when the user
+-- exits the ME (returns to the main menu). hideME is the canonical
+-- "we're leaving the ME" point; it's called by Exit() which is called
+-- from every ME exit path (menu Exit, alt-F4, etc.).
+--
+-- Idempotent — only patches once. Pulls the window module via
+-- package.loaded so a dev-reload that swaps the module is honored:
+-- the patch closure stays put, but it always grabs the freshly-required
+-- window module on each invocation.
+local function patch_menubar_hideME()
+    local ok, mb = pcall(require, 'me_menubar')
+    if not ok or not mb or type(mb.hideME) ~= 'function' then return false end
+    if mb._dcs_sms_hideME_patched then return true end
+
+    local orig_hideME = mb.hideME
+    mb.hideME = function(...)
+        pcall(function()
+            local w = package.loaded['dcs_sms_me.window']
+            if w and w.hide then w.hide() end
+        end)
+        return orig_hideME(...)
+    end
+    mb._dcs_sms_hideME_patched = true
+    return true
+end
+
 -- install_floating_fallback ------------------------------------------------
 -- Last-resort floating window with a Prefab Manager toggle button.
 -- Sized to fit the title bar + a button below it. The earlier 36-tall
@@ -143,6 +169,11 @@ end
 --   "menu"     — added entry to Customize menu (immediately or via patch)
 --   "fallback" — me_menubar wasn't accessible; floating button installed
 function M.install()
+    -- Hook ME-exit so our window auto-hides when the user leaves the ME.
+    -- Independent from the menu-entry path; patches even if we end up
+    -- using the floating-button fallback below.
+    pcall(patch_menubar_hideME)
+
     -- Try to add immediately. If menubar already exists we're done.
     if add_menu_entry() then
         log.write('sms.me', log.INFO, 'Prefab Manager added to Customize menu')
