@@ -87,13 +87,16 @@ local W = {
     status     = nil,
 
     -- runtime state
-    rows           = {},        -- last scan_dir result (post-sort)
-    selected_idx   = nil,        -- index into rows of currently selected library row
+    rows           = {},        -- last scan_dir result (post-sort), source of truth
+    visible_rows   = {},        -- filtered subset of rows; what the grid shows
+    selected_idx   = nil,        -- index into visible_rows of currently selected row
     place_pending  = false,      -- in place-pending mode (Task 12)
     place_pending_name = nil,    -- name of prefab being placed
     sort_key       = 'name',     -- column key to sort rows by
     sort_dir       = 'asc',      -- 'asc' or 'desc'
     grid_headers   = {},         -- parallel to COLS; lets us re-text headers on sort change
+    filter_text    = '',         -- live filter applied to rows → visible_rows
+    filter_input   = nil,        -- TextBox widget for the filter
 }
 
 -- Column definitions for the prefab grid. Module-level so refresh_list and the
@@ -170,32 +173,59 @@ local function update_header_labels()
     end)
 end
 
-local function refresh_list()
-    -- Remember the selected row by name so we can restore selection across
-    -- the re-sort that scan_dir + sort_rows produces.
-    local prev_name = nil
-    if W.selected_idx and W.rows[W.selected_idx] then
-        prev_name = W.rows[W.selected_idx].name
+-- Pure filter: returns a new array of rows whose name OR theatre contains
+-- filter_text (case-insensitive substring). Empty filter → shallow copy of
+-- the input. Plain-text find (4th arg = true) avoids regex surprises.
+-- Exposed via M._filter_rows for unit testing.
+local function filter_rows(rows, filter_text)
+    local f = (filter_text or ''):lower()
+    if f == '' then
+        local copy = {}
+        for i, r in ipairs(rows) do copy[i] = r end
+        return copy
     end
+    local out = {}
+    for _, r in ipairs(rows) do
+        local name_l    = tostring(r.name    or ''):lower()
+        local theatre_l = tostring(r.theatre or ''):lower()
+        if name_l:find(f, 1, true) or theatre_l:find(f, 1, true) then
+            out[#out + 1] = r
+        end
+    end
+    return out
+end
+M._filter_rows = filter_rows
 
-    W.rows = prefab_ops.scan_dir() or {}
-    sort_rows(W.rows, W.sort_key, W.sort_dir)
+local function apply_filter()
+    W.visible_rows = filter_rows(W.rows, W.filter_text)
+end
 
+-- Restore selection by row name in the current visible_rows. Returns the
+-- new W.selected_idx (1-based) or nil if the previously-selected row is no
+-- longer visible.
+local function restore_selection_by_name(prev_name)
     W.selected_idx = nil
-    if prev_name then
-        for i, r in ipairs(W.rows) do
-            if r.name == prev_name then W.selected_idx = i; break end
-        end
+    if not prev_name then return end
+    for i, r in ipairs(W.visible_rows) do
+        if r.name == prev_name then W.selected_idx = i; return i end
     end
+end
 
+local function update_count_label()
     pcall(function()
-        if W.list_label and W.list_label.setText then
-            W.list_label:setText(string.format('Prefabs (%d)', #W.rows))
-        end
+        if not (W.list_label and W.list_label.setText) then return end
+        local total, shown = #W.rows, #W.visible_rows
+        local label = (W.filter_text ~= '' and total ~= shown)
+            and string.format('Prefabs (%d/%d)', shown, total)
+            or  string.format('Prefabs (%d)', total)
+        W.list_label:setText(label)
     end)
+end
 
-    update_header_labels()
-
+-- Repopulate the grid from W.visible_rows. Caller is responsible for setting
+-- W.visible_rows + W.selected_idx beforehand. Used by both refresh_list
+-- (after disk rescan + sort) and on_filter_change (just after filter).
+local function render_grid()
     pcall(function()
         if not W.grid then return end
         -- removeAllRows wipes both row structures and any cell widgets we
@@ -203,7 +233,7 @@ local function refresh_list()
         -- removeAllItems for our purposes.
         if W.grid.removeAllRows then W.grid:removeAllRows() end
 
-        for i, r in ipairs(W.rows) do
+        for i, r in ipairs(W.visible_rows) do
             -- Grid is 0-indexed for both columns and rows.
             W.grid:insertRow(nil)  -- nil → use rowHeight from gridSkin_ME (30px)
             local row = i - 1
@@ -231,11 +261,48 @@ local function refresh_list()
         end
     end)
 end
+
+local function refresh_list()
+    -- Remember the selected row by name so we can restore selection across
+    -- the re-sort + re-filter that scan_dir + sort_rows + apply_filter
+    -- produces.
+    local prev_name = nil
+    if W.selected_idx and W.visible_rows[W.selected_idx] then
+        prev_name = W.visible_rows[W.selected_idx].name
+    end
+
+    W.rows = prefab_ops.scan_dir() or {}
+    sort_rows(W.rows, W.sort_key, W.sort_dir)
+    apply_filter()
+    restore_selection_by_name(prev_name)
+    update_count_label()
+    update_header_labels()
+    render_grid()
+end
+
+-- Re-filter and re-render in response to filter_input keystrokes. Doesn't
+-- rescan the disk — that's refresh_list's job.
+local function on_filter_change()
+    pcall(function()
+        if not (W.filter_input and W.filter_input.getText) then return end
+        local txt = W.filter_input:getText() or ''
+        if txt == W.filter_text then return end
+        local prev_name = nil
+        if W.selected_idx and W.visible_rows[W.selected_idx] then
+            prev_name = W.visible_rows[W.selected_idx].name
+        end
+        W.filter_text = txt
+        apply_filter()
+        restore_selection_by_name(prev_name)
+        update_count_label()
+        render_grid()
+    end)
+end
 M._refresh_list = refresh_list  -- exposed for later tasks
 
 local function selected_row()
     if not W.selected_idx then return nil end
-    return W.rows[W.selected_idx]
+    return W.visible_rows[W.selected_idx]
 end
 M._selected_row = selected_row
 
@@ -375,7 +442,7 @@ end
 
 -- Grid-row select callback.
 -- Grid:getSelectedRow() returns the 0-based row index, or -1 if nothing is
--- selected. Map to W.rows[idx+1]. The callback is wired both via
+-- selected. Map to W.visible_rows[idx+1]. The callback is wired both via
 -- addSelectRowCallback (fires on keyboard arrow-key changes) and via an
 -- onMouseDown override that calls grid:selectRow(row) — Grid's built-in
 -- mouse handler does not auto-select on click; see me_openfile.lua's
@@ -790,10 +857,34 @@ function M.show()
 
         -- Library section
         W.list_label = Static.new()
-        W.list_label:setBounds(10, 60, w - 20 - 80, 16)
+        W.list_label:setBounds(10, 60, 84, 16)
         W.list_label:setText('Prefabs (0)')
         try_skin(W.list_label, 'staticSkin_ME')
         W.window:insertWidget(W.list_label)
+
+        if TextBox then
+            W.filter_input = TextBox.new()
+        else
+            W.filter_input = Static.new()
+        end
+        W.filter_input:setBounds(98, 56, w - 98 - 90 - 4, 22)
+        if W.filter_input.setText then W.filter_input:setText('') end
+        try_skin(W.filter_input, 'editBoxSkin_ME')
+        if W.filter_input.addChangeCallback then
+            pcall(function() W.filter_input:addChangeCallback(on_filter_change) end)
+        end
+        if W.filter_input.addKeyDownCallback then
+            pcall(function()
+                W.filter_input:addKeyDownCallback(function(_self, keyName)
+                    -- Escape clears the filter and re-shows all rows.
+                    if keyName == 'escape' or keyName == 'Escape' then
+                        pcall(function() W.filter_input:setText('') end)
+                        on_filter_change()
+                    end
+                end)
+            end)
+        end
+        W.window:insertWidget(W.filter_input)
 
         W.reload_btn = Button.new()
         W.reload_btn:setBounds(w - 90, 56, 80, 22)
