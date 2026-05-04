@@ -193,15 +193,41 @@ end
 -- ---------------------------------------------------------------------------
 
 -- Rotate (rel_x, rel_y) by rotation_deg and translate to world coords.
--- DCS map space: x = East, y = North (same as math.cos/sin convention for
--- a CW rotation when viewed from above, but we treat rotation_deg as a
--- standard CCW angle for relative placement).
+-- DCS 2D map space: x = North, y = East (top-down view of the 3D world
+-- space where x = North, z = East, y = altitude). heading 0 = +x = North.
+-- We use a standard CCW rotation for relative placement: positive
+-- rotation_deg increases heading (e.g. unit pointing North + 90° → East).
+-- _rotate_mapData_geometry uses the same matrix so polygons rotate the
+-- same way as the groups inside them.
 function M._place_xy(rel_x, rel_y, anchor, rotation_deg)
     local r = (rotation_deg or 0) * (math.pi / 180)
     local c, s = math.cos(r), math.sin(r)
     local rx = rel_x * c - rel_y * s
     local ry = rel_x * s + rel_y * c
     return anchor.x + rx, anchor.y + ry
+end
+
+-- 0.1.0 back-compat: undo distill's incorrect per-vertex centroid
+-- subtraction by adding (ax, ay) (= meta.world_anchor) back to every
+-- {x,y} pair inside mapData's geometry sub-arrays. mapData.{x,y} itself
+-- is the polygon anchor and stays untouched. No-op when mapData is nil.
+function M._unrebase_mapData_geometry(mapData, ax, ay)
+    if type(mapData) ~= 'table' then return end
+    local function unrebase(t)
+        if type(t) ~= 'table' then return end
+        if type(t.x) == 'number' and type(t.y) == 'number' then
+            t.x = t.x + ax
+            t.y = t.y + ay
+        end
+        for _, sub in pairs(t) do
+            if type(sub) == 'table' then unrebase(sub) end
+        end
+    end
+    for k, v in pairs(mapData) do
+        if k ~= 'x' and k ~= 'y' and type(v) == 'table' then
+            unrebase(v)
+        end
+    end
 end
 
 -- Rotate every {x,y} pair inside mapData's geometry sub-arrays (points,
@@ -322,6 +348,14 @@ end
 -- value as radians; that was a bug (file is already in degrees) and caused
 -- placed heading = stored * (180/pi) % 360 * (pi/180) ≈ stored * (180/pi)
 -- modulo wrap, e.g. 45° → 1.0177 rad (~58.31°).
+--
+-- Assumption: every `heading` key encountered here is a body-frame
+-- orientation that should rotate with the group. That holds for all
+-- entities we currently distill (group-level + unit-level on groups and
+-- statics; drawings + zones contain no `heading` keys). If a future
+-- spec adds a heading-like field that's already in world frame (e.g.
+-- a sensor bore-sight), the recursive walk below would incorrectly
+-- rotate it — revisit then.
 local function transform_headings(t, rotation_deg)
     if type(t) ~= 'table' then return end
     for k, v in pairs(t) do
@@ -730,31 +764,22 @@ function M.place(prefab, opts)
         ax = prefab.meta.world_anchor.x or 0
         ay = prefab.meta.world_anchor.y or 0
     end
-    local needs_unrebase_shim = (prefab.meta and prefab.meta.sms_prefab_version or '') ~= '0.2.0'
+    -- Opt IN to the un-rebase shim for known-broken versions only. Earlier
+    -- code did `~= '0.2.0'`, which would have silently fired the shim on a
+    -- hypothetical future 0.3.0 save and double-added world_anchor into
+    -- vertices that were never rebased. Treating it as a known-bad list
+    -- means new versions stay safe by default; add to this list if a future
+    -- format reintroduces the same bug.
+    local v = (prefab.meta and prefab.meta.sms_prefab_version) or ''
+    local needs_unrebase_shim = (v == '' or v == '0.1.0')
 
     for _, d_template in ipairs(prefab.drawings or {}) do
         local d = deep_copy(d_template)
 
-        -- 0.1.0 back-compat: walk mapData's geometry sub-arrays and add
-        -- world_anchor back to each {x,y} so the relative-to-mapData
-        -- invariant is restored. mapData.{x,y} stays untouched here —
-        -- the copyObjToCoord shift moves it to the right world position.
-        if needs_unrebase_shim and d.mapData then
-            for k, v in pairs(d.mapData) do
-                if k ~= 'x' and k ~= 'y' and type(v) == 'table' then
-                    local function unrebase(t)
-                        if type(t) ~= 'table' then return end
-                        if type(t.x) == 'number' and type(t.y) == 'number' then
-                            t.x = t.x + ax
-                            t.y = t.y + ay
-                        end
-                        for _, sub in pairs(t) do
-                            if type(sub) == 'table' then unrebase(sub) end
-                        end
-                    end
-                    unrebase(v)
-                end
-            end
+        -- 0.1.0 back-compat: undo the over-rebase distill applied to
+        -- vertices on legacy saves. New saves at 0.2.0+ skip this.
+        if needs_unrebase_shim then
+            M._unrebase_mapData_geometry(d.mapData, ax, ay)
         end
 
         -- Drawing rotation: vertices inside mapData are deltas relative to

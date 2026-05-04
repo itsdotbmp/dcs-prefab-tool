@@ -44,6 +44,43 @@ do
           approx(x4, 400) and approx(y4, 500), 'got ' .. x4 .. ', ' .. y4)
 end
 
+-- 0.1.0 back-compat un-rebase helper: adds world_anchor back to every
+-- vertex inside mapData's geometry sub-arrays, leaves mapData.{x,y}
+-- untouched. Locks behavior so a future bump can't silently break the
+-- shim by misfiring (or not firing) on legacy saves.
+do
+    local md = {
+        x = -100, y = -200,                 -- the polygon anchor in distilled coords; untouched
+        points = {                          -- vertices have been over-rebased by (-1000, -2000)
+            { x = -1000, y = -2000 },
+            { x = -900,  y = -2000 },
+        },
+    }
+    prefab_ops._unrebase_mapData_geometry(md, 1000, 2000)
+    check('un-rebase: mapData.x untouched', md.x == -100, 'got ' .. md.x)
+    check('un-rebase: mapData.y untouched', md.y == -200, 'got ' .. md.y)
+    check('un-rebase: points[1] (-1000,-2000) + (1000,2000) = (0,0)',
+          approx(md.points[1].x, 0) and approx(md.points[1].y, 0),
+          'got ' .. md.points[1].x .. ', ' .. md.points[1].y)
+    check('un-rebase: points[2] (-900,-2000) + (1000,2000) = (100,0)',
+          approx(md.points[2].x, 100) and approx(md.points[2].y, 0),
+          'got ' .. md.points[2].x .. ', ' .. md.points[2].y)
+
+    -- nil mapData: no-op (no error).
+    prefab_ops._unrebase_mapData_geometry(nil, 1000, 2000)
+    check('un-rebase nil mapData: no error', true)
+
+    -- Recurses through nested geometry tables.
+    local md2 = {
+        x = 0, y = 0,
+        arc_points = { sub = { { x = -50, y = -50 } } },
+    }
+    prefab_ops._unrebase_mapData_geometry(md2, 50, 50)
+    check('un-rebase: nested vertex (-50,-50) + (50,50) = (0,0)',
+          approx(md2.arc_points.sub[1].x, 0) and approx(md2.arc_points.sub[1].y, 0),
+          'got ' .. md2.arc_points.sub[1].x .. ', ' .. md2.arc_points.sub[1].y)
+end
+
 -- Drawing rotation: vertices inside mapData get rotated around the local
 -- origin; mapData.{x,y} itself stays untouched (it's the polygon anchor and
 -- rotates downstream via _place_xy).
