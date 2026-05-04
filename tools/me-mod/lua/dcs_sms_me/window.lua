@@ -1145,7 +1145,7 @@ function M.show()
             W.country_filter_btn = ToggleButton.new()
             W.country_filter_btn:setBounds(w - 90, 268, 80, 22)
             W.country_filter_btn:setText('Combat')
-            try_skin(W.country_filter_btn, 'toggleButtonSkin_ME')
+            try_skin(W.country_filter_btn, 'dtc_button')
             if W.country_filter_btn.addChangeCallback then
                 pcall(function()
                     W.country_filter_btn:addChangeCallback(function(self)
