@@ -97,6 +97,41 @@ do
     check('heading -30 + rotation 0 = 330', prefab_ops._heading_world(-30, 0) == 330)
 end
 
+-- Full pipeline: file (deg) -> rotation -> radians for DCS injection.
+-- The earlier triple-conversion bug had `v * (180/math.pi)` baked in, so a
+-- 45-deg saved heading came out as ~1.0177 rad (= 58.31°) instead of the
+-- correct 0.7854 rad. These assertions lock that down.
+do
+    -- 45° saved, no extra rotation → π/4 rad.
+    local g = { heading = 45, units = { { heading = 45 } } }
+    prefab_ops._transform_headings(g, 0)
+    check('heading 45° → π/4 rad (group)',
+          approx(g.heading, math.pi / 4),
+          'got ' .. tostring(g.heading))
+    check('heading 45° → π/4 rad (nested unit)',
+          approx(g.units[1].heading, math.pi / 4),
+          'got ' .. tostring(g.units[1].heading))
+
+    -- 0° saved → 0 rad regardless of rotation.
+    local g2 = { heading = 0 }
+    prefab_ops._transform_headings(g2, 0)
+    check('heading 0° → 0 rad', g2.heading == 0, 'got ' .. tostring(g2.heading))
+
+    -- 30° saved + 60° place rotation → 90° → π/2 rad.
+    local g3 = { heading = 30 }
+    prefab_ops._transform_headings(g3, 60)
+    check('heading 30° + rot 60° → π/2 rad',
+          approx(g3.heading, math.pi / 2),
+          'got ' .. tostring(g3.heading))
+
+    -- Wrap: 350° + 20° → 10° → π/18 rad.
+    local g4 = { heading = 350 }
+    prefab_ops._transform_headings(g4, 20)
+    check('heading 350° + rot 20° wraps to π/18 rad',
+          approx(g4.heading, math.pi / 18),
+          'got ' .. tostring(g4.heading))
+end
+
 -- Resolve effective anchor: keep_position uses meta.world_anchor.
 do
     local prefab = { meta = { world_anchor = { x = 5000, y = 6000 } }, groups = {}, statics = {}, zones = {}, drawings = {} }

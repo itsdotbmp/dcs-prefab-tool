@@ -313,17 +313,26 @@ local function transform_coords(t, anchor, rotation_deg)
     end
 end
 
+-- Compose the prefab's stored heading (degrees, written by distill's
+-- rad→deg conversion) with the placement rotation (degrees), then convert
+-- the composed heading back to radians for DCS injection — DCS group/unit
+-- tables expect heading in radians at runtime.
+--
+-- Earlier version had `v * (180 / math.pi)` here too, treating the file
+-- value as radians; that was a bug (file is already in degrees) and caused
+-- placed heading = stored * (180/pi) % 360 * (pi/180) ≈ stored * (180/pi)
+-- modulo wrap, e.g. 45° → 1.0177 rad (~58.31°).
 local function transform_headings(t, rotation_deg)
     if type(t) ~= 'table' then return end
     for k, v in pairs(t) do
         if k == 'heading' and type(v) == 'number' then
-            -- headings in DCS group tables are in radians; convert deg→rad for storage
-            t[k] = M._heading_world(v * (180 / math.pi), rotation_deg) * (math.pi / 180)
+            t[k] = M._heading_world(v, rotation_deg) * (math.pi / 180)
         elseif type(v) == 'table' then
             transform_headings(v, rotation_deg)
         end
     end
 end
+M._transform_headings = transform_headings
 
 -- Deep-copy a table. Used so place can transform without mutating the
 -- registered template (caller may place the same prefab multiple times).
