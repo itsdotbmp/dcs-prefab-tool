@@ -70,6 +70,31 @@ local ICON_PATHS = {
     question = 'dxgui\\skins\\skinME\\images\\mission_editor\\static_ME_Question.png',
 }
 
+-- Thin horizontal-rule skin for sectioning the prefab manager. dxgui has
+-- no native separator widget, so we override a Static's released-state bkg
+-- with a darker tone — when the Static is sized 1px tall and stretched
+-- across the row it renders as a divider line. Subtle on top of the
+-- windowSkinME panel background.
+function M.separator()
+    return {
+        skinData = {
+            states = {
+                released = {
+                    [1] = {
+                        bkg = {
+                            center_center = '0x00000060',
+                            file          = '',
+                            insets = { bottom = 0, left = 0, right = 0, top = 0 },
+                        },
+                    },
+                },
+            },
+            type = 'Static',
+        },
+        version = 1,
+    }
+end
+
 -- ME's static-panel dial visual: clone dialSkin_ME and swap the picture
 -- file in both released + disabled states to the m1/elements version, with
 -- middle-alignment (not stretch). me_static_panel.dlg's d_heading does this

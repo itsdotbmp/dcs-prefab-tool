@@ -69,6 +69,7 @@ local function try_skin(widget, skin_name)
         elseif skin_name == 'icon_warning'    then s = dtc_skins.icon_static('warning')
         elseif skin_name == 'icon_question'   then s = dtc_skins.icon_static('question')
         elseif skin_name == 'dtc_dial'        then s = dtc_skins.dial()
+        elseif skin_name == 'dtc_separator'   then s = dtc_skins.separator()
         else
             local fn = Skin[skin_name]
             if not fn then return end
@@ -87,7 +88,6 @@ local W = {
     save_btn   = nil,
     reload_btn = nil,
     grid       = nil,
-    list_label = nil,
     rotation_input = nil,        -- legacy TextBox; only used when Dial/SpinBox unavailable
     rotation_dial  = nil,
     rotation_spin  = nil,
@@ -226,14 +226,15 @@ local function restore_selection_by_name(prev_name)
     end
 end
 
+-- The prefab count lives in the filter input's placeholder text now ("Search
+-- 27 prefabs"). Hint text only renders when the input is empty — once the
+-- user types, the typed text takes over, which is the right UX.
 local function update_count_label()
     pcall(function()
-        if not (W.list_label and W.list_label.setText) then return end
-        local total, shown = #W.rows, #W.visible_rows
-        local label = (W.filter_text ~= '' and total ~= shown)
-            and string.format('Prefabs (%d/%d)', shown, total)
-            or  string.format('Prefabs (%d)', total)
-        W.list_label:setText(label)
+        if not (W.filter_input and W.filter_input.setHintText) then return end
+        local total = #W.rows
+        local label = (total == 1) and 'Search 1 prefab' or string.format('Search %d prefabs', total)
+        W.filter_input:setHintText(label)
     end)
 end
 
@@ -953,13 +954,17 @@ function M.show()
     end
     local ok, err = pcall(function()
         local screen_w, _ = Gui.GetWindowSize()
-        -- Title bar (~30px) + bottom border (~12px) sit outside the content
-        -- layout, so total height = content y-extent + ~42. Grid block ends
-        -- at y=260 (h=180 → 6 rows at gridSkin_ME's rowHeight=30); the
-        -- action panel adds Country / Rotation (43px tall — taller than
-        -- the other rows because of the dial gizmo) / place-buttons /
-        -- action-buttons / status, ending at ~414; +~42 → 462.
-        local w, h = 440, 462
+        -- Layout (top → bottom):
+        --   y=8   Name row:    "Name:" + name_input + Save
+        --   y=38  Search row:  filter_input full-width (count → hint text)
+        --   y=68  Grid:        h=200, ends y=268
+        --   y=276 Action row:  Reload | Undo | gap | Rename | Delete
+        --   y=306 Country row: "Place as country:" + combo + Combat toggle
+        --   y=336 Rotation:    spin+dial gizmo + Place-at-original + Place-at-click (43px tall)
+        --   y=387 Status
+        -- Title bar (~30) + bottom border (~12) sit outside, so window
+        -- total height = content y-extent + ~42 → 460.
+        local w, h = 440, 460
         local x = screen_w - w - 20
         local y = 80
 
@@ -997,15 +1002,9 @@ function M.show()
             end)
         end
 
-        -- Save panel (top): "Name: [______] [Save]"
-        local section_label_save = Static.new()
-        section_label_save:setBounds(10, 6, w - 20, 16)
-        section_label_save:setText('Save current selection')
-        try_skin(section_label_save, 'staticSkin_ME')
-        W.window:insertWidget(section_label_save)
-
+        -- Row 0: Name + Save.
         local name_label = Static.new()
-        name_label:setBounds(10, 26, 50, 22)
+        name_label:setBounds(10, 8, 50, 22)
         name_label:setText('Name:')
         try_skin(name_label, 'staticSkin_ME')
         W.window:insertWidget(name_label)
@@ -1016,31 +1015,39 @@ function M.show()
             W.name_input = Static.new()
             W.name_input.setText = W.name_input.setText  -- API parity stub
         end
-        W.name_input:setBounds(64, 26, w - 64 - 80 - 16, 22)
+        W.name_input:setBounds(60, 8, w - 60 - 90 - 6, 22)
         if W.name_input.setText then W.name_input:setText('') end
         try_skin(W.name_input, 'editBoxSkin_ME')
         W.window:insertWidget(W.name_input)
 
         W.save_btn = Button.new()
-        W.save_btn:setBounds(w - 90, 26, 80, 22)
+        W.save_btn:setBounds(w - 90, 8, 80, 22)
         W.save_btn:setText('Save')
         try_skin(W.save_btn, 'dtc_button')
         W.save_btn:addChangeCallback(on_save_click)
         W.window:insertWidget(W.save_btn)
 
-        -- Library section
-        W.list_label = Static.new()
-        W.list_label:setBounds(10, 60, 84, 16)
-        W.list_label:setText('Prefabs (0)')
-        try_skin(W.list_label, 'staticSkin_ME')
-        W.window:insertWidget(W.list_label)
+        -- Section separator below the Name row.
+        local sep1 = Static.new()
+        sep1:setBounds(10, 36, w - 20, 1)
+        try_skin(sep1, 'dtc_separator')
+        W.window:insertWidget(sep1)
+
+        -- Row 1: "Search:" label + filter input. Count of prefabs lives in
+        -- the hint/placeholder text — but if the dxgui build doesn't
+        -- render hints, the label keeps the row labelled.
+        local search_label = Static.new()
+        search_label:setBounds(10, 42, 50, 22)
+        search_label:setText('Search:')
+        try_skin(search_label, 'staticSkin_ME')
+        W.window:insertWidget(search_label)
 
         if TextBox then
             W.filter_input = TextBox.new()
         else
             W.filter_input = Static.new()
         end
-        W.filter_input:setBounds(98, 56, w - 98 - 90 - 4, 22)
+        W.filter_input:setBounds(60, 42, w - 60 - 10, 22)
         if W.filter_input.setText then W.filter_input:setText('') end
         try_skin(W.filter_input, 'editBoxSkin_ME')
         if W.filter_input.addChangeCallback then
@@ -1058,13 +1065,6 @@ function M.show()
             end)
         end
         W.window:insertWidget(W.filter_input)
-
-        W.reload_btn = Button.new()
-        W.reload_btn:setBounds(w - 90, 56, 80, 22)
-        W.reload_btn:setText('Reload')
-        try_skin(W.reload_btn, 'dtc_button')
-        W.reload_btn:addChangeCallback(on_reload_click)
-        W.window:insertWidget(W.reload_btn)
 
         if Grid and GridHeaderCell then
             W.grid = Grid.new()
@@ -1125,15 +1125,49 @@ function M.show()
             W.grid = Static.new()
             if W.grid.setText then W.grid:setText('Grid widget not available') end
         end
-        W.grid:setBounds(10, 80, w - 20, 180)
+        W.grid:setBounds(10, 68, w - 20, 200)
         W.window:insertWidget(W.grid)
 
-        -- Action panel. Country / Rotation / place-buttons / action-buttons
-        -- / status, each row +26..28px below the previous. The grid above
-        -- ends at y=260; first action row at 268.
+        -- Row 3: library/selection actions. Reload + Undo on the left
+        -- (library-wide), Rename + Delete on the right (per-selection).
+        W.reload_btn = Button.new()
+        W.reload_btn:setBounds(10, 276, 70, 22)
+        W.reload_btn:setText('Reload')
+        try_skin(W.reload_btn, 'dtc_button')
+        W.reload_btn:addChangeCallback(on_reload_click)
+        W.window:insertWidget(W.reload_btn)
+
+        W.undo_btn = Button.new()
+        W.undo_btn:setBounds(84, 276, 110, 22)
+        W.undo_btn:setText('Undo last place')
+        try_skin(W.undo_btn, 'dtc_button')
+        W.undo_btn:addChangeCallback(on_undo_click)
+        W.window:insertWidget(W.undo_btn)
+
+        W.rename_btn = Button.new()
+        W.rename_btn:setBounds(w - 90 - 80 - 4, 276, 80, 22)
+        W.rename_btn:setText('Rename')
+        try_skin(W.rename_btn, 'dtc_button')
+        W.rename_btn:addChangeCallback(on_rename_click)
+        W.window:insertWidget(W.rename_btn)
+
+        W.delete_btn = Button.new()
+        W.delete_btn:setBounds(w - 90, 276, 80, 22)
+        W.delete_btn:setText('Delete')
+        try_skin(W.delete_btn, 'dtc_button')
+        W.delete_btn:addChangeCallback(on_delete_click)
+        W.window:insertWidget(W.delete_btn)
+
+        -- Section separator below the Reload/Undo/Rename/Delete row.
+        local sep2 = Static.new()
+        sep2:setBounds(10, 302, w - 20, 1)
+        try_skin(sep2, 'dtc_separator')
+        W.window:insertWidget(sep2)
+
+        -- Row 4: Country picker.
         local country_label = Static.new()
-        country_label:setBounds(10, 268, 60, 22)
-        country_label:setText('Country:')
+        country_label:setBounds(10, 306, 100, 22)
+        country_label:setText('Place as country:')
         try_skin(country_label, 'staticSkin_ME')
         W.window:insertWidget(country_label)
 
@@ -1143,7 +1177,7 @@ function M.show()
         -- including neutrals).
         if ToggleButton then
             W.country_filter_btn = ToggleButton.new()
-            W.country_filter_btn:setBounds(w - 90, 268, 80, 22)
+            W.country_filter_btn:setBounds(w - 90, 306, 80, 22)
             W.country_filter_btn:setText('Combat')
             try_skin(W.country_filter_btn, 'dtc_button')
             if W.country_filter_btn.addChangeCallback then
@@ -1158,35 +1192,37 @@ function M.show()
             W.window:insertWidget(W.country_filter_btn)
         end
 
-        local combo_w = ToggleButton and (w - 70 - 10 - 80 - 4) or (w - 70 - 10)
+        local combo_x = 114
+        local combo_w = ToggleButton and (w - combo_x - 90 - 6) or (w - combo_x - 10)
         if ComboList then
             W.country_combo = ComboList.new()
-            W.country_combo:setBounds(70, 268, combo_w, 22)
+            W.country_combo:setBounds(combo_x, 306, combo_w, 22)
             try_skin(W.country_combo, 'comboListSkinNew_')
             W.window:insertWidget(W.country_combo)
         else
             -- Fallback: a Static so the row still renders. populate is a
             -- no-op without ComboList; place falls back to stored country.
             local stub = Static.new()
-            stub:setBounds(70, 268, combo_w, 22)
+            stub:setBounds(combo_x, 306, combo_w, 22)
             stub:setText('(ComboList unavailable)')
             try_skin(stub, 'staticSkin_ME')
             W.window:insertWidget(stub)
         end
 
-        -- Rotation row. Dial (47x43, drag-to-rotate gizmo) + SpinBox
-        -- (numeric ± stepper) wired together via W.rotation_deg, mirroring
-        -- me_static.lua's d_heading / e_heading. Falls back to a plain
-        -- TextBox when Dial / SpinBox aren't available (test VMs).
+        -- Row 5: Rotation gizmo + place buttons. Row is 43px tall (dial
+        -- height). Spinbox + label are vertically centered against the
+        -- dial. Dial + SpinBox wired via W.rotation_deg, mirroring
+        -- me_static.lua's d_heading / e_heading; TextBox fallback when
+        -- Dial / SpinBox aren't available (test VMs).
         local rotation_label = Static.new()
-        rotation_label:setBounds(10, 304, 60, 22)
+        rotation_label:setBounds(10, 346, 60, 22)
         rotation_label:setText('Rotation:')
         try_skin(rotation_label, 'staticSkin_ME')
         W.window:insertWidget(rotation_label)
 
         if SpinBox and Dial then
             W.rotation_spin = SpinBox.new()
-            W.rotation_spin:setBounds(70, 304, 100, 22)
+            W.rotation_spin:setBounds(70, 346, 50, 22)
             try_skin(W.rotation_spin, 'spinBoxSkin_MENew')
             pcall(function() W.rotation_spin:setRange(-1, 360) end)
             pcall(function() W.rotation_spin:setStep(1) end)
@@ -1201,7 +1237,7 @@ function M.show()
             W.window:insertWidget(W.rotation_spin)
 
             W.rotation_dial = Dial.new()
-            W.rotation_dial:setBounds(180, 296, 47, 43)
+            W.rotation_dial:setBounds(122, 336, 47, 43)
             try_skin(W.rotation_dial, 'dtc_dial')
             pcall(function() W.rotation_dial:setRange(0, 359) end)
             pcall(function() W.rotation_dial:setStep(1) end)
@@ -1222,7 +1258,7 @@ function M.show()
             else
                 W.rotation_input = Static.new()
             end
-            W.rotation_input:setBounds(70, 304, 50, 22)
+            W.rotation_input:setBounds(70, 346, 50, 22)
             if W.rotation_input.setText then W.rotation_input:setText('0') end
             try_skin(W.rotation_input, 'editBoxSkin_ME')
             if W.rotation_input.addChangeCallback then
@@ -1235,52 +1271,35 @@ function M.show()
             W.window:insertWidget(W.rotation_input)
 
             local rotation_unit = Static.new()
-            rotation_unit:setBounds(122, 304, 20, 22)
+            rotation_unit:setBounds(122, 346, 20, 22)
             rotation_unit:setText('°')
             try_skin(rotation_unit, 'staticSkin_ME')
             W.window:insertWidget(rotation_unit)
         end
 
-        local btn_y_1 = 346
-        W.place_click_btn = Button.new()
-        W.place_click_btn:setBounds(10, btn_y_1, 130, 22)
-        W.place_click_btn:setText('Place at click')
-        try_skin(W.place_click_btn, 'dtc_button')
-        W.place_click_btn:addChangeCallback(on_place_click)
-        W.window:insertWidget(W.place_click_btn)
-
         W.place_origin_btn = Button.new()
-        W.place_origin_btn:setBounds(146, btn_y_1, 130, 22)
+        W.place_origin_btn:setBounds(174, 346, 130, 22)
         W.place_origin_btn:setText('Place at original')
         try_skin(W.place_origin_btn, 'dtc_button')
         W.place_origin_btn:addChangeCallback(on_place_origin_click)
         W.window:insertWidget(W.place_origin_btn)
 
-        local btn_y_2 = 372
-        W.rename_btn = Button.new()
-        W.rename_btn:setBounds(10, btn_y_2, 80, 22)
-        W.rename_btn:setText('Rename')
-        try_skin(W.rename_btn, 'dtc_button')
-        W.rename_btn:addChangeCallback(on_rename_click)
-        W.window:insertWidget(W.rename_btn)
+        W.place_click_btn = Button.new()
+        W.place_click_btn:setBounds(308, 346, w - 308 - 10, 22)
+        W.place_click_btn:setText('Place at click')
+        try_skin(W.place_click_btn, 'dtc_button')
+        W.place_click_btn:addChangeCallback(on_place_click)
+        W.window:insertWidget(W.place_click_btn)
 
-        W.delete_btn = Button.new()
-        W.delete_btn:setBounds(96, btn_y_2, 80, 22)
-        W.delete_btn:setText('Delete')
-        try_skin(W.delete_btn, 'dtc_button')
-        W.delete_btn:addChangeCallback(on_delete_click)
-        W.window:insertWidget(W.delete_btn)
-
-        W.undo_btn = Button.new()
-        W.undo_btn:setBounds(182, btn_y_2, 130, 22)
-        W.undo_btn:setText('Undo last place')
-        try_skin(W.undo_btn, 'dtc_button')
-        W.undo_btn:addChangeCallback(on_undo_click)
-        W.window:insertWidget(W.undo_btn)
+        -- Section separator above the status bar.
+        local sep3 = Static.new()
+        sep3:setBounds(10, 383, w - 20, 1)
+        try_skin(sep3, 'dtc_separator')
+        W.window:insertWidget(sep3)
 
         -- Status
         W.status = Static.new()
-        W.status:setBounds(10, 398, w - 20, 16)
+        W.status:setBounds(10, 387, w - 20, 16)
         W.status:setText('Ready.')
         try_skin(W.status, 'staticSkin_ME')
         W.window:insertWidget(W.status)
