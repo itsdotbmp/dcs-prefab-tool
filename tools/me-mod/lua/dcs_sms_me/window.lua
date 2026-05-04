@@ -225,6 +225,9 @@ local function do_save(name)
         set_status('Saved ' .. name .. ' → ' .. tostring(path_or_err))
         log.write('sms.me.prefab', log.INFO, 'saved ' .. name)
         refresh_list()
+        pcall(function()
+            if W.name_input and W.name_input.setText then W.name_input:setText('') end
+        end)
     else
         set_status('Save failed: ' .. tostring(path_or_err))
         log.write('sms.me.prefab', log.ERROR, 'save failed: ' .. tostring(path_or_err))
