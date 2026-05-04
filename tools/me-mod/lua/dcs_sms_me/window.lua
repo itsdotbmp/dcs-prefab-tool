@@ -70,6 +70,7 @@ local function try_skin(widget, skin_name)
         elseif skin_name == 'icon_question'   then s = dtc_skins.icon_static('question')
         elseif skin_name == 'dtc_dial'        then s = dtc_skins.dial()
         elseif skin_name == 'dtc_separator'   then s = dtc_skins.separator()
+        elseif skin_name == 'dtc_status_yellow' then s = dtc_skins.static_yellow()
         else
             local fn = Skin[skin_name]
             if not fn then return end
@@ -668,6 +669,9 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
     pcall(function()
         if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Cancel') end
     end)
+    -- Yellow status text reinforces the place-pending mode visually,
+    -- alongside the title-bar arrows and the "Cancel" button label.
+    pcall(function() try_skin(W.status, 'dtc_status_yellow') end)
     set_status('▶▶▶ PLACING "' .. prefab_name .. '" — CLICK ON THE MAP (Esc cancels) ◀◀◀')
 
     -- Cursor-following bbox preview: a yellow polygon-rectangle sized to
@@ -704,12 +708,27 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
             error('me_map_window missing required symbols')
         end
 
+        -- Capture the default pan/zoom state so we can forward right-drag
+        -- and wheel events to it. Without this delegation, replacing the
+        -- map state with our place_state kills both pan and zoom for the
+        -- duration of place-pending.
+        local pan_state = MapWindow.getPanState()
+        local function forward(method, ...)
+            if not pan_state then return end
+            local fn = pan_state[method]
+            if type(fn) == 'function' then pcall(fn, pan_state, ...) end
+        end
+
         local place_state = {}
 
         function place_state:onMouseDown(x, y, button)
+            if button ~= 1 then
+                -- Right/middle click → start a pan drag (handled by pan_state).
+                forward('onMouseDown', x, y, button)
+                return
+            end
             pcall(function()
                 if not W.place_pending then return end
-                if button ~= 1 then return end  -- only left-click places
                 local wx, wy = MapWindow.getMapPoint(x, y)
                 if not (wx and wy) then
                     set_status('Place failed: getMapPoint returned nil')
@@ -757,13 +776,19 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
             end)
         end
 
-        function place_state:onMouseUp(x, y, button) end
-        function place_state:onMouseDrag(dx, dy, button, x, y) end
+        function place_state:onMouseUp(x, y, button)
+            if button ~= 1 then forward('onMouseUp', x, y, button) end
+        end
+        function place_state:onMouseDrag(dx, dy, button, x, y)
+            -- Right/middle drag = pan. Left drag is meaningless here since
+            -- our left-click commits the placement on mouse-down.
+            if button ~= 1 then forward('onMouseDrag', dx, dy, button, x, y) end
+        end
         function place_state:onMouseMove(x, y)
-            -- Follow-cursor preview: capture the cursor's world coords and
-            -- delegate to refresh_preview, which factors in the current
-            -- rotation. Same path is reused by the dial / spinbox onChange
-            -- handlers so the rect spins live as the user dials.
+            -- Forward cursor tracking to pan_state too; some panState
+            -- implementations stash the last cursor position for status
+            -- readouts. Then update our follow-cursor preview.
+            forward('onMouseMove', x, y)
             pcall(function()
                 if not W.preview_id then return end
                 local wx, wy = MapWindow.getMapPoint(x, y)
@@ -772,7 +797,9 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
                 refresh_preview()
             end)
         end
-        function place_state:onMouseWheel(x, y, clicks) end
+        function place_state:onMouseWheel(x, y, clicks)
+            forward('onMouseWheel', x, y, clicks)
+        end
 
         MapWindow.setState(place_state)
     end)
@@ -792,6 +819,8 @@ exit_place_pending = function()
     pcall(function()
         if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Place at click') end
     end)
+    -- Restore the status bar's normal skin (yellow → off-white).
+    pcall(function() try_skin(W.status, 'staticSkin_ME') end)
     -- Tear down the bbox preview overlay before restoring map state so the
     -- yellow rectangle doesn't briefly persist after Esc / click.
     pcall(function()
@@ -1314,6 +1343,19 @@ function M.show()
                         self:selectRow(row)
                         on_list_select()
                     end
+                end)
+            end
+            -- Double-click a row → enter Place at click mode for that prefab.
+            -- Select first so on_place_click sees the right selection, then
+            -- invoke the same path as the Place-at-click button.
+            W.grid.onMouseDoubleClick = function(self, x, y, button)
+                if button ~= 1 then return end
+                pcall(function()
+                    local _, row = self:getMouseCursorColumnRow(x, y)
+                    if not (row and row >= 0) then return end
+                    self:selectRow(row)
+                    on_list_select()
+                    on_place_click()
                 end)
             end
             if W.grid.addSelectRowCallback then

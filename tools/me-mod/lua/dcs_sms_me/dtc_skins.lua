@@ -70,6 +70,20 @@ local ICON_PATHS = {
     question = 'dxgui\\skins\\skinME\\images\\mission_editor\\static_ME_Question.png',
 }
 
+-- Yellow-text variant of staticSkin_ME for the status bar during
+-- place-pending mode. Clones staticSkin_ME and overrides released[1].text.color
+-- — dxgui Static has no setColor API, so a per-mode skin swap is the
+-- cleanest way to flip the foreground color at runtime.
+function M.static_yellow()
+    local s = Skin.staticSkin_ME and Skin.staticSkin_ME() or nil
+    if not (s and s.skinData and s.skinData.states) then return nil end
+    local rel = s.skinData.states.released
+    if rel and rel[1] and rel[1].text then
+        rel[1].text.color = '0xffd700ff'
+    end
+    return s
+end
+
 -- Thin horizontal-rule skin for sectioning the prefab manager. dxgui has
 -- no native separator widget, so we override a Static's released-state bkg
 -- with a darker tone — when the Static is sized 1px tall and stretched
