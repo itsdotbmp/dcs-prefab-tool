@@ -327,6 +327,26 @@ end
 --   (2024-era, checked me_mission.lua 9759 lines). All group injection goes
 --   through create_group_objects + missionCountry table.
 
+-- Stamp a country override onto a copied group/static and its units. We
+-- write country_name (a string) and clear the numeric country id so
+-- resolve_country picks up the override at step 1. No-op for nil/empty
+-- overrides — caller's signal that the prefab's own country should win.
+local function override_country(group, country_name)
+    if not country_name or country_name == '' then return end
+    if type(group) ~= 'table' then return end
+    group.country_name = country_name
+    group.country = nil
+    if type(group.units) == 'table' then
+        for _, u in pairs(group.units) do
+            if type(u) == 'table' then
+                u.country_name = country_name
+                u.country = nil
+            end
+        end
+    end
+end
+M._override_country = override_country
+
 -- Walk a group/static table and rewrite every {x, y} pair using the
 -- place_xy transform. Mutates in place.
 local function transform_coords(t, anchor, rotation_deg)
@@ -653,6 +673,10 @@ M._remove = {
 --   anchor         {x, y}  — world map point to place at (required unless keep_position)
 --   rotation       number  — clockwise rotation in degrees (default 0)
 --   keep_position  bool    — ignore anchor/rotation; use prefab.meta.world_anchor as-is
+--   country_name   string  — override every group/static/unit to this country
+--                            (a key in Mission.missionCountry). Drawings and
+--                            zones are unaffected. Nil/empty = use the country
+--                            stored in the prefab.
 --
 -- Returns injection_record on (partial) success, or nil + error_string if
 -- nothing could be injected.
@@ -668,6 +692,19 @@ function M.place(prefab, opts)
         return nil, 'invalid prefab'
     end
     opts = opts or {}
+
+    -- Validate country override against the open mission's country table.
+    -- An override the mission can't satisfy means the user picked from a
+    -- stale dropdown — surface as a hard error rather than silently falling
+    -- back to the stored country.
+    if opts.country_name and opts.country_name ~= '' then
+        local Mission = require('me_mission')
+        if type(Mission.missionCountry) ~= 'table'
+            or not Mission.missionCountry[opts.country_name] then
+            return nil, 'country "' .. tostring(opts.country_name) ..
+                '" is not available in the current mission'
+        end
+    end
 
     local anchor, rotation = M._resolve_anchor(prefab, opts)
     if not anchor then
@@ -689,6 +726,7 @@ function M.place(prefab, opts)
     -- Groups (includes statics — they are groups with type='static' in DCS).
     for _, g_template in ipairs(prefab.groups or {}) do
         local g = deep_copy(g_template)
+        override_country(g, opts.country_name)
         transform_coords(g, anchor, rotation)
         transform_headings(g, rotation)
         local result, err = inject_group(g)
@@ -711,6 +749,7 @@ function M.place(prefab, opts)
     -- Like groups, statics in DCS are groups with type='static'; inject_group handles them.
     for _, s_template in ipairs(prefab.statics or {}) do
         local s = deep_copy(s_template)
+        override_country(s, opts.country_name)
         transform_coords(s, anchor, rotation)
         transform_headings(s, rotation)
         local result, err = inject_group(s)

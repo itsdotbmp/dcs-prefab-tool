@@ -36,6 +36,13 @@ end
 -- where these widgets aren't bound (e.g. test VMs or older dxgui builds).
 local Grid;            do local ok, mod = pcall(require, 'Grid');            if ok then Grid            = mod end end
 local GridHeaderCell;  do local ok, mod = pcall(require, 'GridHeaderCell');  if ok then GridHeaderCell  = mod end end
+-- ComboList renders the selected item with its OWN skin in the closed
+-- display (so the coalition dot survives), unlike ComboBox which just
+-- shows raw text. The ME's airplane-group c_country uses ComboList for
+-- exactly this reason.
+local ComboList;       do local ok, mod = pcall(require, 'ComboList');       if ok then ComboList       = mod end end
+local ListBoxItem;     do local ok, mod = pcall(require, 'ListBoxItem');     if ok then ListBoxItem     = mod end end
+local ToggleButton;    do local ok, mod = pcall(require, 'ToggleButton');    if ok then ToggleButton    = mod end end
 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
 local undo       = require('dcs_sms_me.undo')
@@ -79,6 +86,8 @@ local W = {
     grid       = nil,
     list_label = nil,
     rotation_input = nil,
+    country_combo      = nil,
+    country_filter_btn = nil,
     place_click_btn   = nil,
     place_origin_btn  = nil,
     rename_btn = nil,
@@ -475,6 +484,104 @@ end
 
 local exit_place_pending  -- forward declaration; assigned below
 
+-- Read the currently-selected country from the dropdown. Returns nil when
+-- the combo isn't built (test VM, dxgui without ComboBox) or no item is
+-- selected — caller falls back to the prefab's stored country.
+local function get_country_name()
+    local name
+    pcall(function()
+        if not (W.country_combo and W.country_combo.getSelectedItem) then return end
+        local item = W.country_combo:getSelectedItem()
+        if item and item.getText then
+            local txt = item:getText()
+            if type(txt) == 'string' and txt ~= '' then name = txt end
+        end
+    end)
+    return name
+end
+
+-- Read the mission-defined coalition for a country name. Returns 'red',
+-- 'blue', 'neutral', or nil. Mission.countryCoalition[name] is the
+-- coalition *object* whose .name field carries the string ('red', 'blue',
+-- 'neutrals' — note plural). The .color field is a MapColor table for
+-- map rendering, NOT the coalition string, so don't read .color here.
+local function country_coalition(Mission, name)
+    if not (Mission and type(Mission.countryCoalition) == 'table') then return nil end
+    local entry = Mission.countryCoalition[name]
+    if type(entry) ~= 'table' then return nil end
+    local cn = entry.name
+    if cn == 'red' or cn == 'blue' then return cn end
+    if cn == 'neutrals' or cn == 'neutral' then return 'neutral' end
+    return nil
+end
+
+-- Map a coalition string to the canonical ME ListBoxItem skin name.
+local COALITION_SKIN = {
+    red     = 'listBoxItemCoalRedSkin',
+    blue    = 'listBoxItemCoalBlueSkin',
+    neutral = 'listBoxItemCoalNeutralSkin',
+}
+
+-- Is the Combat/All toggle currently in "All" mode? (state=true ⇒ All;
+-- state=false / no widget ⇒ Combat). Mirrors me_aircraft.lua's tbFilter.
+local function is_filter_all()
+    local on = false
+    pcall(function()
+        if W.country_filter_btn and W.country_filter_btn.getState then
+            on = W.country_filter_btn:getState() == true
+        end
+    end)
+    return on
+end
+
+-- (Re-)populate the country combobox from Mission.missionCountry. Called
+-- on first build, on every M.show, and on Combat/All toggle. Per-item
+-- skin shows a colored dot for the country's mission coalition (red /
+-- blue / neutral). In Combat mode neutral countries are hidden — same
+-- convention as the ME's airplane group panel (tbFilter).
+local function populate_country_combo()
+    pcall(function()
+        if not (W.country_combo and ListBoxItem) then return end
+        local ok_req, Mission = pcall(require, 'me_mission')
+        if not ok_req or type(Mission.missionCountry) ~= 'table' then
+            log.write('sms.me', log.WARNING, 'Mission.missionCountry unavailable — country dropdown empty')
+            return
+        end
+
+        local show_all = is_filter_all()
+        local prev = get_country_name()
+
+        if W.country_combo.removeAllItems then W.country_combo:removeAllItems() end
+
+        local names = {}
+        for name in pairs(Mission.missionCountry) do
+            if type(name) == 'string' then names[#names + 1] = name end
+        end
+        table.sort(names)
+
+        local first_item, prev_item
+        for _, name in ipairs(names) do
+            local coalition = country_coalition(Mission, name)
+            -- Combat mode: red/blue only. All mode: include neutral (and
+            -- countries with no mission coalition assignment).
+            local include = show_all or coalition == 'red' or coalition == 'blue'
+            if include then
+                local item = ListBoxItem.new(name)
+                local skin_name = COALITION_SKIN[coalition or 'neutral']
+                if skin_name then try_skin(item, skin_name) end
+                W.country_combo:insertItem(item)
+                if not first_item then first_item = item end
+                if name == prev then prev_item = item end
+            end
+        end
+
+        local pick = prev_item or first_item
+        if pick and W.country_combo.selectItem then
+            pcall(function() W.country_combo:selectItem(pick) end)
+        end
+    end)
+end
+
 local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
     W.place_pending = true
     W.place_pending_name = prefab_name
@@ -514,7 +621,15 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
                     exit_place_pending()
                     return
                 end
-                local rec, err = prefab_ops.place(prefab_table, { anchor = { x = wx, y = wy }, rotation = rotation_deg })
+                local country_name = get_country_name()
+                if not country_name then
+                    log.write('sms.me.prefab', log.WARNING, 'place: country dropdown empty — using prefab-stored countries')
+                end
+                local rec, err = prefab_ops.place(prefab_table, {
+                    anchor       = { x = wx, y = wy },
+                    rotation     = rotation_deg,
+                    country_name = country_name,
+                })
                 if rec then
                     undo.record(rec)
                     -- record.statics doesn't exist in Task 6's shape (statics
@@ -578,6 +693,7 @@ local function get_rotation_deg()
     return n
 end
 
+-- Read the currently-selected country from the dropdown. Returns nil when
 local function on_place_click()
     if W.place_pending then
         -- Acting as Cancel.
@@ -606,7 +722,15 @@ local function on_place_origin_click()
         return
     end
     local rotation_deg = get_rotation_deg()
-    local rec, err = prefab_ops.place(prefab, { keep_position = true, rotation = rotation_deg })
+    local country_name = get_country_name()
+    if not country_name then
+        log.write('sms.me.prefab', log.WARNING, 'place at original: country dropdown empty — using prefab-stored countries')
+    end
+    local rec, err = prefab_ops.place(prefab, {
+        keep_position = true,
+        rotation      = rotation_deg,
+        country_name  = country_name,
+    })
     if rec then
         undo.record(rec)
         local wa = prefab.meta and prefab.meta.world_anchor or { x = 0, y = 0 }
@@ -777,6 +901,9 @@ end
 function M.show()
     log.write('sms.me', log.INFO, 'window.show() called (W.window present=' .. tostring(W.window ~= nil) .. ')')
     if W.window then
+        -- Re-populate so a mission-change between hides surfaces the new
+        -- country list; existing selection is preserved if still valid.
+        populate_country_combo()
         pcall(function() W.window:setVisible(true) end)
         return
     end
@@ -784,9 +911,10 @@ function M.show()
         local screen_w, _ = Gui.GetWindowSize()
         -- Title bar (~30px) + bottom border (~12px) sit outside the content
         -- layout, so total height = content y-extent + ~42. Grid block ends
-        -- at y=260 (h=180 → 6 rows at gridSkin_ME's rowHeight=30); status
-        -- label ends at ~362; +~42 → 410.
-        local w, h = 440, 410
+        -- at y=260 (h=180 → 6 rows at gridSkin_ME's rowHeight=30); the
+        -- action panel below adds Country/Rotation/place-buttons/action-
+        -- buttons/status rows, ending at ~390; +~42 → 438.
+        local w, h = 440, 438
         local x = screen_w - w - 20
         local y = 80
 
@@ -955,10 +1083,54 @@ function M.show()
         W.grid:setBounds(10, 80, w - 20, 180)
         W.window:insertWidget(W.grid)
 
-        -- Action panel (y-offsets shifted down 50px because the grid above
-        -- is now h=180 instead of the ListBox's h=130).
+        -- Action panel. Country / Rotation / place-buttons / action-buttons
+        -- / status, each row +26..28px below the previous. The grid above
+        -- ends at y=260; first action row at 268.
+        local country_label = Static.new()
+        country_label:setBounds(10, 268, 60, 22)
+        country_label:setText('Country:')
+        try_skin(country_label, 'staticSkin_ME')
+        W.window:insertWidget(country_label)
+
+        -- Combat/All toggle on the right edge of the row, mirroring the
+        -- ME's airplane-group panel (tbFilter). State=false → "Combat"
+        -- (only red+blue countries shown). State=true → "All" (everything,
+        -- including neutrals).
+        if ToggleButton then
+            W.country_filter_btn = ToggleButton.new()
+            W.country_filter_btn:setBounds(w - 90, 268, 80, 22)
+            W.country_filter_btn:setText('Combat')
+            try_skin(W.country_filter_btn, 'toggleButtonSkin_ME')
+            if W.country_filter_btn.addChangeCallback then
+                pcall(function()
+                    W.country_filter_btn:addChangeCallback(function(self)
+                        local on = self.getState and self:getState() or false
+                        pcall(function() self:setText(on and 'All' or 'Combat') end)
+                        populate_country_combo()
+                    end)
+                end)
+            end
+            W.window:insertWidget(W.country_filter_btn)
+        end
+
+        local combo_w = ToggleButton and (w - 70 - 10 - 80 - 4) or (w - 70 - 10)
+        if ComboList then
+            W.country_combo = ComboList.new()
+            W.country_combo:setBounds(70, 268, combo_w, 22)
+            try_skin(W.country_combo, 'comboListSkinNew_')
+            W.window:insertWidget(W.country_combo)
+        else
+            -- Fallback: a Static so the row still renders. populate is a
+            -- no-op without ComboList; place falls back to stored country.
+            local stub = Static.new()
+            stub:setBounds(70, 268, combo_w, 22)
+            stub:setText('(ComboList unavailable)')
+            try_skin(stub, 'staticSkin_ME')
+            W.window:insertWidget(stub)
+        end
+
         local rotation_label = Static.new()
-        rotation_label:setBounds(10, 268, 60, 22)
+        rotation_label:setBounds(10, 296, 60, 22)
         rotation_label:setText('Rotation:')
         try_skin(rotation_label, 'staticSkin_ME')
         W.window:insertWidget(rotation_label)
@@ -969,18 +1141,18 @@ function M.show()
             W.rotation_input = Static.new()
             W.rotation_input.setText = W.rotation_input.setText  -- API parity stub
         end
-        W.rotation_input:setBounds(70, 268, 50, 22)
+        W.rotation_input:setBounds(70, 296, 50, 22)
         if W.rotation_input.setText then W.rotation_input:setText('0') end
         try_skin(W.rotation_input, 'editBoxSkin_ME')
         W.window:insertWidget(W.rotation_input)
 
         local rotation_unit = Static.new()
-        rotation_unit:setBounds(122, 268, 20, 22)
+        rotation_unit:setBounds(122, 296, 20, 22)
         rotation_unit:setText('°')
         try_skin(rotation_unit, 'staticSkin_ME')
         W.window:insertWidget(rotation_unit)
 
-        local btn_y_1 = 294
+        local btn_y_1 = 322
         W.place_click_btn = Button.new()
         W.place_click_btn:setBounds(10, btn_y_1, 130, 22)
         W.place_click_btn:setText('Place at click')
@@ -995,7 +1167,7 @@ function M.show()
         W.place_origin_btn:addChangeCallback(on_place_origin_click)
         W.window:insertWidget(W.place_origin_btn)
 
-        local btn_y_2 = 320
+        local btn_y_2 = 348
         W.rename_btn = Button.new()
         W.rename_btn:setBounds(10, btn_y_2, 80, 22)
         W.rename_btn:setText('Rename')
@@ -1019,12 +1191,13 @@ function M.show()
 
         -- Status
         W.status = Static.new()
-        W.status:setBounds(10, 346, w - 20, 16)
+        W.status:setBounds(10, 374, w - 20, 16)
         W.status:setText('Ready.')
         try_skin(W.status, 'staticSkin_ME')
         W.window:insertWidget(W.status)
 
         refresh_list()
+        populate_country_combo()
     end)
     if not ok then
         log.write('sms.me', log.ERROR, 'window construction failed: ' .. tostring(err))

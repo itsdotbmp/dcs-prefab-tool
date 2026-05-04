@@ -169,6 +169,37 @@ do
           'got ' .. tostring(g4.heading))
 end
 
+-- Country override: stamps country_name + clears numeric country on the
+-- group AND each unit. nil/empty leaves everything alone.
+do
+    local g = {
+        country = 80,
+        country_name = 'Russia',
+        units = { { country = 80 }, { country = 80, country_name = 'Russia' } },
+    }
+    prefab_ops._override_country(g, 'USA')
+    check('override: group country_name set', g.country_name == 'USA')
+    check('override: group country (numeric) cleared', g.country == nil)
+    check('override: unit[1] country_name set', g.units[1].country_name == 'USA')
+    check('override: unit[1] country (numeric) cleared', g.units[1].country == nil)
+    check('override: unit[2] country_name overwritten', g.units[2].country_name == 'USA')
+
+    local g2 = { country = 80, country_name = 'Russia' }
+    prefab_ops._override_country(g2, nil)
+    check('override nil: country_name untouched', g2.country_name == 'Russia')
+    check('override nil: country (numeric) untouched', g2.country == 80)
+
+    prefab_ops._override_country(g2, '')
+    check('override "": country_name untouched', g2.country_name == 'Russia')
+    check('override "": country (numeric) untouched', g2.country == 80)
+
+    -- Static (no units array) must not blow up.
+    local s = { country = 1, type = 'static' }
+    prefab_ops._override_country(s, 'Insurgents')
+    check('override on static (no units): country_name set', s.country_name == 'Insurgents')
+    check('override on static (no units): no error', s.country == nil)
+end
+
 -- Resolve effective anchor: keep_position uses meta.world_anchor.
 do
     local prefab = { meta = { world_anchor = { x = 5000, y = 6000 } }, groups = {}, statics = {}, zones = {}, drawings = {} }
