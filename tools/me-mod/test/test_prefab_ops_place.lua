@@ -182,6 +182,30 @@ do
 
     local a3 = prefab_ops._resolve_anchor(prefab, { rotation = 0 })
     check('no anchor + no keep_position: returns nil', a3 == nil)
+
+    -- Malformed-meta paths under keep_position: every "the world_anchor
+    -- is missing or not a coordinate pair" path should fall through to
+    -- nil rather than spawn at (0,0) or throw on the field access.
+    local no_meta = { groups = {}, statics = {}, zones = {}, drawings = {} }
+    check('keep_position + no meta: returns nil',
+          prefab_ops._resolve_anchor(no_meta, { keep_position = true }) == nil)
+
+    local no_anchor = { meta = {}, groups = {}, statics = {}, zones = {}, drawings = {} }
+    check('keep_position + meta but no world_anchor: returns nil',
+          prefab_ops._resolve_anchor(no_anchor, { keep_position = true }) == nil)
+
+    local bad_x = { meta = { world_anchor = { x = 'oops', y = 6000 } } }
+    check('keep_position + non-numeric world_anchor.x: returns nil',
+          prefab_ops._resolve_anchor(bad_x, { keep_position = true }) == nil)
+
+    local bad_y = { meta = { world_anchor = { x = 5000 } } }   -- missing y entirely
+    check('keep_position + missing world_anchor.y: returns nil',
+          prefab_ops._resolve_anchor(bad_y, { keep_position = true }) == nil)
+
+    -- Same defensive checks for the non-keep_position path.
+    local bad_opts_anchor = { meta = { world_anchor = { x = 1, y = 2 } } }
+    check('non-keep_position + non-numeric opts.anchor.x: returns nil',
+          prefab_ops._resolve_anchor(bad_opts_anchor, { anchor = { x = 'oops', y = 1 } }) == nil)
 end
 
 if failures > 0 then
