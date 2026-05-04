@@ -347,6 +347,66 @@ local function override_country(group, country_name)
 end
 M._override_country = override_country
 
+-- Walk every entity in a loaded prefab and return the axis-aligned bounding
+-- box of their positions, in the prefab's anchor-relative coordinate frame
+-- (the same frame distill writes). Returns nil if the prefab has no
+-- positionable entities. Powers the place-at-click preview overlay.
+--
+--  groups   — group's own (x, y) plus each unit's (x, y).
+--  statics  — same shape as groups (statics inject as type='static' groups).
+--  zones    — zone center expanded by its radius.
+--  drawings — mapData.x/y plus every point inside mapData.points (deltas
+--             from the polygon anchor).
+function M.compute_bbox(prefab)
+    if type(prefab) ~= 'table' then return nil end
+    local minx, miny =  math.huge,  math.huge
+    local maxx, maxy = -math.huge, -math.huge
+    local seen = false
+    local function add(x, y)
+        if type(x) ~= 'number' or type(y) ~= 'number' then return end
+        seen = true
+        if x < minx then minx = x end
+        if x > maxx then maxx = x end
+        if y < miny then miny = y end
+        if y > maxy then maxy = y end
+    end
+    local function walk_group(g)
+        if type(g) ~= 'table' then return end
+        if type(g.x) == 'number' and type(g.y) == 'number' then add(g.x, g.y) end
+        if type(g.units) == 'table' then
+            for _, u in pairs(g.units) do
+                if type(u) == 'table' and type(u.x) == 'number' and type(u.y) == 'number' then
+                    add(u.x, u.y)
+                end
+            end
+        end
+    end
+    for _, g in ipairs(prefab.groups   or {}) do walk_group(g) end
+    for _, s in ipairs(prefab.statics  or {}) do walk_group(s) end
+    for _, z in ipairs(prefab.zones    or {}) do
+        if type(z.x) == 'number' and type(z.y) == 'number' then
+            local r = tonumber(z.radius) or 0
+            add(z.x - r, z.y - r)
+            add(z.x + r, z.y + r)
+        end
+    end
+    for _, d in ipairs(prefab.drawings or {}) do
+        local md = d.mapData
+        if type(md) == 'table' then
+            local ax = tonumber(md.x) or 0
+            local ay = tonumber(md.y) or 0
+            add(ax, ay)
+            if type(md.points) == 'table' then
+                for _, p in ipairs(md.points) do
+                    if type(p) == 'table' then add(ax + (p.x or 0), ay + (p.y or 0)) end
+                end
+            end
+        end
+    end
+    if not seen then return nil end
+    return { min_x = minx, min_y = miny, max_x = maxx, max_y = maxy }
+end
+
 -- Walk a group/static table and rewrite every {x, y} pair using the
 -- place_xy transform. Mutates in place.
 local function transform_coords(t, anchor, rotation_deg)

@@ -169,6 +169,33 @@ do
           'got ' .. tostring(g4.heading))
 end
 
+-- Bounding box: AABB over every entity's position, in the prefab's
+-- anchor-relative frame (the frame distill produces).
+do
+    local prefab = {
+        meta   = { name = 'fixture' },
+        groups = {
+            { x = 0, y = 0, units = { { x = 100, y = -50 }, { x = -200, y = 30 } } },
+        },
+        statics = { { x = 50, y = 75 } },
+        zones   = { { x = 0, y = 0, radius = 80 } },     -- expands ±80 on both axes
+        drawings = {
+            { mapData = { x = -10, y = 10, points = { { x = -50, y = 0 }, { x = 50, y = 100 } } } },
+            -- Effective vertex coords: (-60, 10) and (40, 110).
+        },
+    }
+    local bb = prefab_ops.compute_bbox(prefab)
+    check('bbox: x range covers unit + drawing left', bb.min_x == -200, 'got ' .. bb.min_x)
+    check('bbox: x range covers unit right', bb.max_x == 100, 'got ' .. bb.max_x)
+    check('bbox: y range covers drawing vertex top', bb.min_y == -80, 'got ' .. bb.min_y)
+    check('bbox: y range covers drawing vertex bottom', bb.max_y == 110, 'got ' .. bb.max_y)
+
+    local empty = prefab_ops.compute_bbox({ meta = {}, groups = {}, statics = {}, zones = {}, drawings = {} })
+    check('empty prefab: bbox is nil', empty == nil)
+
+    check('non-table prefab: bbox is nil', prefab_ops.compute_bbox('nope') == nil)
+end
+
 -- Country override: stamps country_name + clears numeric country on the
 -- group AND each unit. nil/empty leaves everything alone.
 do

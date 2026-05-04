@@ -100,6 +100,10 @@ local W = {
     rotation_dial  = nil,
     rotation_spin  = nil,
     rotation_deg   = 0,          -- single source of truth for the place-time rotation
+    preview_id     = nil,        -- mapId of the place-pending bbox preview rectangle
+    preview_data   = nil,        -- the preview rectangle's mapData (mutated on mouse-move)
+    preview_offset = nil,        -- {x, y} bbox-center offset in the prefab's anchor-relative frame
+    preview_cursor = nil,        -- last-known cursor world position; lets the dial re-paint without a mouse-move
     country_combo      = nil,
     country_filter_btn = nil,
     place_click_btn   = nil,
@@ -597,6 +601,60 @@ local function populate_country_combo()
     end)
 end
 
+-- Build a polygon-rectangle mapData ready for MapWindow.createDrawObject,
+-- sized to the prefab's AABB. The center is set to (0, 0) here; the
+-- mouse-move handler updates it. Caller computes bbox via
+-- prefab_ops.compute_bbox. Returns nil if the bbox is empty (no entities).
+local function build_preview_rect(bbox)
+    if not bbox then return nil end
+    local hx2 = (bbox.max_x - bbox.min_x) / 2
+    local hy2 = (bbox.max_y - bbox.min_y) / 2
+    -- A 5-point closed rectangle. Point order matches polygonRectMakePoints
+    -- in me_draw_panel.lua so the renderer treats this like a native rect.
+    local pts = {
+        { x =  hx2, y = -hy2 },
+        { x =  hx2, y =  hy2 },
+        { x = -hx2, y =  hy2 },
+        { x = -hx2, y = -hy2 },
+        { x =  hx2, y = -hy2 },
+    }
+    return {
+        objectType = 'Polygon',
+        points     = pts,
+        thickness  = 2,
+        color      = { 1, 1, 0, 1 },         -- bright yellow outline
+        fillColor  = { 1, 1, 0, 0.12 },      -- subtle yellow fill
+        file       = './MissionEditor/data/NewMap/images/draw/polyline_solid.png',
+        x          = 0,
+        y          = 0,
+        angle      = 0,
+    }
+end
+
+-- Repaint the place-pending bbox preview at its last-known cursor position
+-- with the current rotation. Called from place_state:onMouseMove (after
+-- the cursor is updated) and from the rotation dial / spinbox onChange
+-- handlers (so the rect spins under a stationary cursor as the user
+-- dials it). No-op when no preview is active.
+local function refresh_preview()
+    pcall(function()
+        if not (W.preview_id and W.preview_data and W.preview_offset and W.preview_cursor) then return end
+        local rot = W.rotation_deg or 0
+        local rad = rot * math.pi / 180
+        local c, s = math.cos(rad), math.sin(rad)
+        local ox, oy = W.preview_offset.x, W.preview_offset.y
+        -- Same rotation as prefab_ops._place_xy so the rect's center
+        -- tracks where the bbox center actually lands after rotation.
+        W.preview_data.x = W.preview_cursor.x + (ox * c - oy * s)
+        W.preview_data.y = W.preview_cursor.y + (ox * s + oy * c)
+        W.preview_data.angle = rot
+        local MapWindow = require('me_map_window')
+        if MapWindow and MapWindow.updateDrawObject then
+            MapWindow.updateDrawObject(W.preview_id, W.preview_data)
+        end
+    end)
+end
+
 local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
     W.place_pending = true
     W.place_pending_name = prefab_name
@@ -611,6 +669,29 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
         if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Cancel') end
     end)
     set_status('▶▶▶ PLACING "' .. prefab_name .. '" — CLICK ON THE MAP (Esc cancels) ◀◀◀')
+
+    -- Cursor-following bbox preview: a yellow polygon-rectangle sized to
+    -- the prefab's AABB. Mirrors me_draw_panel's polygonRect drag-create
+    -- pattern (createDrawObject + addDrawObject + updateDrawObject on
+    -- every mouse-move). createDrawObject alone registers the object but
+    -- doesn't show it on the map layer — addDrawObject(id) is what makes
+    -- it visible.
+    pcall(function()
+        local MapWindow = require('me_map_window')
+        local bbox = prefab_ops.compute_bbox(prefab_table)
+        if not bbox or not (MapWindow and MapWindow.createDrawObject) then return end
+        local data = build_preview_rect(bbox)
+        if not data then return end
+        W.preview_data   = data
+        W.preview_offset = {
+            x = (bbox.min_x + bbox.max_x) / 2,
+            y = (bbox.min_y + bbox.max_y) / 2,
+        }
+        W.preview_id = MapWindow.createDrawObject(data)
+        if W.preview_id and MapWindow.addDrawObject then
+            pcall(function() MapWindow.addDrawObject(W.preview_id) end)
+        end
+    end)
 
     -- Map-click hook via me_map_window state machine.
     -- We create a plain table that satisfies the NewMapView state interface
@@ -640,9 +721,18 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
                 if not country_name then
                     log.write('sms.me.prefab', log.WARNING, 'place: country dropdown empty — using prefab-stored countries')
                 end
+                -- Read rotation at click time so changes to the dial
+                -- after pressing "Place at click" are honored. The
+                -- rotation_deg captured at enter_place_pending entry is
+                -- a snapshot — useful for the preview's initial paint
+                -- but not authoritative. (Read W.rotation_deg directly
+                -- rather than via get_rotation_deg(): that helper is
+                -- defined later in the file, so this closure can't see
+                -- it as an upvalue.)
+                local rotation_now = W.rotation_deg or 0
                 local rec, err = prefab_ops.place(prefab_table, {
                     anchor       = { x = wx, y = wy },
-                    rotation     = rotation_deg,
+                    rotation     = rotation_now,
                     country_name = country_name,
                 })
                 if rec then
@@ -669,7 +759,19 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
 
         function place_state:onMouseUp(x, y, button) end
         function place_state:onMouseDrag(dx, dy, button, x, y) end
-        function place_state:onMouseMove(x, y) end
+        function place_state:onMouseMove(x, y)
+            -- Follow-cursor preview: capture the cursor's world coords and
+            -- delegate to refresh_preview, which factors in the current
+            -- rotation. Same path is reused by the dial / spinbox onChange
+            -- handlers so the rect spins live as the user dials.
+            pcall(function()
+                if not W.preview_id then return end
+                local wx, wy = MapWindow.getMapPoint(x, y)
+                if not (wx and wy) then return end
+                W.preview_cursor = { x = wx, y = wy }
+                refresh_preview()
+            end)
+        end
         function place_state:onMouseWheel(x, y, clicks) end
 
         MapWindow.setState(place_state)
@@ -690,6 +792,20 @@ exit_place_pending = function()
     pcall(function()
         if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Place at click') end
     end)
+    -- Tear down the bbox preview overlay before restoring map state so the
+    -- yellow rectangle doesn't briefly persist after Esc / click.
+    pcall(function()
+        if W.preview_id then
+            local MapWindow = require('me_map_window')
+            if MapWindow and MapWindow.removeDrawObject then
+                MapWindow.removeDrawObject(W.preview_id)
+            end
+        end
+    end)
+    W.preview_id     = nil
+    W.preview_data   = nil
+    W.preview_offset = nil
+    W.preview_cursor = nil
     pcall(function()
         local MapWindow = require('me_map_window')
         if MapWindow and MapWindow.setState and MapWindow.getPanState then
@@ -733,6 +849,7 @@ local function on_rotation_spin_change(self)
         if W.rotation_dial and W.rotation_dial.setValue then W.rotation_dial:setValue(v) end
     end)
     rotation_syncing = false
+    refresh_preview()
 end
 
 local function on_rotation_dial_change(self)
@@ -744,6 +861,7 @@ local function on_rotation_dial_change(self)
         if W.rotation_spin and W.rotation_spin.setValue then W.rotation_spin:setValue(v) end
     end)
     rotation_syncing = false
+    refresh_preview()
 end
 
 -- Read the currently-selected country from the dropdown. Returns nil when
