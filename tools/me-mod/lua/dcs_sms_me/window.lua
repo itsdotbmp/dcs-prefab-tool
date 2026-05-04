@@ -43,6 +43,8 @@ local GridHeaderCell;  do local ok, mod = pcall(require, 'GridHeaderCell');  if 
 local ComboList;       do local ok, mod = pcall(require, 'ComboList');       if ok then ComboList       = mod end end
 local ListBoxItem;     do local ok, mod = pcall(require, 'ListBoxItem');     if ok then ListBoxItem     = mod end end
 local ToggleButton;    do local ok, mod = pcall(require, 'ToggleButton');    if ok then ToggleButton    = mod end end
+local Dial;            do local ok, mod = pcall(require, 'Dial');            if ok then Dial            = mod end end
+local SpinBox;         do local ok, mod = pcall(require, 'SpinBox');         if ok then SpinBox         = mod end end
 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
 local undo       = require('dcs_sms_me.undo')
@@ -66,6 +68,7 @@ local function try_skin(widget, skin_name)
         elseif skin_name == 'dtc_grid_header' then s = dtc_skins.grid_header()
         elseif skin_name == 'icon_warning'    then s = dtc_skins.icon_static('warning')
         elseif skin_name == 'icon_question'   then s = dtc_skins.icon_static('question')
+        elseif skin_name == 'dtc_dial'        then s = dtc_skins.dial()
         else
             local fn = Skin[skin_name]
             if not fn then return end
@@ -85,7 +88,10 @@ local W = {
     reload_btn = nil,
     grid       = nil,
     list_label = nil,
-    rotation_input = nil,
+    rotation_input = nil,        -- legacy TextBox; only used when Dial/SpinBox unavailable
+    rotation_dial  = nil,
+    rotation_spin  = nil,
+    rotation_deg   = 0,          -- single source of truth for the place-time rotation
     country_combo      = nil,
     country_filter_btn = nil,
     place_click_btn   = nil,
@@ -684,13 +690,51 @@ exit_place_pending = function()
 end
 
 local function get_rotation_deg()
-    local s = '0'
+    -- Dial+SpinBox path keeps W.rotation_deg authoritative; the legacy
+    -- TextBox fallback writes its own value here too via on_rotation_text_change.
+    return W.rotation_deg or 0
+end
+
+-- Re-entrance guard so spin→dial→spin (or vice versa) doesn't recurse when
+-- one widget's setValue fires the other's onChange. Mirrors the implicit
+-- guard me_static.lua relies on (where setValue with the same value is a
+-- no-op); we make it explicit because our normalization can change the
+-- value we write back, which would otherwise re-trigger.
+local rotation_syncing = false
+
+-- Normalize an arbitrary numeric input to 0..359 integer degrees. Matches
+-- the convention me_static.lua's onChange_e_heading uses (-1 → 359,
+-- 360 → 0), but generalized for any over/underflow.
+local function normalize_deg(v)
+    v = tonumber(v) or 0
+    v = math.floor(v + 0.5)
+    v = v % 360
+    if v < 0 then v = v + 360 end
+    return v
+end
+
+local function on_rotation_spin_change(self)
+    if rotation_syncing then return end
+    rotation_syncing = true
     pcall(function()
-        if W.rotation_input and W.rotation_input.getText then s = W.rotation_input:getText() or '0' end
+        local raw = (self.getValue and self:getValue()) or 0
+        local v = normalize_deg(raw)
+        W.rotation_deg = v
+        if v ~= raw and self.setValue then self:setValue(v) end
+        if W.rotation_dial and W.rotation_dial.setValue then W.rotation_dial:setValue(v) end
     end)
-    local n = tonumber(s)
-    if not n then return 0 end
-    return n
+    rotation_syncing = false
+end
+
+local function on_rotation_dial_change(self)
+    if rotation_syncing then return end
+    rotation_syncing = true
+    pcall(function()
+        local v = normalize_deg((self.getValue and self:getValue()) or 0)
+        W.rotation_deg = v
+        if W.rotation_spin and W.rotation_spin.setValue then W.rotation_spin:setValue(v) end
+    end)
+    rotation_syncing = false
 end
 
 -- Read the currently-selected country from the dropdown. Returns nil when
@@ -912,9 +956,10 @@ function M.show()
         -- Title bar (~30px) + bottom border (~12px) sit outside the content
         -- layout, so total height = content y-extent + ~42. Grid block ends
         -- at y=260 (h=180 → 6 rows at gridSkin_ME's rowHeight=30); the
-        -- action panel below adds Country/Rotation/place-buttons/action-
-        -- buttons/status rows, ending at ~390; +~42 → 438.
-        local w, h = 440, 438
+        -- action panel adds Country / Rotation (43px tall — taller than
+        -- the other rows because of the dial gizmo) / place-buttons /
+        -- action-buttons / status, ending at ~414; +~42 → 462.
+        local w, h = 440, 462
         local x = screen_w - w - 20
         local y = 80
 
@@ -1129,30 +1174,74 @@ function M.show()
             W.window:insertWidget(stub)
         end
 
+        -- Rotation row. Dial (47x43, drag-to-rotate gizmo) + SpinBox
+        -- (numeric ± stepper) wired together via W.rotation_deg, mirroring
+        -- me_static.lua's d_heading / e_heading. Falls back to a plain
+        -- TextBox when Dial / SpinBox aren't available (test VMs).
         local rotation_label = Static.new()
-        rotation_label:setBounds(10, 296, 60, 22)
+        rotation_label:setBounds(10, 304, 60, 22)
         rotation_label:setText('Rotation:')
         try_skin(rotation_label, 'staticSkin_ME')
         W.window:insertWidget(rotation_label)
 
-        if TextBox then
-            W.rotation_input = TextBox.new()
+        if SpinBox and Dial then
+            W.rotation_spin = SpinBox.new()
+            W.rotation_spin:setBounds(70, 304, 100, 22)
+            try_skin(W.rotation_spin, 'spinBoxSkin_MENew')
+            pcall(function() W.rotation_spin:setRange(-1, 360) end)
+            pcall(function() W.rotation_spin:setStep(1) end)
+            pcall(function() W.rotation_spin:setPageStep(10) end)
+            pcall(function() W.rotation_spin:setCheckRange(true) end)
+            pcall(function() W.rotation_spin:setAcceptDecimalPoint(false) end)
+            pcall(function() W.rotation_spin:setValue(0) end)
+            pcall(function() W.rotation_spin:setTooltipText('Placement rotation (°, clockwise)') end)
+            if W.rotation_spin.addChangeCallback then
+                pcall(function() W.rotation_spin:addChangeCallback(on_rotation_spin_change) end)
+            end
+            W.window:insertWidget(W.rotation_spin)
+
+            W.rotation_dial = Dial.new()
+            W.rotation_dial:setBounds(180, 296, 47, 43)
+            try_skin(W.rotation_dial, 'dtc_dial')
+            pcall(function() W.rotation_dial:setRange(0, 359) end)
+            pcall(function() W.rotation_dial:setStep(1) end)
+            pcall(function() W.rotation_dial:setPageStep(10) end)
+            pcall(function() W.rotation_dial:setCyclic(true) end)
+            pcall(function() W.rotation_dial:setValue(0) end)
+            pcall(function() W.rotation_dial:setTooltipText('Placement rotation (°, clockwise)') end)
+            if W.rotation_dial.addChangeCallback then
+                pcall(function() W.rotation_dial:addChangeCallback(on_rotation_dial_change) end)
+            end
+            W.window:insertWidget(W.rotation_dial)
         else
-            W.rotation_input = Static.new()
-            W.rotation_input.setText = W.rotation_input.setText  -- API parity stub
+            -- Fallback path: legacy TextBox + ° label, same as before the
+            -- Dial/SpinBox upgrade. Writes into W.rotation_deg via the
+            -- change callback so get_rotation_deg() works uniformly.
+            if TextBox then
+                W.rotation_input = TextBox.new()
+            else
+                W.rotation_input = Static.new()
+            end
+            W.rotation_input:setBounds(70, 304, 50, 22)
+            if W.rotation_input.setText then W.rotation_input:setText('0') end
+            try_skin(W.rotation_input, 'editBoxSkin_ME')
+            if W.rotation_input.addChangeCallback then
+                pcall(function()
+                    W.rotation_input:addChangeCallback(function(self)
+                        W.rotation_deg = normalize_deg((self.getText and self:getText()) or '0')
+                    end)
+                end)
+            end
+            W.window:insertWidget(W.rotation_input)
+
+            local rotation_unit = Static.new()
+            rotation_unit:setBounds(122, 304, 20, 22)
+            rotation_unit:setText('°')
+            try_skin(rotation_unit, 'staticSkin_ME')
+            W.window:insertWidget(rotation_unit)
         end
-        W.rotation_input:setBounds(70, 296, 50, 22)
-        if W.rotation_input.setText then W.rotation_input:setText('0') end
-        try_skin(W.rotation_input, 'editBoxSkin_ME')
-        W.window:insertWidget(W.rotation_input)
 
-        local rotation_unit = Static.new()
-        rotation_unit:setBounds(122, 296, 20, 22)
-        rotation_unit:setText('°')
-        try_skin(rotation_unit, 'staticSkin_ME')
-        W.window:insertWidget(rotation_unit)
-
-        local btn_y_1 = 322
+        local btn_y_1 = 346
         W.place_click_btn = Button.new()
         W.place_click_btn:setBounds(10, btn_y_1, 130, 22)
         W.place_click_btn:setText('Place at click')
@@ -1167,7 +1256,7 @@ function M.show()
         W.place_origin_btn:addChangeCallback(on_place_origin_click)
         W.window:insertWidget(W.place_origin_btn)
 
-        local btn_y_2 = 348
+        local btn_y_2 = 372
         W.rename_btn = Button.new()
         W.rename_btn:setBounds(10, btn_y_2, 80, 22)
         W.rename_btn:setText('Rename')
@@ -1191,7 +1280,7 @@ function M.show()
 
         -- Status
         W.status = Static.new()
-        W.status:setBounds(10, 374, w - 20, 16)
+        W.status:setBounds(10, 398, w - 20, 16)
         W.status:setText('Ready.')
         try_skin(W.status, 'staticSkin_ME')
         W.window:insertWidget(W.status)

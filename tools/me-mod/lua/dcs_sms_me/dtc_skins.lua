@@ -70,6 +70,29 @@ local ICON_PATHS = {
     question = 'dxgui\\skins\\skinME\\images\\mission_editor\\static_ME_Question.png',
 }
 
+-- ME's static-panel dial visual: clone dialSkin_ME and swap the picture
+-- file in both released + disabled states to the m1/elements version, with
+-- middle-alignment (not stretch). me_static_panel.dlg's d_heading does this
+-- inline; we replicate it programmatically since dxgui only exposes the
+-- raw "stretchy/gray" dialSkin_ME via the named-skin API.
+local DIAL_PIC_FILE = 'dxgui\\skins\\skinme\\images\\m1\\elements\\dial_me.png'
+
+function M.dial()
+    local s = Skin.dialSkin_ME and Skin.dialSkin_ME() or nil
+    if not (s and s.skinData and s.skinData.states) then return nil end
+    local function patch(state)
+        if type(state) ~= 'table' or type(state[1]) ~= 'table' then return end
+        local p = state[1].picture or {}
+        p.file      = DIAL_PIC_FILE
+        p.horzAlign = { type = 'middle', offset = 0 }
+        p.vertAlign = { type = 'middle', offset = 0 }
+        state[1].picture = p
+    end
+    patch(s.skinData.states.released)
+    patch(s.skinData.states.disabled)
+    return s
+end
+
 function M.icon_static(kind)
     local file = ICON_PATHS[kind]
     if not file then return nil end
