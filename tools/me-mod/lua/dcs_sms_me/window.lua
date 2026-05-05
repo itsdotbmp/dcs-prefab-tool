@@ -81,6 +81,8 @@ local function try_skin(widget, skin_name)
         elseif skin_name == 'dtc_dial'        then s = dtc_skins.dial()
         elseif skin_name == 'dtc_separator'   then s = dtc_skins.separator()
         elseif skin_name == 'dtc_status_yellow' then s = dtc_skins.static_yellow()
+        elseif skin_name == 'dtc_status_red'    then s = dtc_skins.static_red()
+        elseif skin_name == 'dtc_status_green'  then s = dtc_skins.static_green()
         else
             local fn = Skin[skin_name]
             if not fn then return end
@@ -164,9 +166,23 @@ end
 -- pause the timer while the user is in place-pending mode (yellow status).
 local STATUS_CLEAR_AFTER_SEC = 6
 
-local function set_status(text)
+-- Severity → status-bar skin. nil/'info' = staticSkin_ME (white default).
+-- 'warning' = yellow, 'error' = red, 'placement' = green (used by the
+-- place-pending mode, which also drops the auto-clear timer below).
+local SEVERITY_SKIN = {
+    info      = 'staticSkin_ME',
+    warning   = 'dtc_status_yellow',
+    error     = 'dtc_status_red',
+    placement = 'dtc_status_green',
+}
+
+local function set_status(text, severity)
+    local skin_name = SEVERITY_SKIN[severity] or SEVERITY_SKIN.info
     pcall(function()
-        if W.status and W.status.setText then W.status:setText(tostring(text or '')) end
+        if W.status then
+            try_skin(W.status, skin_name)
+            if W.status.setText then W.status:setText(tostring(text or '')) end
+        end
     end)
     -- Reset the auto-clear timer on every new message so the user gets the
     -- full window to read whatever just happened.
@@ -468,7 +484,7 @@ local function do_save(name, place_at_origin, airbases)
         end)
         W.pending_airbases = nil  -- consumed
     else
-        set_status('Save failed: ' .. tostring(path_or_err))
+        set_status('Save failed: ' .. tostring(path_or_err), 'error')
         log.write('sms.me.prefab', log.ERROR, 'save failed: ' .. tostring(path_or_err))
     end
 end
@@ -480,7 +496,7 @@ local function on_save_click()
         local fixed = read_fixed_check()
         local airbases = W.pending_airbases
         if name == '' then
-            set_status('Empty name — using timestamped fallback. See dcs.log.')
+            set_status('Empty name — using timestamped fallback. See dcs.log.', 'warning')
             name = 'prefab-' .. os.date('!%Y%m%dT%H%M%SZ')
             log.write('sms.me.prefab', log.WARNING, 'save with empty name → ' .. name)
             do_save(name, fixed, airbases)
@@ -511,11 +527,11 @@ end
 local function require_selection(action_label)
     local row = selected_row()
     if not row then
-        set_status('Select a prefab in the list first (' .. action_label .. ').')
+        set_status('Select a prefab in the list first (' .. action_label .. ').', 'warning')
         return nil
     end
     if row.error then
-        set_status('Cannot ' .. action_label .. ' — file has load error.')
+        set_status('Cannot ' .. action_label .. ' — file has load error.', 'warning')
         return nil
     end
     return row
@@ -717,16 +733,16 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
         if W.window and W.window.setText then
             -- ALL-CAPS + arrow markers to make place-pending unmistakable
             -- without needing color (dxgui Static has no setColor API).
-            W.window:setText('▶▶▶ PLACING "' .. prefab_name .. '" — CLICK MAP (Esc cancels) ◀◀◀')
+            W.window:setText('PLACING "' .. prefab_name .. '" — CLICK MAP (Esc cancels)')
         end
     end)
     pcall(function()
         if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Cancel') end
     end)
-    -- Yellow status text reinforces the place-pending mode visually,
-    -- alongside the title-bar arrows and the "Cancel" button label.
-    pcall(function() try_skin(W.status, 'dtc_status_yellow') end)
-    set_status('▶▶▶ PLACING "' .. prefab_name .. '" — CLICK ON THE MAP (Esc cancels) ◀◀◀')
+    -- Green status text reinforces place-pending mode visually, alongside
+    -- the title-bar arrows and the "Cancel" button label. set_status('placement')
+    -- swaps the skin; no need for a separate try_skin call here.
+    set_status('PLACING "' .. prefab_name .. '" — CLICK ON THE MAP (Esc cancels)', 'placement')
 
     -- Cursor-following bbox preview: a yellow polygon-rectangle sized to
     -- the prefab's AABB. Mirrors me_draw_panel's polygonRect drag-create
@@ -785,7 +801,7 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
                 if not W.place_pending then return end
                 local wx, wy = MapWindow.getMapPoint(x, y)
                 if not (wx and wy) then
-                    set_status('Place failed: getMapPoint returned nil')
+                    set_status('Place failed: getMapPoint returned nil', 'error')
                     log.write('sms.me.prefab', log.ERROR, 'place: getMapPoint returned nil')
                     exit_place_pending()
                     return
@@ -825,7 +841,7 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
                     log.write('sms.me.prefab', log.INFO, 'placed ' .. prefab_name)
                     run_airbase_apply(prefab_table)
                 else
-                    set_status('Place failed: ' .. tostring(err))
+                    set_status('Place failed: ' .. tostring(err), 'error')
                     log.write('sms.me.prefab', log.ERROR, 'place failed: ' .. tostring(err))
                 end
                 exit_place_pending()
@@ -860,7 +876,7 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
         MapWindow.setState(place_state)
     end)
     if not ok then
-        set_status('Place at click unavailable — try Place at original location. See dcs.log.')
+        set_status('Place at click unavailable — try Place at original location. See dcs.log.', 'error')
         log.write('sms.me.prefab', log.ERROR, 'map-click hook unavailable')
         exit_place_pending()
     end
@@ -875,8 +891,11 @@ exit_place_pending = function()
     pcall(function()
         if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Place at click') end
     end)
-    -- Restore the status bar's normal skin (yellow → off-white).
-    pcall(function() try_skin(W.status, 'staticSkin_ME') end)
+    -- No explicit skin reset here — set_status itself handles the swap
+    -- per severity, so the next message after exit_place_pending will set
+    -- the right colour. Leaving the green skin briefly while the place
+    -- result is set is fine; if no follow-up message fires (rare), the
+    -- empty status bar after the auto-clear is invisible regardless.
     -- Tear down the bbox preview overlay before restoring map state so the
     -- yellow rectangle doesn't briefly persist after Esc / click.
     pcall(function()
@@ -961,7 +980,7 @@ local function on_place_click()
     if not row then return end
     local prefab, lerr = prefab_ops.load(row.path)
     if not prefab then
-        set_status('Load failed: ' .. tostring(lerr))
+        set_status('Load failed: ' .. tostring(lerr), 'error')
         log.write('sms.me.prefab', log.ERROR, 'load failed for ' .. row.path .. ': ' .. tostring(lerr))
         return
     end
@@ -1041,7 +1060,7 @@ run_airbase_apply = function(prefab)
             end
             set_status(msg)
         else
-            set_status('Airbase supplies skipped: ' .. tostring(summary and summary.error or 'unknown'))
+            set_status('Airbase supplies skipped: ' .. tostring(summary and summary.error or 'unknown'), 'error')
         end
     end
 
@@ -1071,7 +1090,7 @@ local function on_place_origin_click()
     if not row then return end
     local prefab, lerr = prefab_ops.load(row.path)
     if not prefab then
-        set_status('Load failed: ' .. tostring(lerr))
+        set_status('Load failed: ' .. tostring(lerr), 'error')
         log.write('sms.me.prefab', log.ERROR, 'load failed for ' .. row.path .. ': ' .. tostring(lerr))
         return
     end
@@ -1100,7 +1119,7 @@ local function on_place_origin_click()
         log.write('sms.me.prefab', log.INFO, 'placed ' .. row.name .. ' at original')
         run_airbase_apply(prefab)
     else
-        set_status('Place failed: ' .. tostring(err))
+        set_status('Place failed: ' .. tostring(err), 'error')
         log.write('sms.me.prefab', log.ERROR, 'place at original location failed: ' .. tostring(err))
     end
 end
@@ -1213,7 +1232,7 @@ local function on_rename_click()
                 log.write('sms.me.prefab', log.INFO, 'renamed ' .. row.name .. ' → ' .. new_name)
                 refresh_list()
             else
-                set_status('Rename failed: ' .. tostring(msg))
+                set_status('Rename failed: ' .. tostring(msg), 'error')
                 log.write('sms.me.prefab', log.ERROR, 'rename failed: ' .. tostring(msg))
             end
         end,
@@ -1232,7 +1251,7 @@ local function on_delete_click()
                     set_status('Deleted ' .. row.name)
                     log.write('sms.me.prefab', log.INFO, 'deleted ' .. row.name)
                 else
-                    set_status('Delete failed: ' .. tostring(oerr))
+                    set_status('Delete failed: ' .. tostring(oerr), 'error')
                     log.write('sms.me.prefab', log.ERROR, 'delete failed for ' .. row.path .. ': ' .. tostring(oerr))
                 end
                 W.selected_idx = nil
@@ -1245,12 +1264,12 @@ local function on_delete_click()
 end
 local function on_undo_click()
     pcall(function()
-        if not undo.has_record() then set_status('Nothing to undo.'); return end
+        if not undo.has_record() then set_status('Nothing to undo.', 'warning'); return end
         local ok, err = undo.undo()
         if ok then
             set_status('Undid last placement' .. (err and (' (' .. err .. ')') or ''))
         else
-            set_status('Undo failed: ' .. tostring(err))
+            set_status('Undo failed: ' .. tostring(err), 'error')
         end
     end)
 end
