@@ -12,7 +12,7 @@ Every snippet in this directory assumes `sms` is loaded as a global. Load it onc
 dofile("D:/git/dcs-sms/framework/load_all.lua")
 ```
 
-(Or via the bridge: `./dcs-sms exec --file framework/load_all.lua`. See the top-level [`README.md`](../../README.md) for bridge setup.)
+(Or via the bridge: `./dcs-sms exec --file framework/load_all.lua`. See [`tools/cmd/dcs-sms/README.md`](../../tools/cmd/dcs-sms/README.md) for bridge setup.)
 
 After this, every `sms.*` symbol below is available.
 
