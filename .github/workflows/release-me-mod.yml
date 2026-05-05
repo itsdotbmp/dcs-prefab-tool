@@ -1,0 +1,116 @@
+name: Release ME-mod
+
+on:
+  push:
+    tags:
+      - 'me-mod-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing me-mod-v* tag to (re)release'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "ref=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.ref }}
+          fetch-depth: 0  # need history so the tag's annotation message is reachable
+
+      - name: Derive version + folder name
+        id: ver
+        run: |
+          tag="${{ steps.tag.outputs.ref }}"
+          v="${tag#me-mod-v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "folder=dcs-sms-me-mod-v$v" >> "$GITHUB_OUTPUT"
+
+      - name: Stage OVGME tree
+        run: |
+          stage="${{ steps.ver.outputs.folder }}"
+          mkdir -p "$stage/MissionEditor/modules"
+          cp -r tools/me-mod/lua/dcs_sms_me "$stage/MissionEditor/modules/"
+          cp tools/me-mod/RELEASE_README.md "$stage/README.md"
+
+      - name: Build OVGME zip
+        run: zip -r "${{ steps.ver.outputs.folder }}.zip" "${{ steps.ver.outputs.folder }}"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/go.mod
+          cache-dependency-path: tools/go.sum
+
+      - name: Cross-compile dcs-sms.exe (windows/amd64)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+        working-directory: tools
+        run: go build -trimpath -ldflags="-s -w" -o ../dcs-sms.exe ./cmd/dcs-sms
+
+      - name: Compose release notes
+        run: |
+          tag="${{ steps.tag.outputs.ref }}"
+          {
+            git tag -l --format='%(contents)' "$tag"
+            cat <<'EOF'
+
+          ---
+
+          ## Install (recommended — OVGME)
+
+          1. Drop **dcs-sms-me-mod-v${{ steps.ver.outputs.version }}.zip** into your OVGME mods folder and extract.
+          2. Enable the mod in OVGME — copies `MissionEditor/modules/dcs_sms_me/` into your DCS install.
+          3. Download **dcs-sms.exe** and run `dcs-sms.exe install-me-mod` once. It finds your DCS install and patches `MissionEditor.lua` with the bootstrap line (bracketed by sentinel comments so it can be cleanly removed).
+          4. Restart the Mission Editor. You should see **DCS-SMS** in the top menu bar.
+
+          ## Install (no OVGME)
+
+          Skip the zip. Download **dcs-sms.exe** and run `dcs-sms.exe install-me-mod` — the Lua files are embedded in the .exe, so it copies and patches in one shot.
+
+          ## Uninstall
+
+          ```
+          dcs-sms.exe uninstall-me-mod
+          ```
+
+          Removes the patch block from `MissionEditor.lua` and deletes the modules directory.
+
+          ## Why does the .exe exist if I'm using OVGME?
+
+          OVGME can copy files but can't patch `MissionEditor.lua` cleanly — that file is owned by DCS and Eagle Dynamics ships updates to it. Keeping the bootstrap line out-of-band (managed by `dcs-sms.exe`) means OVGME stays clean and the patch survives DCS updates.
+          EOF
+          } > release-notes.md
+          echo '--- preview ---'
+          cat release-notes.md
+
+      - name: Publish or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.tag.outputs.ref }}"
+          zip_file="${{ steps.ver.outputs.folder }}.zip"
+          title="ME-mod v${{ steps.ver.outputs.version }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag exists; updating notes + replacing assets."
+            gh release edit   "$tag" --title "$title" --notes-file release-notes.md
+            gh release upload "$tag" "$zip_file" dcs-sms.exe --clobber
+          else
+            echo "Creating new release for $tag."
+            gh release create "$tag" --title "$title" --notes-file release-notes.md "$zip_file" dcs-sms.exe
+          fi
