@@ -934,6 +934,13 @@ end
 -- destination mission). Theatre mismatch refuses the whole step. Returns
 -- (true, summary) on success or (nil, summary_with_error) on failure.
 --
+-- opts = {
+--     current_theatre    = string?,  -- if set, refuse when prefab.meta.theatre differs
+--     override_coalition = string?,  -- if set ('RED'/'BLUE'/'NEUTRAL'), every applied
+--                                    -- airbase ends up under this coalition instead
+--                                    -- of whatever was saved into the prefab
+-- }
+--
 -- summary = {
 --     applied = N,                  -- count of warehouses successfully spliced
 --     skipped = N,                  -- count of named airdromes NOT found in destination
@@ -972,12 +979,25 @@ function M.apply_airbases(prefab, opts)
         if ad.getName then by_name[ad:getName()] = ad end
     end
 
+    local override_coalition = opts.override_coalition
     local applied, skipped, missing = 0, 0, {}
     for _, ab in ipairs(airbases) do
         local ad = ab.name and by_name[ab.name] or nil
         if ad and ad.getAirdromeNumber then
             local n = ad:getAirdromeNumber()
-            local ok = warehouse_ops.apply(n, ab.warehouse)
+            -- If an override coalition is supplied, build a shallow wrapper
+            -- around the saved warehouse with the override applied. We don't
+            -- mutate ab.warehouse — warehouse_ops.apply deep-copies what it
+            -- receives, so a shallow wrapper is enough to keep the prefab
+            -- table intact for any subsequent calls.
+            local warehouse_to_apply = ab.warehouse
+            if override_coalition and type(warehouse_to_apply) == 'table' then
+                local wrapped = {}
+                for k, v in pairs(warehouse_to_apply) do wrapped[k] = v end
+                wrapped.coalition = override_coalition
+                warehouse_to_apply = wrapped
+            end
+            local ok = warehouse_ops.apply(n, warehouse_to_apply)
             if ok then applied = applied + 1
             else skipped = skipped + 1; missing[#missing + 1] = ab.name
             end

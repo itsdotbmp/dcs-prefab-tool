@@ -960,10 +960,32 @@ local function current_theatre()
     return th
 end
 
+-- Map a 'red'/'blue'/'neutral' string (from country_coalition) to the
+-- uppercase form DCS warehouse entries use. Returns nil if no mapping.
+local COALITION_FROM_LOWER = { red = 'RED', blue = 'BLUE', neutral = 'NEUTRAL' }
+
+-- Returns the warehouse-form coalition string ('RED'/'BLUE'/'NEUTRAL') for
+-- whatever country the user has currently selected in the dropdown, or nil
+-- if no country is selected / the country has no mission coalition entry.
+-- Used as the override coalition when applying saved airbase supplies, so
+-- the airbase ends up under the user's currently-selected coalition rather
+-- than whatever coalition was saved into the prefab.
+local function selected_country_coalition()
+    local name = get_country_name()
+    if not name then return nil end
+    local ok_req, Mission = pcall(require, 'me_mission')
+    if not ok_req or not Mission then return nil end
+    local lower = country_coalition(Mission, name)
+    return lower and COALITION_FROM_LOWER[lower] or nil
+end
+
 -- After a prefab places, if it carries meta.airbases, ask the user once
 -- whether to apply the saved supplies. We don't try to detect whether the
 -- destination airbase is already customised — the user has both names in
 -- the prompt and can decide for themselves whether the overwrite is wanted.
+-- The coalition override is sourced from the country dropdown so applied
+-- airbases end up on the user's currently-selected coalition rather than
+-- the one baked into the saved prefab.
 local function run_airbase_apply(prefab)
     if not (prefab and prefab.meta and prefab.meta.airbases and #prefab.meta.airbases > 0) then
         return  -- no airbases on this prefab; nothing to do
@@ -973,10 +995,14 @@ local function run_airbase_apply(prefab)
     for _, ab in ipairs(prefab.meta.airbases) do
         if ab.name then names[#names + 1] = ab.name end
     end
-    local names_str = table.concat(names, ', ')
+
+    local override = selected_country_coalition()
 
     local function do_apply()
-        local ok, summary = prefab_ops.apply_airbases(prefab, { current_theatre = current_theatre() })
+        local ok, summary = prefab_ops.apply_airbases(prefab, {
+            current_theatre    = current_theatre(),
+            override_coalition = override,
+        })
         if ok then
             local msg = ('Airbase supplies: %d applied'):format(summary.applied)
             if summary.skipped > 0 then
@@ -991,13 +1017,21 @@ local function run_airbase_apply(prefab)
         end
     end
 
+    -- Keep each line short enough to fit the overlay's 342px message width.
+    -- The Static widget doesn't wrap long lines, so the question gets clipped
+    -- if the airbase name pushes it past the right edge.
     local prompt
     if #names == 1 then
-        prompt = 'This prefab includes airbase supplies for ' .. names_str .. '.\n\nApply them?'
+        prompt = 'Apply airbase supplies for\n'
+              .. names[1] .. '?\n\n'
+              .. (override and ('Coalition will be set to ' .. override .. '.') or '')
     else
-        prompt = 'This prefab includes airbase supplies for ' .. #names .. ' airbases:\n'
-                 .. names_str .. '.\n\nApply them?'
+        prompt = 'Apply airbase supplies for ' .. #names .. ' airbases?\n\n'
+              .. table.concat(names, ', ') .. '\n\n'
+              .. (override and ('Coalition will be set to ' .. override .. '.') or '')
     end
+    -- Avoid trailing blank line when no override is set.
+    prompt = prompt:gsub('\n+$', '')
 
     show_overlay(prompt, {
         { label = 'Yes', on_click = do_apply },

@@ -265,6 +265,41 @@ do
     check('summary applied == 0', summary.applied == 0)
 end
 
+-- Case: opts.override_coalition replaces the saved coalition on every applied
+-- airbase. The saved warehouse table itself must NOT be mutated — apply
+-- builds a wrapper for the override so subsequent calls still see the
+-- original.
+do
+    apply_calls = {}
+    local saved_warehouse = { coalition = 'BLUE', jet_fuel = { InitFuel = 50 } }
+    local prefab = {
+        meta = {
+            theatre  = 'Syria',
+            airbases = {
+                { name = 'Muwaffaq Salti', airdrome_number_at_save = 68,
+                  warehouse = saved_warehouse },
+                { name = 'Khalde', airdrome_number_at_save = 12,
+                  warehouse = { coalition = 'NEUTRAL' } },
+            },
+        }
+    }
+    local ok, summary = prefab_ops.apply_airbases(prefab, {
+        current_theatre    = 'Syria',
+        override_coalition = 'RED',
+    })
+    check('apply_airbases with override returns ok', ok == true)
+    check('apply called twice', #apply_calls == 2)
+    check('first apply received RED coalition (override)',
+          apply_calls[1] and apply_calls[1].w and apply_calls[1].w.coalition == 'RED',
+          'got ' .. tostring(apply_calls[1] and apply_calls[1].w and apply_calls[1].w.coalition))
+    check('second apply received RED coalition (override)',
+          apply_calls[2] and apply_calls[2].w and apply_calls[2].w.coalition == 'RED',
+          'got ' .. tostring(apply_calls[2] and apply_calls[2].w and apply_calls[2].w.coalition))
+    check('source warehouse table not mutated', saved_warehouse.coalition == 'BLUE',
+          'saved coalition was: ' .. tostring(saved_warehouse.coalition))
+    check('summary applied == 2', summary.applied == 2)
+end
+
 if failures > 0 then
     print(string.format('%d failure(s)', failures))
     os.exit(1)
