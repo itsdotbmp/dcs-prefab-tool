@@ -266,6 +266,115 @@ do
           prefab_ops._resolve_anchor(bad_opts_anchor, { anchor = { x = 'oops', y = 1 } }) == nil)
 end
 
+-- ---------------------------------------------------------------------------
+-- find_missing_types: country catalog check.
+-- Stubs me_db_api so we can assert the helper walks Countries[*].Units[*][*]
+-- correctly and returns the list of types the country can't deploy.
+-- ---------------------------------------------------------------------------
+
+-- DB stub: USA has the carrier and a humvee; Abkhazia has only a Hi-Speed Boat.
+package.preload['me_db_api'] = function()
+    return {
+        db = {
+            Countries = {
+                [1] = {
+                    Name = 'USA',
+                    Units = {
+                        Ships  = { Ship = { { Name = 'CVN_71_Theodore_Roosevelt' } } },
+                        Cars   = { Car  = { { Name = 'Hummer' } } },
+                        Planes = { Plane = { { Name = 'F-16C_50' } } },
+                    },
+                },
+                [2] = {
+                    Name = 'Abkhazia',
+                    Units = {
+                        Ships = { Ship = { { Name = 'speedboat' } } },
+                    },
+                },
+                [3] = {
+                    Name = 'NoUnits',  -- well-formed but empty catalog
+                    Units = {},
+                },
+            },
+        },
+    }
+end
+
+do
+    -- Carrier under USA: empty missing list (USA has it).
+    local prefab = {
+        meta = {},
+        groups = {
+            { units = { { type = 'CVN_71_Theodore_Roosevelt' } } },
+        },
+    }
+    local m = prefab_ops._find_missing_types(prefab, 'USA')
+    check('USA supports carrier: no missing types', type(m) == 'table' and #m == 0,
+          'got ' .. tostring(m and #m))
+end
+
+do
+    -- Carrier under Abkhazia: the carrier type comes back as missing.
+    local prefab = {
+        meta = {},
+        groups = {
+            { units = { { type = 'CVN_71_Theodore_Roosevelt' } } },
+        },
+    }
+    local m = prefab_ops._find_missing_types(prefab, 'Abkhazia')
+    check('Abkhazia missing carrier: 1 missing type',
+          type(m) == 'table' and #m == 1, 'got ' .. tostring(m and #m))
+    check('Abkhazia missing carrier: name reported',
+          m and m[1] == 'CVN_71_Theodore_Roosevelt')
+end
+
+do
+    -- Multiple missing types come back sorted + de-duplicated.
+    local prefab = {
+        meta = {},
+        groups = {
+            { units = { { type = 'CVN_71_Theodore_Roosevelt' }, { type = 'F-16C_50' } } },
+            { units = { { type = 'F-16C_50' } } },         -- duplicate; should not be repeated
+            { units = { { type = 'Hummer' } } },           -- USA has it; Abkhazia doesn't
+        },
+        statics = {
+            { units = { { type = 'CVN_71_Theodore_Roosevelt' } } },  -- duplicate, walks statics too
+        },
+    }
+    local m = prefab_ops._find_missing_types(prefab, 'Abkhazia')
+    check('multi-missing: 3 unique entries', type(m) == 'table' and #m == 3,
+          'got ' .. tostring(m and #m))
+    check('multi-missing: sorted alphabetically',
+          m[1] == 'CVN_71_Theodore_Roosevelt' and m[2] == 'F-16C_50' and m[3] == 'Hummer',
+          'got ' .. table.concat(m or {}, ', '))
+end
+
+do
+    -- Unknown country in DB: nil (caller should treat as "skip the check").
+    local prefab = { meta = {}, groups = { { units = { { type = 'Hummer' } } } } }
+    local m = prefab_ops._find_missing_types(prefab, 'Atlantis')
+    check('unknown country returns nil', m == nil)
+end
+
+do
+    -- Empty / nil country name: nil.
+    check('nil country returns nil',
+          prefab_ops._find_missing_types({ meta = {}, groups = {} }, nil) == nil)
+    check('empty country returns nil',
+          prefab_ops._find_missing_types({ meta = {}, groups = {} }, '') == nil)
+end
+
+do
+    -- Country with empty Units catalog: every type is missing.
+    local prefab = {
+        meta = {},
+        groups = { { units = { { type = 'CVN_71_Theodore_Roosevelt' } } } },
+    }
+    local m = prefab_ops._find_missing_types(prefab, 'NoUnits')
+    check('empty catalog: all types reported missing',
+          type(m) == 'table' and #m == 1 and m[1] == 'CVN_71_Theodore_Roosevelt')
+end
+
 if failures > 0 then
     print(string.format('%d failure(s)', failures))
     os.exit(1)

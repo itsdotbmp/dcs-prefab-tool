@@ -365,6 +365,73 @@ local function override_country(group, country_name)
 end
 M._override_country = override_country
 
+-- Build a set of unit type names that `country_name` can deploy. Walks
+-- DB.db.Countries (from me_db_api — same data the unit-creation panels
+-- use) and unions the .Name field across every Units.<plural>.<subcat>
+-- table — Ships, Planes, Helicopters, Cars, Fortifications, Cargos,
+-- Heliports, Warehouses, etc. Returns nil when the DB API or country
+-- entry isn't reachable so the caller can degrade to "skip the check"
+-- rather than failing closed in environments without the DB (test VM,
+-- pre-init bootstrap).
+local function build_country_type_set(country_name)
+    if type(country_name) ~= 'string' or country_name == '' then return nil end
+    local ok, DB = pcall(require, 'me_db_api')
+    if not ok or type(DB) ~= 'table' or type(DB.db) ~= 'table'
+       or type(DB.db.Countries) ~= 'table' then
+        return nil
+    end
+    local country
+    for _, c in pairs(DB.db.Countries) do
+        if type(c) == 'table' and c.Name == country_name then country = c; break end
+    end
+    if not country or type(country.Units) ~= 'table' then return nil end
+
+    local set = {}
+    for _, plural in pairs(country.Units) do
+        if type(plural) == 'table' then
+            for _, subcat in pairs(plural) do
+                if type(subcat) == 'table' then
+                    for _, entry in pairs(subcat) do
+                        if type(entry) == 'table' and type(entry.Name) == 'string' then
+                            set[entry.Name] = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return set
+end
+
+-- Walk a prefab and return the sorted, de-duplicated list of unit type
+-- names that `country_name` doesn't support. nil return = "couldn't run
+-- the check" (DB unavailable, missing country, etc.) — the caller should
+-- treat that as proceed-without-validation. Empty array = country
+-- supports every type in the prefab.
+local function find_missing_types(prefab, country_name)
+    local set = build_country_type_set(country_name)
+    if not set then return nil end
+
+    local missing, seen = {}, {}
+    local function check_units(g)
+        if type(g) ~= 'table' or type(g.units) ~= 'table' then return end
+        for _, u in ipairs(g.units) do
+            if type(u) == 'table' and type(u.type) == 'string' and u.type ~= ''
+               and not set[u.type] and not seen[u.type] then
+                seen[u.type] = true
+                missing[#missing + 1] = u.type
+            end
+        end
+    end
+    if type(prefab) == 'table' then
+        if type(prefab.groups)  == 'table' then for _, g in ipairs(prefab.groups)  do check_units(g) end end
+        if type(prefab.statics) == 'table' then for _, g in ipairs(prefab.statics) do check_units(g) end end
+    end
+    table.sort(missing)
+    return missing
+end
+M._find_missing_types = find_missing_types  -- exposed for tests
+
 -- Walk every entity in a loaded prefab and return the axis-aligned bounding
 -- box of their positions, in the prefab's anchor-relative coordinate frame
 -- (the same frame distill writes). Returns nil if the prefab has no
@@ -781,6 +848,19 @@ function M.place(prefab, opts)
             or not Mission.missionCountry[opts.country_name] then
             return nil, 'country "' .. tostring(opts.country_name) ..
                 '" is not available in the current mission'
+        end
+        -- Catalog check: refuse if any prefab unit's type isn't in the
+        -- selected country's catalog. Without this, the place succeeds
+        -- visually but DCS silently falls back to a different model the
+        -- next time the user clicks the unit (e.g. carrier → Hi-Speed
+        -- Boat under Abkhazia) — opaque and easy to miss. Skips silently
+        -- if the DB API isn't reachable.
+        local missing = find_missing_types(prefab, opts.country_name)
+        if missing and #missing > 0 then
+            local label = (#missing == 1) and 'unit type' or 'unit types'
+            return nil, 'country "' .. opts.country_name .. '" doesn\'t have ' .. label
+                .. ' "' .. table.concat(missing, '", "') .. '" in its catalog'
+                .. ' — pick a different country or save the prefab with the original countries'
         end
     end
 
