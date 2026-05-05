@@ -1353,17 +1353,17 @@ local function relayout(w, h)
     -- Row 5: Rotation gizmo + place buttons. Row is 43px tall (dial); the
     -- spinbox/label/place-buttons are vertically centered against it.
     set(W.rotation_label, 10, row5_y + 10, 60, 22)
-    set(W.rotation_spin,  70, row5_y + 10, 50, 22)
-    set(W.rotation_dial,  122, row5_y, 47, 43)
-    set(W.rotation_input, 70, row5_y + 10, 50, 22)   -- fallback path
-    set(W.rotation_unit,  122, row5_y + 10, 20, 22)  -- fallback path
+    set(W.rotation_spin,  70, row5_y + 10, 60, 22)
+    set(W.rotation_dial,  132, row5_y, 47, 43)
+    set(W.rotation_input, 70, row5_y + 10, 60, 22)   -- fallback path
+    set(W.rotation_unit,  132, row5_y + 10, 20, 22)  -- fallback path
     -- place_click_btn right-edge at w-10 (122 wide), place_origin_btn 4px
     -- to its left (130 wide). Both stay anchored to the right edge.
     set(W.place_origin_btn, w - 266, row5_y + 10, 130, 22)
     set(W.place_click_btn,  w - 132, row5_y + 10, 122, 22)
 
     set(W.sep3, 10, sep3_y, w - 20, 1)
-    set(W.status, 10, status_y, w - 20, 16)
+    set(W.status, 10, status_y, w - 20, 22)
 end
 
 function M.show()
