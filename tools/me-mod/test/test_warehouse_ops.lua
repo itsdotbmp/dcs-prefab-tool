@@ -185,8 +185,83 @@ do
     end
 end
 
+-- ---------------------------------------------------------------------------
+-- apply tests — re-mock AirdromeController + CoalitionController with capture.
+-- ---------------------------------------------------------------------------
+
+local set_calls = {}  -- captures AirdromeController.setAirdromeCoalition calls
+package.loaded['Mission.AirdromeController'] = {
+    getAirdromeId = function(n) return 'id-' .. tostring(n) end,
+    setAirdromeCoalition = function(id, name) set_calls[#set_calls + 1] = { id = id, name = name } end,
+}
+package.loaded['Mission.CoalitionController'] = {
+    redCoalitionName     = function() return 'redName' end,
+    blueCoalitionName    = function() return 'blueName' end,
+    neutralCoalitionName = function() return 'neutralName' end,
+}
+package.loaded['dcs_sms_me.warehouse_ops'] = nil
+warehouse_ops = require('dcs_sms_me.warehouse_ops')
+
+-- Use a fresh airports table for apply so we can observe writes.
+local live_airports = {
+    [1]  = { coalition = 'NEUTRAL' },
+    [68] = { coalition = 'NEUTRAL' },
+}
+package.loaded['me_mission'].mission.AirportsEquipment.airports = live_airports
+
+-- Case: apply splices the table at the right index and pushes coalition.
+do
+    set_calls = {}
+    local saved = {
+        coalition = 'BLUE',
+        unlimitedFuel = false,
+        jet_fuel = { InitFuel = 50 },
+        aircrafts = { helicopters = { ["AH-64D"] = { initialAmount = 100 } } },
+    }
+    local ok, err = warehouse_ops.apply(68, saved)
+    check('apply returns ok', ok == true, 'err: ' .. tostring(err))
+    check('live airports[68] is replaced (table reference differs)',
+          live_airports[68] ~= saved, 'expected splice to deep-copy, not alias')
+    check('live airports[68].coalition == BLUE',
+          live_airports[68].coalition == 'BLUE')
+    check('live airports[68].jet_fuel.InitFuel == 50',
+          live_airports[68].jet_fuel and live_airports[68].jet_fuel.InitFuel == 50)
+    check('setAirdromeCoalition called once', #set_calls == 1, 'got ' .. #set_calls)
+    check('setAirdromeCoalition id', set_calls[1] and set_calls[1].id == 'id-68',
+          'got ' .. tostring(set_calls[1] and set_calls[1].id))
+    check('setAirdromeCoalition name == blueName',
+          set_calls[1] and set_calls[1].name == 'blueName',
+          'got ' .. tostring(set_calls[1] and set_calls[1].name))
+    -- Mutating saved post-apply must not leak into live data.
+    saved.coalition = 'MUTATED'
+    check('post-apply mutation does not leak',
+          live_airports[68].coalition == 'BLUE',
+          'live coalition was: ' .. live_airports[68].coalition)
+end
+
+-- Case: apply with bad inputs returns nil + reason.
+do
+    local ok, err = warehouse_ops.apply(nil, { coalition = 'BLUE' })
+    check('apply(nil, t) returns nil', ok == nil)
+    check('apply(nil, t) returns error string', type(err) == 'string')
+
+    local ok2, err2 = warehouse_ops.apply(68, nil)
+    check('apply(68, nil) returns nil', ok2 == nil)
+    check('apply(68, nil) returns error string', type(err2) == 'string')
+end
+
+-- Case: apply with missing coalition still splices the table (no controller call).
+do
+    set_calls = {}
+    local ok = warehouse_ops.apply(1, { coalition = nil, jet_fuel = { InitFuel = 80 } })
+    check('apply without coalition still ok', ok == true)
+    check('apply without coalition: setAirdromeCoalition not called', #set_calls == 0)
+    check('live airports[1].jet_fuel.InitFuel == 80',
+          live_airports[1].jet_fuel and live_airports[1].jet_fuel.InitFuel == 80)
+end
+
 if failures > 0 then
     print(string.format('%d failure(s)', failures))
     os.exit(1)
 end
-print('All warehouse_ops extract/is_default tests passed.')
+print('All warehouse_ops tests passed.')

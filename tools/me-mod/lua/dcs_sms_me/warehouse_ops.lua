@@ -89,4 +89,41 @@ function M.is_default(entry)
     return true
 end
 
+-- Splice a saved warehouse entry into the live mission data and push the
+-- coalition through AirdromeController so the map display + Resource Manager
+-- dialog refresh. Always deep-copies so the caller can safely keep their
+-- table around.
+function M.apply(airdrome_number, warehouse_entry)
+    if type(airdrome_number) ~= 'number' then
+        return nil, 'airdrome_number must be a number'
+    end
+    if type(warehouse_entry) ~= 'table' then
+        return nil, 'warehouse_entry must be a table'
+    end
+    if not (module_mission and module_mission.mission
+            and module_mission.mission.AirportsEquipment
+            and module_mission.mission.AirportsEquipment.airports) then
+        return nil, 'mission.AirportsEquipment.airports unavailable'
+    end
+
+    local copy = deep_copy(warehouse_entry)
+    module_mission.mission.AirportsEquipment.airports[airdrome_number] = copy
+
+    if AirdromeController and CoalitionController and copy.coalition then
+        local controller_name = ({
+            BLUE    = CoalitionController.blueCoalitionName    and CoalitionController.blueCoalitionName(),
+            RED     = CoalitionController.redCoalitionName     and CoalitionController.redCoalitionName(),
+            NEUTRAL = CoalitionController.neutralCoalitionName and CoalitionController.neutralCoalitionName(),
+        })[copy.coalition]
+        if controller_name and AirdromeController.setAirdromeCoalition and AirdromeController.getAirdromeId then
+            local id = AirdromeController.getAirdromeId(airdrome_number)
+            if id then
+                pcall(AirdromeController.setAirdromeCoalition, id, controller_name)
+            end
+        end
+    end
+
+    return true
+end
+
 return M
