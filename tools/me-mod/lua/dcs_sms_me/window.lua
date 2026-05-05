@@ -46,6 +46,7 @@ local ToggleButton;    do local ok, mod = pcall(require, 'ToggleButton');    if 
 local Dial;            do local ok, mod = pcall(require, 'Dial');            if ok then Dial            = mod end end
 local SpinBox;         do local ok, mod = pcall(require, 'SpinBox');         if ok then SpinBox         = mod end end
 local CheckBox;        do local ok, mod = pcall(require, 'CheckBox');        if ok then CheckBox        = mod end end
+local UpdateManager;   do local ok, mod = pcall(require, 'UpdateManager');   if ok then UpdateManager   = mod end end
 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
 local undo       = require('dcs_sms_me.undo')
@@ -133,6 +134,8 @@ local W = {
     filter_input   = nil,        -- TextBox widget for the filter
     pending_airbases = nil,    -- set by marquee callback; consumed by on_save_click
     marquee_subscribed = false,-- one-shot guard so Ctrl+Shift+R reloads don't multi-subscribe
+    status_expires_at = nil,   -- os.time() at which set_status output should auto-clear
+    status_tick_registered = false,
 }
 
 -- Column definitions for the prefab grid. Module-level so refresh_list and the
@@ -152,10 +155,32 @@ local function find_col(key)
     for i, c in ipairs(COLS) do if c.key == key then return c, i end end
 end
 
+-- How long a status message stays up before tick_status_clear wipes it. We
+-- pause the timer while the user is in place-pending mode (yellow status).
+local STATUS_CLEAR_AFTER_SEC = 6
+
 local function set_status(text)
     pcall(function()
         if W.status and W.status.setText then W.status:setText(tostring(text or '')) end
     end)
+    -- Reset the auto-clear timer on every new message so the user gets the
+    -- full window to read whatever just happened.
+    W.status_expires_at = os.time() + STATUS_CLEAR_AFTER_SEC
+end
+
+-- Per-frame tick registered with UpdateManager. Clears the status bar once
+-- the timeout has elapsed. Skips while place_pending is true so the
+-- "Click on map…" yellow prompt stays visible during placement.
+-- Returns false so UpdateManager keeps calling us for future messages.
+local function tick_status_clear()
+    if W.place_pending then return false end
+    if not W.status_expires_at then return false end
+    if os.time() < W.status_expires_at then return false end
+    pcall(function()
+        if W.status and W.status.setText then W.status:setText('') end
+    end)
+    W.status_expires_at = nil
+    return false
 end
 M._set_status = set_status  -- exposed for later tasks
 
@@ -1391,6 +1416,13 @@ function M.show()
             end
         end)
         W.marquee_subscribed = true
+    end
+
+    -- Register the status-bar auto-clear tick. UpdateManager fires every
+    -- frame; tick_status_clear is a no-op until a status message ages out.
+    if UpdateManager and not W.status_tick_registered then
+        pcall(function() UpdateManager.add(tick_status_clear) end)
+        W.status_tick_registered = true
     end
 
     if W.window then
