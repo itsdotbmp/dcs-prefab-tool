@@ -102,6 +102,33 @@ do
           'meta.place_at_origin not found in content')
 end
 
+-- Case: opts.airbases propagates into meta.airbases on save.
+do
+    captured.path, captured.content = nil, nil
+    local airbases = {
+        {
+            name                    = 'Muwaffaq Salti',
+            airdrome_number_at_save = 68,
+            warehouse = {
+                coalition = 'BLUE',
+                jet_fuel  = { InitFuel = 50 },
+            },
+        },
+    }
+    local ok, _ = prefab_ops.save_selection('with_airbases', false, airbases)
+    check('save_selection with airbases returns ok', ok == true, 'got ' .. tostring(ok))
+    check('saved content has meta.airbases',
+          captured.content and captured.content:find('%["airbases"%]', 1) ~= nil,
+          'meta.airbases not in content')
+    check('saved content has airbase name "Muwaffaq Salti"',
+          captured.content and captured.content:find('"Muwaffaq Salti"', 1, true) ~= nil)
+    check('saved content has BLUE coalition inside airbases',
+          captured.content and captured.content:find('"BLUE"', 1, true) ~= nil)
+    check('saved content version bumped to 0.3.0',
+          captured.content and captured.content:find('"0%.3%.0"', 1) ~= nil,
+          'version not 0.3.0')
+end
+
 -- Case: place_at_origin omitted (default false) does not write the field.
 do
     captured.path, captured.content = nil, nil
