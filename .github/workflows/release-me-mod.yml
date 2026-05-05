@@ -32,23 +32,11 @@ jobs:
           ref: ${{ steps.tag.outputs.ref }}
           fetch-depth: 0  # need history so the tag's annotation message is reachable
 
-      - name: Derive version + folder name
+      - name: Derive version
         id: ver
         run: |
           tag="${{ steps.tag.outputs.ref }}"
-          v="${tag#me-mod-v}"
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-          echo "folder=dcs-sms-me-mod-v$v" >> "$GITHUB_OUTPUT"
-
-      - name: Stage OVGME tree
-        run: |
-          stage="${{ steps.ver.outputs.folder }}"
-          mkdir -p "$stage/MissionEditor/modules"
-          cp -r tools/me-mod/lua/dcs_sms_me "$stage/MissionEditor/modules/"
-          cp tools/me-mod/RELEASE_README.md "$stage/README.md"
-
-      - name: Build OVGME zip
-        run: zip -r "${{ steps.ver.outputs.folder }}.zip" "${{ steps.ver.outputs.folder }}"
+          echo "version=${tag#me-mod-v}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-go@v5
         with:
@@ -72,16 +60,15 @@ jobs:
 
           ---
 
-          ## Install (recommended — OVGME)
+          ## Install
 
-          1. Drop **dcs-sms-me-mod-v${{ steps.ver.outputs.version }}.zip** into your OVGME mods folder and extract.
-          2. Enable the mod in OVGME — copies `MissionEditor/modules/dcs_sms_me/` into your DCS install.
-          3. Download **dcs-sms.exe** and run `dcs-sms.exe install-me-mod` once. It finds your DCS install and patches `MissionEditor.lua` with the bootstrap line (bracketed by sentinel comments so it can be cleanly removed).
-          4. Restart the Mission Editor. You should see **DCS-SMS** in the top menu bar.
+          1. Download **dcs-sms.exe** from this release.
+          2. Run `dcs-sms.exe install-me-mod`. The .exe auto-detects your DCS install (or prompts the first time), copies the embedded ME-mod Lua files into `<DCS install>/MissionEditor/modules/dcs_sms_me/`, and patches `MissionEditor.lua` with a single bootstrap line bracketed by sentinel comments for clean removal.
+          3. Restart the Mission Editor. You should see **DCS-SMS** in the top menu bar.
 
-          ## Install (no OVGME)
+          ## Update
 
-          Skip the zip. Download **dcs-sms.exe** and run `dcs-sms.exe install-me-mod` — the Lua files are embedded in the .exe, so it copies and patches in one shot.
+          Download the new `dcs-sms.exe` and re-run `install-me-mod`. Idempotent — the patch line is left in place, the Lua files get overwritten with the new version.
 
           ## Uninstall
 
@@ -90,10 +77,6 @@ jobs:
           ```
 
           Removes the patch block from `MissionEditor.lua` and deletes the modules directory.
-
-          ## Why does the .exe exist if I'm using OVGME?
-
-          OVGME can copy files but can't patch `MissionEditor.lua` cleanly — that file is owned by DCS and Eagle Dynamics ships updates to it. Keeping the bootstrap line out-of-band (managed by `dcs-sms.exe`) means OVGME stays clean and the patch survives DCS updates.
           EOF
           } > release-notes.md
           echo '--- preview ---'
@@ -104,13 +87,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ steps.tag.outputs.ref }}"
-          zip_file="${{ steps.ver.outputs.folder }}.zip"
           title="ME-mod v${{ steps.ver.outputs.version }}"
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag exists; updating notes + replacing assets."
+            echo "Release $tag exists; updating notes + asset."
             gh release edit   "$tag" --title "$title" --notes-file release-notes.md
-            gh release upload "$tag" "$zip_file" dcs-sms.exe --clobber
+            gh release upload "$tag" dcs-sms.exe --clobber
           else
             echo "Creating new release for $tag."
-            gh release create "$tag" --title "$title" --notes-file release-notes.md "$zip_file" dcs-sms.exe
+            gh release create "$tag" --title "$title" --notes-file release-notes.md dcs-sms.exe
           fi
