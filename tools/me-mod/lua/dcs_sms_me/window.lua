@@ -1288,22 +1288,25 @@ local function relayout(w, h)
     set(W.fixed_check_lbl, check_x, 8, check_w, 22)  -- fallback Static occupies the same slot
     set(W.save_btn,        save_x,  8, 80,      22)
 
-    -- Separator + Row 1: Search.
-    set(W.sep1, 10, 36, w - 20, 1)
-    set(W.search_label, 10, 42, 50, 22)
-    set(W.filter_input, 60, 42, w - 60 - 10, 22)
+    -- Separator + Row 1: Search. ~10px breathing room above and below sep1.
+    set(W.sep1, 10, 40, w - 20, 1)
+    set(W.search_label, 10, 51, 50, 22)
+    set(W.filter_input, 60, 51, w - 60 - 10, 22)
 
     -- Bottom band offsets relative to h. Locked to the bottom so resizing
-    -- the window grows the grid, not the action panel.
-    local row3_y   = h - 184
-    local sep2_y   = h - 158
+    -- the window grows the grid, not the action panel. row3_y / sep2_y
+    -- give ~10px breathing room above and below sep2; everything below
+    -- (row4 onward) stays in its original spot anchored to h.
+    local row3_y   = h - 197
+    local sep2_y   = h - 165
     local row4_y   = h - 154
     local row5_y   = h - 124
     local sep3_y   = h - 77
     local status_y = h - 73
 
-    -- Grid stretches between the top band and row 3.
-    local grid_y = 68
+    -- Grid stretches between the top band and row 3. grid_y reflects the
+    -- pushed-down search row above (sep1 also got the 10/10 padding).
+    local grid_y = 77
     local grid_h = math.max(60, row3_y - grid_y - 8)
     local grid_w = w - 20
     set(W.grid, 10, grid_y, grid_w, grid_h)
@@ -1430,10 +1433,10 @@ function M.show()
     local ok, err = pcall(function()
         local screen_w, _ = Gui.GetWindowSize()
         -- Layout (top → bottom):
-        --   y=8   Name row:    "Name:" + name_input + Fixed-pos check + Save
-        --   y=42  Search row:  filter_input full-width (count → hint text)
-        --   y=68  Grid:        h=200, ends y=268
-        --   y=276 Action row:  Reload | Undo | gap | Rename | Delete
+        --   y=8   Name row:    "Name:" + name_input + Fixed-location check + Save
+        --   y=51  Search row:  filter_input full-width (count → hint text)
+        --   y=77  Grid:        h=178, ends y=255
+        --   y=263 Action row:  Reload | Undo | gap | Rename | Delete
         --   y=306 Country row: "Place as country:" + combo + Combat toggle
         --   y=336 Rotation:    spin+dial gizmo + Place-at-original + Place-at-click (43px tall)
         --   y=387 Status
