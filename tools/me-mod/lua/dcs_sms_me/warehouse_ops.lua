@@ -50,43 +50,25 @@ function M.extract(airdrome_number)
     return deep_copy(entry)
 end
 
--- Predicate: returns true iff the entry matches the pristine "untouched
--- airbase" shape the ME emits for never-edited airports. See the design's
--- Default-detection decision for the exact rules.
+-- Predicate: returns true iff the user has NOT meaningfully customised this
+-- airbase's warehouse. We rely on the three "unlimited" flags as the proxy:
+-- the Resource Manager UI requires unchecking these before any of the
+-- specific stock controls (per-aircraft initialAmount, per-weapon counts,
+-- fuel InitFuel sliders) become editable. So `unlimited*=true` across all
+-- three categories is a tight signal that the user hasn't dialed in any
+-- specific values worth bundling.
+--
+-- This deliberately ignores: coalition (varies by map — many maps ship
+-- airbases pre-coloured RED/BLUE), OperatingLevel_* (replenishment rate;
+-- moot when stock is unlimited), and the fuel/aircrafts/weapons sub-tables
+-- (their values can't diverge from default while the unlimited flag is
+-- still set — the UI gates them). Earlier versions of this check were
+-- stricter and produced false negatives for pre-coloured airbases.
 function M.is_default(entry)
     if type(entry) ~= 'table' then return false end
-    if entry.coalition ~= 'NEUTRAL' then return false end
-    if entry.unlimitedFuel ~= true or entry.unlimitedAircrafts ~= true or entry.unlimitedMunitions ~= true then
-        return false
-    end
-    if entry.OperatingLevel_Air ~= 10 or entry.OperatingLevel_Eqp ~= 10 or entry.OperatingLevel_Fuel ~= 10 then
-        return false
-    end
-    if type(entry.aircrafts) == 'table' and next(entry.aircrafts) ~= nil then
-        -- Default emits aircrafts = {}; some saves emit
-        -- aircrafts = { helicopters = {}, planes = {} } — accept either by
-        -- treating empty subtables as absent.
-        for k, v in pairs(entry.aircrafts) do
-            if type(v) == 'table' and next(v) ~= nil then return false end
-            if type(v) ~= 'table' then return false end
-            if k ~= 'helicopters' and k ~= 'planes' then return false end
-        end
-    end
-    if type(entry.weapons) == 'table' and next(entry.weapons) ~= nil then return false end
-    -- An absent fuel sub-table is treated as non-default. If a future map
-    -- (e.g. one without diesel infrastructure) ships airports lacking these
-    -- keys, this predicate will return false for untouched airports there
-    -- and we'd need a per-map "expected fuel set" lookup. Acceptable for the
-    -- maps DCS ships today.
-    local function fuel_default(name)
-        local f = entry[name]
-        return type(f) == 'table' and f.InitFuel == 100
-    end
-    if not (fuel_default('jet_fuel') and fuel_default('methanol_mixture')
-            and fuel_default('diesel') and fuel_default('gasoline')) then
-        return false
-    end
-    return true
+    return entry.unlimitedFuel      == true
+       and entry.unlimitedAircrafts == true
+       and entry.unlimitedMunitions == true
 end
 
 -- Splice a saved warehouse entry into the live mission data and push the

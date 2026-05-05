@@ -243,7 +243,9 @@ The spec's open-questions section asked for an API spike. Resolved as follows:
 
 **Coalition string mapping:** The warehouse table uses uppercase `RED`/`BLUE`/`NEUTRAL`. `AirdromeController.setAirdromeCoalition` expects controller-form names from `CoalitionController.{red,blue,neutral}CoalitionName()`. We map between them at the seam.
 
-**Default-detection:** A warehouse entry is "default" iff coalition=NEUTRAL, all `unlimited*=true`, all `OperatingLevel_*=10`, `aircrafts={}` or absent, `weapons={}` or absent, all four fuel `InitFuel=100`. Hard-coded rather than computed against a pristine reference. Logged warning if a recognized field is unfamiliar so we can add coverage if ED expands the schema.
+**Default-detection (revised 2026-05-05 after first round of testing):** A warehouse entry is "default" iff all three `unlimited*` flags are true. The earlier richer rule (coalition NEUTRAL + OperatingLevel + fuel + aircrafts/weapons checks) misclassified pre-coloured airbases — many maps ship airbases pre-assigned to RED or BLUE in their default state, which the strict rule treated as "customised". The unlimited flags are gating UI state in the Resource Manager — every other stock control is locked while they're true — so they're a tight signal that the user hasn't dialed in any specific values worth bundling.
+
+**Apply-time prompt (revised 2026-05-05):** When a prefab carries `meta.airbases`, placing it always shows a single confirmation overlay listing the airbase names, with Yes/No. Earlier design used `is_default` to gate an "overwrite?" prompt only when destinations were already customised; that produced false overwrite prompts for pre-coloured airbases on fresh missions. Universal confirm is simpler and avoids the false-positive trap.
 
 **Resource Manager dialog refresh on apply:** If the Resource Manager dialog is open and showing the airbase we just wrote, the dialog's spinboxes and lists won't reflect the change until the user clicks elsewhere or reopens. v1 acceptable; status-bar warns the user to close + reopen.
 

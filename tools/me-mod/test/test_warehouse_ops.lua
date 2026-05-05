@@ -146,7 +146,10 @@ do
           warehouse_ops.is_default(customised_airport) == false)
 end
 
--- Case: is_default rejects partial customisations one field at a time.
+-- Case: is_default ignores fields that aren't user-toggle gates.
+-- Coalition (varies per map), OperatingLevel_*, fuel sub-tables, and
+-- aircrafts/weapons are all gated behind the unlimited* flags in the UI;
+-- the only signal that matters is whether the user unchecked any of those.
 do
     local clone = function(t)
         local c = {}
@@ -162,24 +165,28 @@ do
         return c
     end
 
-    local mutations = {
-        { 'coalition flipped',      function(t) t.coalition = 'BLUE' end },
-        { 'unlimitedFuel false',    function(t) t.unlimitedFuel = false end },
-        { 'OperatingLevel_Eqp 0',   function(t) t.OperatingLevel_Eqp = 0 end },
-        { 'jet_fuel 50',            function(t) t.jet_fuel.InitFuel = 50 end },
-        { 'aircrafts non-empty',    function(t) t.aircrafts = { planes = { ["F-16"] = {} } } end },
-        { 'weapons non-empty',      function(t) t.weapons = { foo = 1 } end },
+    local stays_default = {
+        { 'coalition flipped to BLUE',  function(t) t.coalition = 'BLUE' end },
+        { 'coalition flipped to RED',   function(t) t.coalition = 'RED' end },
+        { 'OperatingLevel_Eqp dropped', function(t) t.OperatingLevel_Eqp = 0 end },
+        { 'jet_fuel adjusted',          function(t) t.jet_fuel.InitFuel = 50 end },
+        { 'aircrafts non-empty',        function(t) t.aircrafts = { planes = { ["F-16"] = {} } } end },
+        { 'weapons non-empty',          function(t) t.weapons = { foo = 1 } end },
     }
-    for _, mt in ipairs(mutations) do
-        -- clone() is shallow, so the nested fuel tables would alias back to
-        -- default_airport. Re-clone each nested subtable BEFORE the mutation
-        -- runs to guarantee one mutation can't contaminate later iterations.
+    for _, mt in ipairs(stays_default) do
         local m = clone(default_airport)
-        m.aircrafts = {}; m.weapons = {}
         m.jet_fuel = clone(default_airport.jet_fuel)
-        m.methanol_mixture = clone(default_airport.methanol_mixture)
-        m.diesel = clone(default_airport.diesel)
-        m.gasoline = clone(default_airport.gasoline)
+        mt[2](m)
+        check('is_default still true after: ' .. mt[1], warehouse_ops.is_default(m) == true)
+    end
+
+    local breaks_default = {
+        { 'unlimitedFuel false',      function(t) t.unlimitedFuel = false end },
+        { 'unlimitedAircrafts false', function(t) t.unlimitedAircrafts = false end },
+        { 'unlimitedMunitions false', function(t) t.unlimitedMunitions = false end },
+    }
+    for _, mt in ipairs(breaks_default) do
+        local m = clone(default_airport)
         mt[2](m)
         check('is_default false after: ' .. mt[1], warehouse_ops.is_default(m) == false)
     end

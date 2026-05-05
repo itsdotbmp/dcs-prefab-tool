@@ -960,29 +960,20 @@ local function current_theatre()
     return th
 end
 
--- Returns true if any of the destination airbases (by name) currently have a
--- non-default warehouse entry. Used to gate the overwrite prompt.
-local function any_destination_customised(prefab)
-    local AC_ok, AC = pcall(require, 'Mission.AirdromeController')
-    if not AC_ok or not AC or type(AC.getAirdromes) ~= 'function' then return false end
-    local by_name = {}
-    for _, ad in ipairs(AC.getAirdromes() or {}) do
-        if ad.getName then by_name[ad:getName()] = ad end
-    end
-    for _, ab in ipairs((prefab.meta and prefab.meta.airbases) or {}) do
-        local ad = ab.name and by_name[ab.name]
-        if ad and ad.getAirdromeNumber then
-            local entry = warehouse_ops.extract(ad:getAirdromeNumber())
-            if entry and not warehouse_ops.is_default(entry) then return true end
-        end
-    end
-    return false
-end
-
+-- After a prefab places, if it carries meta.airbases, ask the user once
+-- whether to apply the saved supplies. We don't try to detect whether the
+-- destination airbase is already customised — the user has both names in
+-- the prompt and can decide for themselves whether the overwrite is wanted.
 local function run_airbase_apply(prefab)
     if not (prefab and prefab.meta and prefab.meta.airbases and #prefab.meta.airbases > 0) then
         return  -- no airbases on this prefab; nothing to do
     end
+
+    local names = {}
+    for _, ab in ipairs(prefab.meta.airbases) do
+        if ab.name then names[#names + 1] = ab.name end
+    end
+    local names_str = table.concat(names, ', ')
 
     local function do_apply()
         local ok, summary = prefab_ops.apply_airbases(prefab, { current_theatre = current_theatre() })
@@ -1000,17 +991,18 @@ local function run_airbase_apply(prefab)
         end
     end
 
-    if any_destination_customised(prefab) then
-        show_overlay(
-            'Some destination airbases already have custom supplies set.\n\nOverwrite with the prefab\'s saved supplies?',
-            {
-                { label = 'Overwrite', on_click = do_apply },
-                { label = 'Skip',      on_click = function() set_status('Airbase supplies skipped (kept destination customisation).') end },
-            },
-            'question')
+    local prompt
+    if #names == 1 then
+        prompt = 'This prefab includes airbase supplies for ' .. names_str .. '.\n\nApply them?'
     else
-        do_apply()
+        prompt = 'This prefab includes airbase supplies for ' .. #names .. ' airbases:\n'
+                 .. names_str .. '.\n\nApply them?'
     end
+
+    show_overlay(prompt, {
+        { label = 'Yes', on_click = do_apply },
+        { label = 'No',  on_click = function() set_status('Airbase supplies not applied.') end },
+    }, 'question')
 end
 
 local function on_place_origin_click()
@@ -1313,7 +1305,9 @@ function M.show()
                 return
             end
 
-            -- Filter out default (untouched) airbases — there's nothing to capture.
+            -- Filter out default (untouched) airbases — those have unlimited
+            -- everything and the user can't have meaningfully customised them.
+            -- See warehouse_ops.is_default for the exact rule.
             local non_default = {}
             for _, h in ipairs(hits) do
                 local entry = warehouse_ops.extract(h.airdrome_number_at_save)
