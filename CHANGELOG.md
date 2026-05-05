@@ -78,4 +78,23 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
-(No releases yet — first tag landing as `me-mod-v0.1.0`.)
+### [0.1.0] — 2026-05-05
+
+First tracked ME-mod release. Wraps everything shipped to date into a single point-in-time tag.
+
+**Added**
+- Prefab Manager window: name + Save row, search/filter, sortable grid (Name / Theatre / Fixed Pos / AB / G / S / Z / D), action buttons (Reload / Undo / Rename / Delete), country dropdown with Combat/All toggle and coalition-colored dots, rotation dial + spinbox, Place at original location + Place at click, status bar.
+- Save flow: distill the current selection (groups, statics, zones, drawings) into a prefab file under `<saved-games>/dcs-sms/prefabs/<name>.lua`. Prefab format at `PREFAB_VERSION = "0.3.0"`.
+- Place flow: both Place-at-original-location and click-to-place. Cursor-following yellow bbox preview during click-place; right-drag pan, mouse-wheel zoom, Esc cancel; double-click a row to enter click-place for that prefab.
+- Single-slot Undo for placed prefabs (groups + zones + drawings + airbase warehouse splices restored together).
+- Airbase supplies: marquee-detect customised airbases inside a rect and bundle their warehouse data (coalition, fuel, aircrafts, weapons, operating levels) into the prefab. Apply on Place to the same-named airbase, with theatre-mismatch refusal and country-coalition override. Refuses to apply if the prefab predates theatre capture (older `0.2.0` saves).
+- Per-ship warehouse capture + apply, ride inline on `unit._sms_warehouse` through serialization.
+- Country override at place time with **catalog validation** — refuses placement if any prefab unit's type is missing from the chosen country's catalog (avoids the silent fallback to "Boat Armed Hi-Speed" for ships under unsupported countries).
+- Rename, Delete, Reload-library actions.
+- Live name+theatre search and click-to-sort grid columns.
+- Native ME `MsgWindow` for confirmation prompts (Save-overwrite / Apply-airbase-supplies / Delete) — title bar, icons, button styling all match the editor.
+- Severity-coloured status bar: info (white), warning (yellow), error (red), placement (green). Auto-clears info/warning after 6 s; the placement message stays for the duration of the mode.
+
+**Tools**
+- `tools/dcs-sms.exe install-me-mod` — copies the ME-mod into `<DCS install>/MissionEditor/modules/dcs_sms_me/` and patches `MissionEditor.lua` with a sentinel-marker `require` block. Idempotent; backs up `MissionEditor.lua` first.
+- `tools/dcs-sms.exe uninstall-me-mod` — reverses the install.

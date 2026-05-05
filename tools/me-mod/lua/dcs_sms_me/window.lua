@@ -59,6 +59,12 @@ local dtc_skins  = require('dcs_sms_me.dtc_skins')
 local marquee_hook  = require('dcs_sms_me.marquee_hook')
 local airbase_detect = require('dcs_sms_me.airbase_detect')
 local warehouse_ops = require('dcs_sms_me.warehouse_ops')
+local version       = require('dcs_sms_me.version')
+
+-- Window title shown in the title bar in normal (non-place-pending) mode.
+-- Single source of truth so the placement-mode title and the post-place
+-- restore both pull the version from the same place.
+local WINDOW_TITLE = 'dcs-sms — Prefab Manager v' .. tostring(version)
 
 -- Apply a skin by name. Resolves in this order:
 --   * 'dtc_button' / 'dtc_grid' / 'dtc_grid_header' → DTC-dialog-style skins
@@ -886,7 +892,7 @@ exit_place_pending = function()
     W.place_pending = false
     W.place_pending_name = nil
     pcall(function()
-        if W.window and W.window.setText then W.window:setText('dcs-sms — Prefab Manager') end
+        if W.window and W.window.setText then W.window:setText(WINDOW_TITLE) end
     end)
     pcall(function()
         if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Place at click') end
@@ -1465,7 +1471,7 @@ function M.show()
         local x = screen_w - w - 20
         local y = 80
 
-        W.window = Window.new(x, y, w, h, 'dcs-sms — Prefab Manager')
+        W.window = Window.new(x, y, w, h, WINDOW_TITLE)
         W.window:setSkin((Skin.windowSkinME and Skin.windowSkinME()) or Skin.windowSkin())
         W.window:setVisible(true)
         W.window:setDraggable(true)

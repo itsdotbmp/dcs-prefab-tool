@@ -8,6 +8,9 @@
 -- breaks, the ME continues loading normally.
 
 local ok, err = pcall(function()
+    local version = require('dcs_sms_me.version')
+    log.write('sms.me', log.INFO, 'bootstrap (version ' .. tostring(version) .. ')')
+
     local menu = require('dcs_sms_me.menu')
     menu.install()
 
