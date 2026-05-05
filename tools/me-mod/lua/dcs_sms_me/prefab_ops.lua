@@ -948,11 +948,16 @@ end
 
 -- Apply meta.airbases to the live mission state. Re-resolves each entry by
 -- airbase name (the airdromeNumber at save time may not match in the
--- destination mission). Theatre mismatch refuses the whole step. Returns
--- (true, summary) on success or (nil, summary_with_error) on failure.
+-- destination mission). Theatre mismatch (or unknown prefab theatre)
+-- refuses the whole step. Returns (true, summary) on success or
+-- (nil, summary_with_error) on failure.
 --
 -- opts = {
---     current_theatre    = string?,  -- if set, refuse when prefab.meta.theatre differs
+--     current_theatre    = string?,  -- if set, refuse on theatre mismatch OR
+--                                    -- when prefab has no recorded theatre
+--                                    -- (we extracted these airbases from SOME
+--                                    -- map; without provenance we can't verify
+--                                    -- the destination is the right one)
 --     override_coalition = string?,  -- if set ('RED'/'BLUE'/'NEUTRAL'), every applied
 --                                    -- airbase ends up under this coalition instead
 --                                    -- of whatever was saved into the prefab
@@ -975,12 +980,20 @@ function M.apply_airbases(prefab, opts)
 
     opts = opts or {}
     local current_theatre = opts.current_theatre
-    if current_theatre and prefab.meta.theatre and prefab.meta.theatre ~= current_theatre then
-        return nil, {
-            applied = 0, skipped = #airbases, missing = {},
-            error = 'theatre mismatch: prefab=' .. tostring(prefab.meta.theatre)
-                    .. ' destination=' .. tostring(current_theatre),
-        }
+    if current_theatre then
+        if not prefab.meta.theatre or prefab.meta.theatre == '' then
+            return nil, {
+                applied = 0, skipped = #airbases, missing = {},
+                error = 'prefab has no recorded theatre; cannot verify destination is the right map. Refusing to apply.',
+            }
+        end
+        if prefab.meta.theatre ~= current_theatre then
+            return nil, {
+                applied = 0, skipped = #airbases, missing = {},
+                error = 'theatre mismatch: prefab=' .. tostring(prefab.meta.theatre)
+                        .. ' destination=' .. tostring(current_theatre),
+            }
+        end
     end
 
     local AC_ok, AC = pcall(require, 'Mission.AirdromeController')

@@ -255,6 +255,44 @@ do
           type(summary) == 'table' and summary.error and summary.error:find('theatre', 1, true) ~= nil)
 end
 
+-- Case: prefab carrying airbases but no meta.theatre is refused (we can't
+-- verify the destination map is the right one). Older 0.2.0 saves predate
+-- theatre capture; if airbases were retroactively attached, blindly applying
+-- them to a different map would be the cross-theatre catastrophe.
+do
+    apply_calls = {}
+    local prefab = {
+        meta = {
+            -- theatre deliberately absent
+            airbases = {
+                { name = 'Muwaffaq Salti', warehouse = { coalition = 'BLUE' } },
+            },
+        }
+    }
+    local ok, summary = prefab_ops.apply_airbases(prefab, { current_theatre = 'Syria' })
+    check('apply_airbases refused on missing prefab.meta.theatre', ok == nil)
+    check('no apply calls fired (missing-theatre)', #apply_calls == 0)
+    check('summary error mentions theatre',
+          type(summary) == 'table' and summary.error and summary.error:find('theatre', 1, true) ~= nil,
+          'got: ' .. tostring(summary and summary.error))
+end
+
+-- Case: empty meta.theatre is treated the same as nil — refuse.
+do
+    apply_calls = {}
+    local prefab = {
+        meta = {
+            theatre  = '',
+            airbases = {
+                { name = 'Muwaffaq Salti', warehouse = { coalition = 'BLUE' } },
+            },
+        }
+    }
+    local ok, summary = prefab_ops.apply_airbases(prefab, { current_theatre = 'Syria' })
+    check('apply_airbases refused on empty prefab.meta.theatre', ok == nil)
+    check('no apply calls fired (empty-theatre)', #apply_calls == 0)
+end
+
 -- Case: prefab without meta.airbases is a no-op (returns ok with applied=0).
 do
     apply_calls = {}
