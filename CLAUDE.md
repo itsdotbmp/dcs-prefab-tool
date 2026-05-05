@@ -17,6 +17,10 @@
 
 Per-function reference pages with worked examples live at `docs/api/<module>.md` and are linked from the top-level `README.md`. They are load-bearing for users learning the framework — humans and agents both read them before writing mission code. **Any change that adds, removes, or renames a public `sms.*` symbol must update the relevant `docs/api/` page in the same change-set.** The full rule (specs / plans / implementation / review) is documented in [`AGENTS.md` §9](AGENTS.md#9-when-you-write-new-framework-code).
 
+## Versioning
+
+Two parallel semver-0.x.y tracks: framework (`framework-v*` tags, `sms.version` in `framework/sms.lua`) and ME-mod (`me-mod-v*` tags, `tools/me-mod/lua/dcs_sms_me/version.lua`). Every public-surface change bumps the in-source version string in the same commit as the change; the git tag (annotated, component-prefixed) is the announcement. Update `CHANGELOG.md` in the same commit. Full rules in [`AGENTS.md` §11](AGENTS.md#11-versioning-and-releases).
+
 ## Worktree directory
 
 Use `.worktrees/` for new feature branches. It is gitignored. See the using-git-worktrees skill for the standard procedure.

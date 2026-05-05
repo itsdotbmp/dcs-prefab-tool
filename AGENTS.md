@@ -280,3 +280,27 @@ The `tools/` directory is host-side Go. It produces `dcs-sms` / `dcs-sms.exe`, a
 Agents writing or testing framework code typically use `dcs-sms exec` to run snippets against a running mission. See [`tools/lua/README.md`](tools/lua/README.md) for the full smoke checklist and the one required edit to `Scripts/MissionScripting.lua`.
 
 This is separate from in-DCS framework work. Don't conflate the two environments.
+
+---
+
+## 11. Versioning and releases
+
+Two parallel tracks, both semver `0.x.y`. Major (1.0) is reserved for the moment the public surface stops moving and the project commits to deprecation cycles for breaking changes — explicitly not on the v1 roadmap.
+
+- **Framework** (`framework/`): tags `framework-v0.X.Y`, canonical version at `framework/sms.lua` → `sms.version`.
+- **ME-mod** (`tools/me-mod/`): tags `me-mod-v0.X.Y`, canonical version at `tools/me-mod/lua/dcs_sms_me/version.lua`.
+- **Prefab data format** (`PREFAB_VERSION` in `prefab_distill.lua`): independent of release tags; bumps when the on-disk prefab schema changes.
+
+Bump rules under 0.x:
+
+- **Patch** (`0.x.y` → `0.x.y+1`) — pure bug fix. No new public symbols, no behaviour change for callers that were working before.
+- **Minor** (`0.x.y` → `0.x+1.0`) — anything else: new public function / module / UI feature, OR a breaking change to an existing one (allowed under 0.x).
+
+Workflow:
+
+1. **In-source first.** Bump the version string in the same commit that lands the change. The git tag is the announcement; the in-source string is the truth.
+2. **Annotated tags only** (`git tag -a`), prefixed by component (`framework-vX.Y.Z`, `me-mod-vX.Y.Z`). The tag's annotation message is the release summary.
+3. **Update `CHANGELOG.md`** in the same commit — section per component, newest entry on top.
+4. **Push with `--follow-tags`** (or push the tag separately) so the tag reaches `origin`.
+
+Specs and plans that touch public surface should call out the version bump as part of their scope, the same way they call out `AGENTS.md` §7 and `docs/api/` updates.
