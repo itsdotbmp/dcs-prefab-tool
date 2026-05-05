@@ -393,11 +393,33 @@ local function show_overlay(message, buttons, icon)
             overlay:insertWidget(ico)
         end
 
-        local msg = Static.new()
-        msg:setBounds(msg_x, 14, msg_w, btn_y - 24)
-        msg:setText(tostring(message or ''))
-        try_skin(msg, 'staticSkin_ME')
-        overlay:insertWidget(msg)
+        -- staticSkin_ME's lineHeight is 0, so a single Static collapses
+        -- multi-line text onto the first line (the rest renders at the same
+        -- y-coord and is invisible). Split on \n and stack one Static per
+        -- line so newlines actually render.
+        local msg_text = tostring(message or '')
+        local lines = {}
+        local start = 1
+        while true do
+            local nl = msg_text:find('\n', start, true)
+            if not nl then
+                lines[#lines + 1] = msg_text:sub(start)
+                break
+            end
+            lines[#lines + 1] = msg_text:sub(start, nl - 1)
+            start = nl + 1
+        end
+
+        local line_h = 16
+        local y = 14
+        for _, line in ipairs(lines) do
+            local s = Static.new()
+            s:setBounds(msg_x, y, msg_w, line_h)
+            s:setText(line)
+            try_skin(s, 'staticSkin_ME')
+            overlay:insertWidget(s)
+            y = y + line_h
+        end
 
         local n = #buttons
         local bw = math.floor((w - 20 - (n - 1) * 10) / n)
