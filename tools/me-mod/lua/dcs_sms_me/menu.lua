@@ -1,4 +1,5 @@
--- menu.lua — Customize-menu entry registration with floating-button fallback.
+-- menu.lua — Top-level "DCS-SMS" menu entry registration with floating-button
+-- fallback.
 --
 -- ME-API path (discovered 2026-05-03 by re-reading me_menubar.lua):
 --   me_menubar's `menuBar` table IS module-public — set without `local` at
@@ -6,18 +7,18 @@
 --   resolves once me_menubar.create_() has run (which it does when
 --   me_menubar.show() is first called).
 --
---   The Customize menu has a public-stable shape:
---     menuBar.customize.menu  -- a Menu widget with :newItem(label, pos)
---     existing items (missionOptions, mapOptions, setPosition, logbook)
---     can be queried via :getSkin() to skin our new item consistently.
+--   The MenuBar widget exposes :insertItem(MenuBarItem) for adding new
+--   top-level menus at runtime. We construct a fresh Menu widget, attach
+--   a "Prefab Manager" MenuItem to it, wrap it in a MenuBarItem labelled
+--   "DCS-SMS", and insert at the end of the bar. Skins are copied from
+--   the existing `customize` entry so visual styling matches.
 --
---   me_menubar's setCustomizeMenu() already wires `menu:onChange` to call
---   `item.func` for any clicked item — so we just set our item's `.func`
---   and it fires on click.
+--   Menu's onChange callback is wired the same way native ME menus do it:
+--   `function menu:onChange(item) if item.func then item.func() end end`.
 --
 -- Strategy:
---   1. At install time, try to add the menu entry immediately (in case the
---      menubar is already constructed).
+--   1. At install time, try to add the top-level entry immediately (in
+--      case the menubar is already constructed).
 --   2. If menuBar isn't ready yet, monkey-patch me_menubar.show so the
 --      entry is added the next time ME shows the menubar.
 --   3. If me_menubar isn't accessible at all, fall back to a floating
@@ -29,56 +30,83 @@ local function get_window()
     return require('dcs_sms_me.window')
 end
 
--- Add our entry to me_menubar.menuBar.customize.menu. Idempotent.
--- Returns true if the entry exists in the menu after this call.
-local function add_menu_entry()
+-- Build a top-level "DCS-SMS" menu entry containing "Prefab Manager".
+-- Idempotent — guarded by a flag on the me_menubar module so dev-reload
+-- (Ctrl+Shift+R, which clears our package.loaded but not me_menubar) doesn't
+-- add a duplicate entry. Returns true if the entry exists after this call.
+local function add_top_level_menu()
     local ok, mb = pcall(require, 'me_menubar')
     if not ok or not mb or not mb.menuBar then return false end
-    local customize = mb.menuBar.customize
-    if not customize or not customize.menu then return false end
-    local menu = customize.menu
-    if menu._dcs_sms_prefab_added then return true end  -- idempotency
+    if mb._dcs_sms_top_added then return true end
+
+    local menu_bar = mb.menuBar
+    if type(menu_bar.insertItem) ~= 'function' then return false end
+
+    local ok_req_menu, Menu        = pcall(require, 'Menu')
+    local ok_req_item, MenuBarItem = pcall(require, 'MenuBarItem')
+    if not (ok_req_menu and Menu and ok_req_item and MenuBarItem) then return false end
+
+    -- Build the popup menu and copy the existing customize-menu skin so
+    -- our menu's background, fonts, and item spacing match the rest of
+    -- the menubar.
+    local sibling_top  = menu_bar.customize
+    local sibling_menu = sibling_top and sibling_top.menu
+
+    local menu = Menu.new()
+    pcall(function()
+        if sibling_menu and sibling_menu.getSkin and menu.setSkin then
+            menu:setSkin(sibling_menu:getSkin())
+        end
+    end)
+    -- Canonical ME pattern: each menu's onChange dispatches to item.func.
+    function menu:onChange(item)
+        if item and item.func then item.func() end
+    end
 
     local item
-    local ok_new, err = pcall(function()
-        item = menu:newItem('PREFAB MANAGER')
-    end)
+    local ok_new, err = pcall(function() item = menu:newItem('Prefab Manager') end)
     if not ok_new or not item then
         log.write('sms.me', log.ERROR, 'menu:newItem failed: ' .. tostring(err))
         return false
     end
-
-    -- Copy the skin from an existing item so our entry visually matches.
     pcall(function()
-        local sibling = menu.missionOptions or menu.mapOptions
-                     or menu.setPosition  or menu.logbook
-        if sibling and sibling.getSkin then
-            local skin = sibling:getSkin()
-            if skin and item.setSkin then item:setSkin(skin) end
+        local sibling_item = sibling_menu
+            and (sibling_menu.missionOptions or sibling_menu.mapOptions
+                 or sibling_menu.setPosition  or sibling_menu.logbook)
+        if sibling_item and sibling_item.getSkin and item.setSkin then
+            item:setSkin(sibling_item:getSkin())
         end
     end)
-
-    -- The Customize menu's onChange already calls item.func on click
-    -- (set up by me_menubar.setMenuCallback / setCustomizeMenu).
-    -- Log explicitly so failures during require/toggle don't get
-    -- swallowed by the caller's protection.
     item.func = function()
-        log.write('sms.me', log.INFO, 'Prefab Manager menu item clicked')
-        local ok, err = pcall(function()
+        log.write('sms.me', log.INFO, 'DCS-SMS > Prefab Manager menu clicked')
+        local ok_t, terr = pcall(function()
             local win = require('dcs_sms_me.window')
             win.toggle()
         end)
-        if not ok then
-            log.write('sms.me', log.ERROR,
-                'Prefab Manager toggle failed: ' .. tostring(err))
+        if not ok_t then
+            log.write('sms.me', log.ERROR, 'Prefab Manager toggle failed: ' .. tostring(terr))
         end
     end
 
-    menu._dcs_sms_prefab_added = true
+    -- Wrap the menu in a MenuBarItem and insert at the end of the bar.
+    local bar_item
+    local ok_bar, bar_err = pcall(function() bar_item = MenuBarItem.new('DCS-SMS', menu) end)
+    if not ok_bar or not bar_item then
+        log.write('sms.me', log.ERROR, 'MenuBarItem.new failed: ' .. tostring(bar_err))
+        return false
+    end
+    pcall(function()
+        if sibling_top and sibling_top.getSkin and bar_item.setSkin then
+            bar_item:setSkin(sibling_top:getSkin())
+        end
+    end)
+    pcall(function() menu_bar:insertItem(bar_item) end)
+
+    mb._dcs_sms_top_added = true
     return true
 end
 
--- Monkey-patch me_menubar.show so add_menu_entry runs after the menubar
+-- Monkey-patch me_menubar.show so add_top_level_menu runs after the menubar
 -- is constructed. Idempotent — only patches once.
 local function patch_menubar_show()
     local ok, mb = pcall(require, 'me_menubar')
@@ -88,7 +116,7 @@ local function patch_menubar_show()
     local orig_show = mb.show
     mb.show = function(...)
         local result = orig_show(...)
-        pcall(add_menu_entry)
+        pcall(add_top_level_menu)
         return result
     end
     mb._dcs_sms_show_patched = true
@@ -166,7 +194,7 @@ end
 
 -- M.install ---------------------------------------------------------------
 -- Public entry point. Returns:
---   "menu"     — added entry to Customize menu (immediately or via patch)
+--   "menu"     — added DCS-SMS top-level menu (immediately or via patch)
 --   "fallback" — me_menubar wasn't accessible; floating button installed
 function M.install()
     -- Hook ME-exit so our window auto-hides when the user leaves the ME.
@@ -175,8 +203,8 @@ function M.install()
     pcall(patch_menubar_hideME)
 
     -- Try to add immediately. If menubar already exists we're done.
-    if add_menu_entry() then
-        log.write('sms.me', log.INFO, 'Prefab Manager added to Customize menu')
+    if add_top_level_menu() then
+        log.write('sms.me', log.INFO, 'DCS-SMS top-level menu added')
         return 'menu'
     end
 
@@ -184,7 +212,7 @@ function M.install()
     -- the menubar is shown (usually right after init, on first ME paint).
     if patch_menubar_show() then
         log.write('sms.me', log.INFO,
-            'Prefab Manager will be added to Customize menu when menubar shows')
+            'DCS-SMS top-level menu will be added when menubar shows')
         return 'menu'
     end
 
