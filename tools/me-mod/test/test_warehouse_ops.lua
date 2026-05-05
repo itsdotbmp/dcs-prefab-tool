@@ -127,6 +127,13 @@ do
     check('extract(9999) returns nil', entry == nil)
 end
 
+-- Case: extract with non-number arguments returns nil cleanly (no error).
+do
+    check('extract(nil) returns nil',     warehouse_ops.extract(nil) == nil)
+    check('extract("68") returns nil',    warehouse_ops.extract("68") == nil)
+    check('extract(false) returns nil',   warehouse_ops.extract(false) == nil)
+end
+
 -- Case: is_default recognises a default airport.
 do
     check('is_default(default) == true',
@@ -164,6 +171,9 @@ do
         { 'weapons non-empty',      function(t) t.weapons = { foo = 1 } end },
     }
     for _, mt in ipairs(mutations) do
+        -- clone() is shallow, so the nested fuel tables would alias back to
+        -- default_airport. Re-clone each nested subtable BEFORE the mutation
+        -- runs to guarantee one mutation can't contaminate later iterations.
         local m = clone(default_airport)
         m.aircrafts = {}; m.weapons = {}
         m.jet_fuel = clone(default_airport.jet_fuel)

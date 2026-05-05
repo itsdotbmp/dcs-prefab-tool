@@ -18,6 +18,9 @@ local function safe_require(name)
 end
 
 local module_mission        = safe_require('me_mission')
+-- AirdromeController + CoalitionController are loaded here so M.apply (added in
+-- Task 5) can use them without re-requiring per-call. Unused by M.extract /
+-- M.is_default — those only need module_mission.
 local AirdromeController    = safe_require('Mission.AirdromeController')
 local CoalitionController   = safe_require('Mission.CoalitionController')
 
@@ -30,7 +33,7 @@ local function deep_copy(value)
     for k, v in pairs(value) do out[k] = deep_copy(v) end
     return out
 end
-M._deep_copy = deep_copy  -- exposed for tests
+M._deep_copy = deep_copy  -- exposed for unit testing
 
 -- Read the airport entry at `airdrome_number` from the live mission data and
 -- return a deep copy. nil when the index is out of range or me_mission is
@@ -70,6 +73,11 @@ function M.is_default(entry)
         end
     end
     if type(entry.weapons) == 'table' and next(entry.weapons) ~= nil then return false end
+    -- An absent fuel sub-table is treated as non-default. If a future map
+    -- (e.g. one without diesel infrastructure) ships airports lacking these
+    -- keys, this predicate will return false for untouched airports there
+    -- and we'd need a per-map "expected fuel set" lookup. Acceptable for the
+    -- maps DCS ships today.
     local function fuel_default(name)
         local f = entry[name]
         return type(f) == 'table' and f.InitFuel == 100
