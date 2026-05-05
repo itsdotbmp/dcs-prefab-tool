@@ -136,6 +136,135 @@ do
     os.remove(tmppath)
 end
 
+-- ---------------------------------------------------------------------------
+-- apply_airbases tests — exercise the apply pipeline with stubbed controllers.
+-- ---------------------------------------------------------------------------
+
+-- Airdrome list: name → airdromeNumber. Only airdromes present in the live
+-- mission can be applied to.
+local airdromes_in_mission = {
+    { name = 'Muwaffaq Salti', n = 68 },
+    { name = 'Khalde',         n = 12 },
+    -- 'H4' deliberately absent so we test the not-found branch.
+}
+local function rebuild_airdromes()
+    local out = {}
+    for _, e in ipairs(airdromes_in_mission) do
+        out[#out + 1] = {
+            x = 0, y = 0,
+            getName             = function(self) return e.name end,
+            getAirdromeNumber   = function(self) return e.n end,
+        }
+    end
+    return out
+end
+
+-- Capture warehouse_ops.apply calls.
+local apply_calls = {}
+package.loaded['Mission.AirdromeController'] = {
+    getAirdromes        = function() return rebuild_airdromes() end,
+    getAirdromeId       = function(n) return 'id-' .. tostring(n) end,
+    setAirdromeCoalition= function() end,
+}
+package.loaded['Mission.CoalitionController'] = {
+    redCoalitionName = function() return 'red' end,
+    blueCoalitionName = function() return 'blue' end,
+    neutralCoalitionName = function() return 'neutral' end,
+}
+
+-- Stub me_mission.mission.AirportsEquipment so warehouse_ops.apply has somewhere to write.
+local live_airports = { [12] = {}, [68] = {} }
+package.preload['me_mission'] = function()
+    return { mission = { AirportsEquipment = { airports = live_airports } } }
+end
+package.loaded['me_mission'] = nil  -- force a re-require so the new stub is picked up
+package.loaded['dcs_sms_me.warehouse_ops'] = nil
+package.loaded['prefab_ops'] = nil
+prefab_ops = require('prefab_ops')
+
+-- Patch warehouse_ops.apply to capture calls AFTER prefab_ops has require'd it.
+local warehouse_ops_real = require('dcs_sms_me.warehouse_ops')
+warehouse_ops_real.apply = function(n, w)
+    apply_calls[#apply_calls + 1] = { n = n, w = w }
+    live_airports[n] = w  -- emulate splice for downstream assertions
+    return true
+end
+
+-- Case: apply_airbases applies all named airdromes that are present.
+do
+    apply_calls = {}
+    local prefab = {
+        meta = {
+            theatre  = 'Syria',
+            airbases = {
+                { name = 'Muwaffaq Salti', airdrome_number_at_save = 68,
+                  warehouse = { coalition = 'BLUE', jet_fuel = { InitFuel = 50 } } },
+                { name = 'Khalde',         airdrome_number_at_save = 12,
+                  warehouse = { coalition = 'NEUTRAL' } },
+            },
+        }
+    }
+    local ok, summary = prefab_ops.apply_airbases(prefab, { current_theatre = 'Syria' })
+    check('apply_airbases returns ok', ok == true, 'summary err: ' .. tostring(summary and summary.error))
+    check('apply called twice', #apply_calls == 2, 'got ' .. #apply_calls)
+    check('summary applied count == 2',
+          summary and summary.applied == 2, 'got ' .. tostring(summary and summary.applied))
+    check('summary skipped count == 0',
+          summary and summary.skipped == 0, 'got ' .. tostring(summary and summary.skipped))
+end
+
+-- Case: apply_airbases skips airdromes not present in destination.
+do
+    apply_calls = {}
+    local prefab = {
+        meta = {
+            theatre  = 'Syria',
+            airbases = {
+                { name = 'Muwaffaq Salti', airdrome_number_at_save = 68,
+                  warehouse = { coalition = 'BLUE' } },
+                { name = 'H4', airdrome_number_at_save = 80,   -- not in airdromes_in_mission
+                  warehouse = { coalition = 'BLUE' } },
+            },
+        }
+    }
+    local ok, summary = prefab_ops.apply_airbases(prefab, { current_theatre = 'Syria' })
+    check('apply_airbases returns ok with partial application', ok == true)
+    check('apply called once (only the present airdrome)', #apply_calls == 1)
+    check('summary applied == 1', summary.applied == 1)
+    check('summary skipped == 1', summary.skipped == 1)
+    check('summary missing list mentions H4',
+          type(summary.missing) == 'table' and summary.missing[1] == 'H4',
+          'got ' .. tostring(summary.missing and summary.missing[1]))
+end
+
+-- Case: theatre mismatch refuses the whole apply step.
+do
+    apply_calls = {}
+    local prefab = {
+        meta = {
+            theatre  = 'Syria',
+            airbases = {
+                { name = 'Muwaffaq Salti', warehouse = { coalition = 'BLUE' } },
+            },
+        }
+    }
+    local ok, summary = prefab_ops.apply_airbases(prefab, { current_theatre = 'Caucasus' })
+    check('apply_airbases refused on theatre mismatch', ok == nil)
+    check('no apply calls fired', #apply_calls == 0)
+    check('summary indicates theatre mismatch',
+          type(summary) == 'table' and summary.error and summary.error:find('theatre', 1, true) ~= nil)
+end
+
+-- Case: prefab without meta.airbases is a no-op (returns ok with applied=0).
+do
+    apply_calls = {}
+    local prefab = { meta = { theatre = 'Syria' } }
+    local ok, summary = prefab_ops.apply_airbases(prefab, { current_theatre = 'Syria' })
+    check('apply_airbases no-op returns ok', ok == true)
+    check('no apply calls', #apply_calls == 0)
+    check('summary applied == 0', summary.applied == 0)
+end
+
 if failures > 0 then
     print(string.format('%d failure(s)', failures))
     os.exit(1)

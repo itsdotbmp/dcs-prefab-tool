@@ -6,11 +6,12 @@
 -- All public symbols return either a positive value (path, table,
 -- record) on success, or nil + error_string on failure. No throws.
 
-local lfs        = require('lfs')
-local paths      = require('dcs_sms_me.paths')
-local distill    = require('dcs_sms_me.prefab_distill').distill
-local serializer = require('dcs_sms_me.serializer')
-local selection  = require('dcs_sms_me.selection')
+local lfs           = require('lfs')
+local paths         = require('dcs_sms_me.paths')
+local distill       = require('dcs_sms_me.prefab_distill').distill
+local serializer    = require('dcs_sms_me.serializer')
+local selection     = require('dcs_sms_me.selection')
+local warehouse_ops = require('dcs_sms_me.warehouse_ops')
 
 local M = {}
 
@@ -926,6 +927,66 @@ function M.place(prefab, opts)
         return nil, 'no entities injected (' .. #record.errors .. ' errors — see log)'
     end
     return record
+end
+
+-- Apply meta.airbases to the live mission state. Re-resolves each entry by
+-- airbase name (the airdromeNumber at save time may not match in the
+-- destination mission). Theatre mismatch refuses the whole step. Returns
+-- (true, summary) on success or (nil, summary_with_error) on failure.
+--
+-- summary = {
+--     applied = N,                  -- count of warehouses successfully spliced
+--     skipped = N,                  -- count of named airdromes NOT found in destination
+--     missing = { name1, ... },     -- names that were skipped
+--     error   = string?,            -- set on hard failure (theatre mismatch, etc.)
+-- }
+function M.apply_airbases(prefab, opts)
+    if type(prefab) ~= 'table' or type(prefab.meta) ~= 'table' then
+        return nil, { applied = 0, skipped = 0, missing = {}, error = 'prefab missing meta' }
+    end
+    local airbases = prefab.meta.airbases
+    if type(airbases) ~= 'table' or #airbases == 0 then
+        return true, { applied = 0, skipped = 0, missing = {} }
+    end
+
+    opts = opts or {}
+    local current_theatre = opts.current_theatre
+    if current_theatre and prefab.meta.theatre and prefab.meta.theatre ~= current_theatre then
+        return nil, {
+            applied = 0, skipped = #airbases, missing = {},
+            error = 'theatre mismatch: prefab=' .. tostring(prefab.meta.theatre)
+                    .. ' destination=' .. tostring(current_theatre),
+        }
+    end
+
+    local AC_ok, AC = pcall(require, 'Mission.AirdromeController')
+    if not AC_ok or not AC or type(AC.getAirdromes) ~= 'function' then
+        return nil, {
+            applied = 0, skipped = #airbases, missing = {},
+            error = 'AirdromeController unavailable',
+        }
+    end
+
+    local by_name = {}
+    for _, ad in ipairs(AC.getAirdromes() or {}) do
+        if ad.getName then by_name[ad:getName()] = ad end
+    end
+
+    local applied, skipped, missing = 0, 0, {}
+    for _, ab in ipairs(airbases) do
+        local ad = ab.name and by_name[ab.name] or nil
+        if ad and ad.getAirdromeNumber then
+            local n = ad:getAirdromeNumber()
+            local ok = warehouse_ops.apply(n, ab.warehouse)
+            if ok then applied = applied + 1
+            else skipped = skipped + 1; missing[#missing + 1] = ab.name
+            end
+        else
+            skipped = skipped + 1
+            if ab.name then missing[#missing + 1] = ab.name end
+        end
+    end
+    return true, { applied = applied, skipped = skipped, missing = missing }
 end
 
 return M
