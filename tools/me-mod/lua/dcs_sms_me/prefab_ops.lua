@@ -43,7 +43,7 @@ local function any_selection(snap)
         or (#(snap.drawings or {}) > 0)
 end
 
-function M.save_selection(name, place_at_origin)
+function M.save_selection(name, place_at_origin, airbases)
     if type(name) ~= 'string' or name == '' then
         return nil, 'name required'
     end
@@ -77,6 +77,7 @@ function M.save_selection(name, place_at_origin)
         name             = name,
         theatre          = theatre,
         place_at_origin  = place_at_origin == true,
+        airbases         = airbases,
     })
     if not prefab then
         return nil, 'distill returned nil — check log for details'
@@ -140,12 +141,15 @@ end
 local function row_from_prefab(name, path, prefab)
     local meta = prefab.meta
     local g_count, s_inline = split_group_counts(prefab.groups)
+    local airbase_count = 0
+    if type(meta.airbases) == 'table' then airbase_count = #meta.airbases end
     return {
         name            = meta.name or name,
         path            = path,
         theatre         = meta.theatre,
         source_dump     = meta.source_dump,
         place_at_origin = meta.place_at_origin == true,
+        airbase_count   = airbase_count,
         group_count     = g_count,
         -- Statics from inline `type='static'` groups + any in the legacy
         -- top-level statics array (older fixtures / hand-written prefabs).
