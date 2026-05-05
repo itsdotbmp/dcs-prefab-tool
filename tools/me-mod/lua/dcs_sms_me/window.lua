@@ -803,6 +803,7 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
                         #(rec.errors or {}),
                         wx, wy))
                     log.write('sms.me.prefab', log.INFO, 'placed ' .. prefab_name)
+                    run_airbase_apply(prefab_table)
                 else
                     set_status('Place failed: ' .. tostring(err))
                     log.write('sms.me.prefab', log.ERROR, 'place failed: ' .. tostring(err))
@@ -947,6 +948,71 @@ local function on_place_click()
     enter_place_pending(row.name, prefab, get_rotation_deg())
 end
 
+-- Read current theatre via the same API save_selection uses.
+local function current_theatre()
+    local th
+    pcall(function()
+        local TheatreOfWarData = require('Mission.TheatreOfWarData')
+        if TheatreOfWarData and type(TheatreOfWarData.getName) == 'function' then
+            th = TheatreOfWarData.getName()
+        end
+    end)
+    return th
+end
+
+-- Returns true if any of the destination airbases (by name) currently have a
+-- non-default warehouse entry. Used to gate the overwrite prompt.
+local function any_destination_customised(prefab)
+    local AC_ok, AC = pcall(require, 'Mission.AirdromeController')
+    if not AC_ok or not AC or type(AC.getAirdromes) ~= 'function' then return false end
+    local by_name = {}
+    for _, ad in ipairs(AC.getAirdromes() or {}) do
+        if ad.getName then by_name[ad:getName()] = ad end
+    end
+    for _, ab in ipairs((prefab.meta and prefab.meta.airbases) or {}) do
+        local ad = ab.name and by_name[ab.name]
+        if ad and ad.getAirdromeNumber then
+            local entry = warehouse_ops.extract(ad:getAirdromeNumber())
+            if entry and not warehouse_ops.is_default(entry) then return true end
+        end
+    end
+    return false
+end
+
+local function run_airbase_apply(prefab)
+    if not (prefab and prefab.meta and prefab.meta.airbases and #prefab.meta.airbases > 0) then
+        return  -- no airbases on this prefab; nothing to do
+    end
+
+    local function do_apply()
+        local ok, summary = prefab_ops.apply_airbases(prefab, { current_theatre = current_theatre() })
+        if ok then
+            local msg = ('Airbase supplies: %d applied'):format(summary.applied)
+            if summary.skipped > 0 then
+                msg = msg .. (', %d skipped'):format(summary.skipped)
+                if summary.missing and #summary.missing > 0 then
+                    msg = msg .. ' (' .. table.concat(summary.missing, ', ') .. ')'
+                end
+            end
+            set_status(msg)
+        else
+            set_status('Airbase supplies skipped: ' .. tostring(summary and summary.error or 'unknown'))
+        end
+    end
+
+    if any_destination_customised(prefab) then
+        show_overlay(
+            'Some destination airbases already have custom supplies set.\n\nOverwrite with the prefab\'s saved supplies?',
+            {
+                { label = 'Overwrite', on_click = do_apply },
+                { label = 'Skip',      on_click = function() set_status('Airbase supplies skipped (kept destination customisation).') end },
+            },
+            'question')
+    else
+        do_apply()
+    end
+end
+
 local function on_place_origin_click()
     local row = require_selection('place at original')
     if not row then return end
@@ -978,6 +1044,7 @@ local function on_place_origin_click()
             #(rec.errors or {}),
             wa.x, wa.y))
         log.write('sms.me.prefab', log.INFO, 'placed ' .. row.name .. ' at original')
+        run_airbase_apply(prefab)
     else
         set_status('Place failed: ' .. tostring(err))
         log.write('sms.me.prefab', log.ERROR, 'place at original failed: ' .. tostring(err))
