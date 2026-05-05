@@ -26,17 +26,25 @@ function M.airbases_in_rect(start_xy, end_xy)
     local ok, AC = pcall(require, 'Mission.AirdromeController')
     if not ok or not AC or type(AC.getAirdromes) ~= 'function' then return hits end
 
-    local airdromes = AC.getAirdromes() or {}
+    -- pcall-guarded: a partially-torn-down ME state can throw on getAirdromes.
+    local got_ok, airdromes = pcall(AC.getAirdromes)
+    if not got_ok then return hits end
+    airdromes = airdromes or {}
     for _, ad in ipairs(airdromes) do
         local x = type(ad.x) == 'number' and ad.x or nil
         local y = type(ad.y) == 'number' and ad.y or nil
         if x and y and x >= lo_x and x <= hi_x and y >= lo_y and y <= hi_y then
-            hits[#hits + 1] = {
-                name                    = ad.getName and ad:getName() or '?',
-                airdrome_number_at_save = ad.getAirdromeNumber and ad:getAirdromeNumber() or nil,
-                x                       = x,
-                y                       = y,
-            }
+            -- Skip records without getName — name is the apply-side lookup key,
+            -- so a missing name would silently fail every downstream lookup
+            -- with no diagnostic. Better to drop the record entirely.
+            if ad.getName then
+                hits[#hits + 1] = {
+                    name                    = ad:getName(),
+                    airdrome_number_at_save = ad.getAirdromeNumber and ad:getAirdromeNumber() or nil,
+                    x                       = x,
+                    y                       = y,
+                }
+            end
         end
     end
     return hits
