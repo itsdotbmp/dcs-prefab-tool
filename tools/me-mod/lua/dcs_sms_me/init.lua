@@ -10,6 +10,12 @@
 local ok, err = pcall(function()
     local menu = require('dcs_sms_me.menu')
     menu.install()
+
+    -- Install the marquee hook eagerly on bootstrap so a rect drawn before the
+    -- prefab manager window opens still gets remembered. Subscribers attach
+    -- later (window.lua attaches on its first show).
+    local marquee_hook = require('dcs_sms_me.marquee_hook')
+    marquee_hook.install()
 end)
 if not ok then
     log.write('sms.me', log.ERROR, 'init failed: ' .. tostring(err))

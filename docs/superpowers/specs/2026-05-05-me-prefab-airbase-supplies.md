@@ -232,3 +232,21 @@ This depends on the marquee hook (Phase 1), which is reusable beyond this featur
 - **Two issues** — `feat(me-mod): marquee-select hook for ME multi-select rect` (depends-on-by) `feat(me-mod): capture airbase supplies in prefabs (Resource Manager round-trip)`. Cleaner if the marquee hook gets a second consumer before this feature lands.
 
 Defer to user preference at landing time.
+
+## Decisions (locked at plan time, 2026-05-05)
+
+The spec's open-questions section asked for an API spike. Resolved as follows:
+
+**Read API:** `require('me_mission').mission.AirportsEquipment.airports[N]` is the canonical read. `module('me_mission')` exposes `mission` on the module table; this is the same table the resource manager mirrors into `panel_manager_resource.vdata.AirportsEquipment` and the same data the miz exporter serializes. We read this and deep-copy on extract.
+
+**Write API:** Splice the warehouse entry into `mission.AirportsEquipment.airports[N]` and call `AirdromeController.setAirdromeCoalition(id, name)` to push the coalition change through the controller (so map display + dialog state refresh correctly). Field-level setters on `me_manager_resource` are NOT used — they're tied to the Resource Manager dialog being open.
+
+**Coalition string mapping:** The warehouse table uses uppercase `RED`/`BLUE`/`NEUTRAL`. `AirdromeController.setAirdromeCoalition` expects controller-form names from `CoalitionController.{red,blue,neutral}CoalitionName()`. We map between them at the seam.
+
+**Default-detection (revised 2026-05-05 after first round of testing):** A warehouse entry is "default" iff all three `unlimited*` flags are true. The earlier richer rule (coalition NEUTRAL + OperatingLevel + fuel + aircrafts/weapons checks) misclassified pre-coloured airbases — many maps ship airbases pre-assigned to RED or BLUE in their default state, which the strict rule treated as "customised". The unlimited flags are gating UI state in the Resource Manager — every other stock control is locked while they're true — so they're a tight signal that the user hasn't dialed in any specific values worth bundling.
+
+**Apply-time prompt (revised 2026-05-05):** When a prefab carries `meta.airbases`, placing it always shows a single confirmation overlay listing the airbase names, with Yes/No. Earlier design used `is_default` to gate an "overwrite?" prompt only when destinations were already customised; that produced false overwrite prompts for pre-coloured airbases on fresh missions. Universal confirm is simpler and avoids the false-positive trap.
+
+**Resource Manager dialog refresh on apply:** If the Resource Manager dialog is open and showing the airbase we just wrote, the dialog's spinboxes and lists won't reflect the change until the user clicks elsewhere or reopens. v1 acceptable; status-bar warns the user to close + reopen.
+
+**Grid column for airbase-bearing prefabs:** `AB` column, 50px, after `Fixed Pos`. Cell shows `Yes` (single) or the count (e.g. `3`). Sortable like other columns; sorts by count via the existing numeric=true path.

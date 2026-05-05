@@ -22,7 +22,7 @@ local M = {}
 -- inside `drawing.mapData.points` (and other geometry sub-arrays). Files
 -- saved at 0.1.0 had broken vertex deltas; me-mod's place path keeps a
 -- compensating un-rebase shim for those, gated on this version field.
-local PREFAB_VERSION = "0.2.0"
+local PREFAB_VERSION = "0.3.0"
 
 -- Shape-inference catalog. Currently empty; mirrors framework's
 -- sms.K.statics population (also currently empty). If the framework adds
@@ -236,6 +236,23 @@ function M.distill(dump_or_path, opts)
     -- Only emit when set so older saves stay byte-stable on no-op resaves.
     if opts.place_at_origin == true then
         meta.place_at_origin = true
+    end
+    -- Optional per-airbase warehouse data captured by the marquee detect flow.
+    -- We store the raw extracted entries verbatim — same shape DCS uses in the
+    -- .miz `warehouses` file. Re-resolved by name on apply.
+    if type(opts.airbases) == 'table' and #opts.airbases > 0 then
+        meta.airbases = {}
+        for i, ab in ipairs(opts.airbases) do
+            if type(ab) == 'table' and type(ab.name) == 'string'
+               and type(ab.warehouse) == 'table' then
+                meta.airbases[#meta.airbases + 1] = {
+                    name                    = ab.name,
+                    airdrome_number_at_save = ab.airdrome_number_at_save,
+                    warehouse               = ab.warehouse,
+                }
+            end
+        end
+        if #meta.airbases == 0 then meta.airbases = nil end
     end
 
     return {

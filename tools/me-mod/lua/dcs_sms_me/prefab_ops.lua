@@ -6,11 +6,13 @@
 -- All public symbols return either a positive value (path, table,
 -- record) on success, or nil + error_string on failure. No throws.
 
-local lfs        = require('lfs')
-local paths      = require('dcs_sms_me.paths')
-local distill    = require('dcs_sms_me.prefab_distill').distill
-local serializer = require('dcs_sms_me.serializer')
-local selection  = require('dcs_sms_me.selection')
+local lfs            = require('lfs')
+local paths          = require('dcs_sms_me.paths')
+local distill        = require('dcs_sms_me.prefab_distill').distill
+local serializer     = require('dcs_sms_me.serializer')
+local selection      = require('dcs_sms_me.selection')
+local warehouse_ops  = require('dcs_sms_me.warehouse_ops')
+local ship_warehouse = require('dcs_sms_me.ship_warehouse')
 
 local M = {}
 
@@ -43,7 +45,7 @@ local function any_selection(snap)
         or (#(snap.drawings or {}) > 0)
 end
 
-function M.save_selection(name, place_at_origin)
+function M.save_selection(name, place_at_origin, airbases)
     if type(name) ~= 'string' or name == '' then
         return nil, 'name required'
     end
@@ -77,10 +79,18 @@ function M.save_selection(name, place_at_origin)
         name             = name,
         theatre          = theatre,
         place_at_origin  = place_at_origin == true,
+        airbases         = airbases,
     })
     if not prefab then
         return nil, 'distill returned nil — check log for details'
     end
+
+    -- After distill, attach per-ship warehouse data inline on each unit.
+    -- The data rides through serialization on `unit._sms_warehouse` and
+    -- gets spliced back at the new unitId during M.place. is_default
+    -- filtering inside attach_to_prefab keeps untouched ships from
+    -- bloating the file.
+    pcall(ship_warehouse.attach_to_prefab, prefab)
 
     local serialized = serializer.serialize(prefab)
     if type(serialized) ~= 'string' then
@@ -140,12 +150,15 @@ end
 local function row_from_prefab(name, path, prefab)
     local meta = prefab.meta
     local g_count, s_inline = split_group_counts(prefab.groups)
+    local airbase_count = 0
+    if type(meta.airbases) == 'table' then airbase_count = #meta.airbases end
     return {
         name            = meta.name or name,
         path            = path,
         theatre         = meta.theatre,
         source_dump     = meta.source_dump,
         place_at_origin = meta.place_at_origin == true,
+        airbase_count   = airbase_count,
         group_count     = g_count,
         -- Statics from inline `type='static'` groups + any in the legacy
         -- top-level statics array (older fixtures / hand-written prefabs).
@@ -921,7 +934,96 @@ function M.place(prefab, opts)
     if injection_count() == 0 then
         return nil, 'no entities injected (' .. #record.errors .. ' errors — see log)'
     end
+
+    -- Splice per-ship warehouse entries into mission.AirportsEquipment.warehouses
+    -- using each placed unit's freshly-allocated unitId. Coalition is overridden
+    -- by opts.override_coalition (lowercased) when the user picked a country
+    -- whose coalition differs from what was saved.
+    pcall(ship_warehouse.apply_from_record, record, {
+        override_coalition = opts and opts.override_coalition,
+    })
+
     return record
+end
+
+-- Apply meta.airbases to the live mission state. Re-resolves each entry by
+-- airbase name (the airdromeNumber at save time may not match in the
+-- destination mission). Theatre mismatch refuses the whole step. Returns
+-- (true, summary) on success or (nil, summary_with_error) on failure.
+--
+-- opts = {
+--     current_theatre    = string?,  -- if set, refuse when prefab.meta.theatre differs
+--     override_coalition = string?,  -- if set ('RED'/'BLUE'/'NEUTRAL'), every applied
+--                                    -- airbase ends up under this coalition instead
+--                                    -- of whatever was saved into the prefab
+-- }
+--
+-- summary = {
+--     applied = N,                  -- count of warehouses successfully spliced
+--     skipped = N,                  -- count of named airdromes NOT found in destination
+--     missing = { name1, ... },     -- names that were skipped
+--     error   = string?,            -- set on hard failure (theatre mismatch, etc.)
+-- }
+function M.apply_airbases(prefab, opts)
+    if type(prefab) ~= 'table' or type(prefab.meta) ~= 'table' then
+        return nil, { applied = 0, skipped = 0, missing = {}, error = 'prefab missing meta' }
+    end
+    local airbases = prefab.meta.airbases
+    if type(airbases) ~= 'table' or #airbases == 0 then
+        return true, { applied = 0, skipped = 0, missing = {} }
+    end
+
+    opts = opts or {}
+    local current_theatre = opts.current_theatre
+    if current_theatre and prefab.meta.theatre and prefab.meta.theatre ~= current_theatre then
+        return nil, {
+            applied = 0, skipped = #airbases, missing = {},
+            error = 'theatre mismatch: prefab=' .. tostring(prefab.meta.theatre)
+                    .. ' destination=' .. tostring(current_theatre),
+        }
+    end
+
+    local AC_ok, AC = pcall(require, 'Mission.AirdromeController')
+    if not AC_ok or not AC or type(AC.getAirdromes) ~= 'function' then
+        return nil, {
+            applied = 0, skipped = #airbases, missing = {},
+            error = 'AirdromeController unavailable',
+        }
+    end
+
+    local by_name = {}
+    for _, ad in ipairs(AC.getAirdromes() or {}) do
+        if ad.getName then by_name[ad:getName()] = ad end
+    end
+
+    local override_coalition = opts.override_coalition
+    local applied, skipped, missing = 0, 0, {}
+    for _, ab in ipairs(airbases) do
+        local ad = ab.name and by_name[ab.name] or nil
+        if ad and ad.getAirdromeNumber then
+            local n = ad:getAirdromeNumber()
+            -- If an override coalition is supplied, build a shallow wrapper
+            -- around the saved warehouse with the override applied. We don't
+            -- mutate ab.warehouse — warehouse_ops.apply deep-copies what it
+            -- receives, so a shallow wrapper is enough to keep the prefab
+            -- table intact for any subsequent calls.
+            local warehouse_to_apply = ab.warehouse
+            if override_coalition and type(warehouse_to_apply) == 'table' then
+                local wrapped = {}
+                for k, v in pairs(warehouse_to_apply) do wrapped[k] = v end
+                wrapped.coalition = override_coalition
+                warehouse_to_apply = wrapped
+            end
+            local ok = warehouse_ops.apply(n, warehouse_to_apply)
+            if ok then applied = applied + 1
+            else skipped = skipped + 1; missing[#missing + 1] = ab.name
+            end
+        else
+            skipped = skipped + 1
+            if ab.name then missing[#missing + 1] = ab.name end
+        end
+    end
+    return true, { applied = applied, skipped = skipped, missing = missing }
 end
 
 return M

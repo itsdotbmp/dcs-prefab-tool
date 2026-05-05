@@ -46,10 +46,14 @@ local ToggleButton;    do local ok, mod = pcall(require, 'ToggleButton');    if 
 local Dial;            do local ok, mod = pcall(require, 'Dial');            if ok then Dial            = mod end end
 local SpinBox;         do local ok, mod = pcall(require, 'SpinBox');         if ok then SpinBox         = mod end end
 local CheckBox;        do local ok, mod = pcall(require, 'CheckBox');        if ok then CheckBox        = mod end end
+local UpdateManager;   do local ok, mod = pcall(require, 'UpdateManager');   if ok then UpdateManager   = mod end end
 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
 local undo       = require('dcs_sms_me.undo')
 local dtc_skins  = require('dcs_sms_me.dtc_skins')
+local marquee_hook  = require('dcs_sms_me.marquee_hook')
+local airbase_detect = require('dcs_sms_me.airbase_detect')
+local warehouse_ops = require('dcs_sms_me.warehouse_ops')
 
 -- Apply a skin by name. Resolves in this order:
 --   * 'dtc_button' / 'dtc_grid' / 'dtc_grid_header' → DTC-dialog-style skins
@@ -128,6 +132,10 @@ local W = {
     grid_headers   = {},         -- parallel to COLS; lets us re-text headers on sort change
     filter_text    = '',         -- live filter applied to rows → visible_rows
     filter_input   = nil,        -- TextBox widget for the filter
+    pending_airbases = nil,    -- set by marquee callback; consumed by on_save_click
+    marquee_subscribed = false,-- one-shot guard so Ctrl+Shift+R reloads don't multi-subscribe
+    status_expires_at = nil,   -- os.time() at which set_status output should auto-clear
+    status_tick_registered = false,
 }
 
 -- Column definitions for the prefab grid. Module-level so refresh_list and the
@@ -136,6 +144,7 @@ local COLS = {
     { key = 'name',            label = 'Name',      width = 190, numeric = false },
     { key = 'theatre',         label = 'Theatre',   width = 90,  numeric = false },
     { key = 'place_at_origin', label = 'Fixed Pos', width = 60,  numeric = false },
+    { key = 'airbase_count',   label = 'AB',        width = 50,  numeric = true  },
     { key = 'group_count',     label = 'G',         width = 35,  numeric = true  },
     { key = 'static_count',    label = 'S',         width = 35,  numeric = true  },
     { key = 'zone_count',      label = 'Z',         width = 35,  numeric = true  },
@@ -146,10 +155,32 @@ local function find_col(key)
     for i, c in ipairs(COLS) do if c.key == key then return c, i end end
 end
 
+-- How long a status message stays up before tick_status_clear wipes it. We
+-- pause the timer while the user is in place-pending mode (yellow status).
+local STATUS_CLEAR_AFTER_SEC = 6
+
 local function set_status(text)
     pcall(function()
         if W.status and W.status.setText then W.status:setText(tostring(text or '')) end
     end)
+    -- Reset the auto-clear timer on every new message so the user gets the
+    -- full window to read whatever just happened.
+    W.status_expires_at = os.time() + STATUS_CLEAR_AFTER_SEC
+end
+
+-- Per-frame tick registered with UpdateManager. Clears the status bar once
+-- the timeout has elapsed. Skips while place_pending is true so the
+-- "Click on map…" yellow prompt stays visible during placement.
+-- Returns false so UpdateManager keeps calling us for future messages.
+local function tick_status_clear()
+    if W.place_pending then return false end
+    if not W.status_expires_at then return false end
+    if os.time() < W.status_expires_at then return false end
+    pcall(function()
+        if W.status and W.status.setText then W.status:setText('') end
+    end)
+    W.status_expires_at = nil
+    return false
 end
 M._set_status = set_status  -- exposed for later tasks
 
@@ -280,14 +311,20 @@ local function render_grid()
                 W.grid:setCell(4, row, make_cell(''))
                 W.grid:setCell(5, row, make_cell(''))
                 W.grid:setCell(6, row, make_cell(''))
+                W.grid:setCell(7, row, make_cell(''))
             else
+                local ab_text = ''
+                if (r.airbase_count or 0) == 1 then ab_text = 'Yes'
+                elseif (r.airbase_count or 0) > 1 then ab_text = tostring(r.airbase_count)
+                end
                 W.grid:setCell(0, row, make_cell(r.name, r.name))
                 W.grid:setCell(1, row, make_cell(r.theatre or '?'))
                 W.grid:setCell(2, row, make_cell(r.place_at_origin and 'Yes' or ''))
-                W.grid:setCell(3, row, make_cell(r.group_count   or 0))
-                W.grid:setCell(4, row, make_cell(r.static_count  or 0))
-                W.grid:setCell(5, row, make_cell(r.zone_count    or 0))
-                W.grid:setCell(6, row, make_cell(r.drawing_count or 0))
+                W.grid:setCell(3, row, make_cell(ab_text))
+                W.grid:setCell(4, row, make_cell(r.group_count   or 0))
+                W.grid:setCell(5, row, make_cell(r.static_count  or 0))
+                W.grid:setCell(6, row, make_cell(r.zone_count    or 0))
+                W.grid:setCell(7, row, make_cell(r.drawing_count or 0))
             end
         end
 
@@ -381,11 +418,33 @@ local function show_overlay(message, buttons, icon)
             overlay:insertWidget(ico)
         end
 
-        local msg = Static.new()
-        msg:setBounds(msg_x, 14, msg_w, btn_y - 24)
-        msg:setText(tostring(message or ''))
-        try_skin(msg, 'staticSkin_ME')
-        overlay:insertWidget(msg)
+        -- staticSkin_ME's lineHeight is 0, so a single Static collapses
+        -- multi-line text onto the first line (the rest renders at the same
+        -- y-coord and is invisible). Split on \n and stack one Static per
+        -- line so newlines actually render.
+        local msg_text = tostring(message or '')
+        local lines = {}
+        local start = 1
+        while true do
+            local nl = msg_text:find('\n', start, true)
+            if not nl then
+                lines[#lines + 1] = msg_text:sub(start)
+                break
+            end
+            lines[#lines + 1] = msg_text:sub(start, nl - 1)
+            start = nl + 1
+        end
+
+        local line_h = 16
+        local y = 14
+        for _, line in ipairs(lines) do
+            local s = Static.new()
+            s:setBounds(msg_x, y, msg_w, line_h)
+            s:setText(line)
+            try_skin(s, 'staticSkin_ME')
+            overlay:insertWidget(s)
+            y = y + line_h
+        end
 
         local n = #buttons
         local bw = math.floor((w - 20 - (n - 1) * 10) / n)
@@ -425,15 +484,20 @@ local function read_fixed_check()
     return v
 end
 
-local function do_save(name, place_at_origin)
-    local ok, path_or_err = prefab_ops.save_selection(name, place_at_origin)
+local function do_save(name, place_at_origin, airbases)
+    local ok, path_or_err = prefab_ops.save_selection(name, place_at_origin, airbases)
     if ok then
-        set_status('Saved ' .. name .. ' → ' .. tostring(path_or_err))
+        local extras = {}
+        if place_at_origin then extras[#extras + 1] = 'fixed' end
+        if airbases and #airbases > 0 then extras[#extras + 1] = #airbases .. ' airbase(s)' end
+        local suffix = #extras > 0 and ' [' .. table.concat(extras, ', ') .. ']' or ''
+        set_status('Saved ' .. name .. suffix .. ' → ' .. tostring(path_or_err))
         log.write('sms.me.prefab', log.INFO, 'saved ' .. name)
         refresh_list()
         pcall(function()
             if W.name_input and W.name_input.setText then W.name_input:setText('') end
         end)
+        W.pending_airbases = nil  -- consumed
     else
         set_status('Save failed: ' .. tostring(path_or_err))
         log.write('sms.me.prefab', log.ERROR, 'save failed: ' .. tostring(path_or_err))
@@ -445,11 +509,12 @@ local function on_save_click()
         local name = ''
         if W.name_input and W.name_input.getText then name = W.name_input:getText() or '' end
         local fixed = read_fixed_check()
+        local airbases = W.pending_airbases
         if name == '' then
             set_status('Empty name — using timestamped fallback. See dcs.log.')
             name = 'prefab-' .. os.date('!%Y%m%dT%H%M%SZ')
             log.write('sms.me.prefab', log.WARNING, 'save with empty name → ' .. name)
-            do_save(name, fixed)
+            do_save(name, fixed, airbases)
             return
         end
 
@@ -457,7 +522,7 @@ local function on_save_click()
             show_overlay(
                 'Prefab "' .. name .. '" already exists.\n\nOverwrite, rename, or cancel?',
                 {
-                    { label = 'Overwrite', on_click = function() do_save(name, fixed) end },
+                    { label = 'Overwrite', on_click = function() do_save(name, fixed, airbases) end },
                     { label = 'Rename',    on_click = function() focus_name_input(); set_status('Type a new name and click Save.') end },
                     { label = 'Cancel',    on_click = function() set_status('Save cancelled.') end },
                 },
@@ -465,7 +530,7 @@ local function on_save_click()
             return
         end
 
-        do_save(name, fixed)
+        do_save(name, fixed, airbases)
     end)
 end
 
@@ -519,7 +584,9 @@ end
 -- Place-pending state machine
 -- ---------------------------------------------------------------------------
 
-local exit_place_pending  -- forward declaration; assigned below
+local exit_place_pending           -- forward declaration; assigned below
+local run_airbase_apply            -- forward decl: referenced by the click-place closure
+local selected_country_coalition   -- forward decl: referenced by the click-place closure
 
 -- Read the currently-selected country from the dropdown. Returns nil when
 -- the combo isn't built (test VM, dxgui without ComboBox) or no item is
@@ -767,9 +834,10 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
                 -- it as an upvalue.)
                 local rotation_now = W.rotation_deg or 0
                 local rec, err = prefab_ops.place(prefab_table, {
-                    anchor       = { x = wx, y = wy },
-                    rotation     = rotation_now,
-                    country_name = country_name,
+                    anchor             = { x = wx, y = wy },
+                    rotation           = rotation_now,
+                    country_name       = country_name,
+                    override_coalition = selected_country_coalition(),
                 })
                 if rec then
                     undo.record(rec)
@@ -785,6 +853,7 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
                         #(rec.errors or {}),
                         wx, wy))
                     log.write('sms.me.prefab', log.INFO, 'placed ' .. prefab_name)
+                    run_airbase_apply(prefab_table)
                 else
                     set_status('Place failed: ' .. tostring(err))
                     log.write('sms.me.prefab', log.ERROR, 'place failed: ' .. tostring(err))
@@ -929,6 +998,97 @@ local function on_place_click()
     enter_place_pending(row.name, prefab, get_rotation_deg())
 end
 
+-- Read current theatre via the same API save_selection uses.
+local function current_theatre()
+    local th
+    pcall(function()
+        local TheatreOfWarData = require('Mission.TheatreOfWarData')
+        if TheatreOfWarData and type(TheatreOfWarData.getName) == 'function' then
+            th = TheatreOfWarData.getName()
+        end
+    end)
+    return th
+end
+
+-- Map a 'red'/'blue'/'neutral' string (from country_coalition) to the
+-- uppercase form DCS warehouse entries use. Returns nil if no mapping.
+local COALITION_FROM_LOWER = { red = 'RED', blue = 'BLUE', neutral = 'NEUTRAL' }
+
+-- Returns the warehouse-form coalition string ('RED'/'BLUE'/'NEUTRAL') for
+-- whatever country the user has currently selected in the dropdown, or nil
+-- if no country is selected / the country has no mission coalition entry.
+-- Used as the override coalition when applying saved airbase supplies, so
+-- the airbase ends up under the user's currently-selected coalition rather
+-- than whatever coalition was saved into the prefab.
+selected_country_coalition = function()
+    local name = get_country_name()
+    if not name then return nil end
+    local ok_req, Mission = pcall(require, 'me_mission')
+    if not ok_req or not Mission then return nil end
+    local lower = country_coalition(Mission, name)
+    return lower and COALITION_FROM_LOWER[lower] or nil
+end
+
+-- After a prefab places, if it carries meta.airbases, ask the user once
+-- whether to apply the saved supplies. We don't try to detect whether the
+-- destination airbase is already customised — the user has both names in
+-- the prompt and can decide for themselves whether the overwrite is wanted.
+-- The coalition override is sourced from the country dropdown so applied
+-- airbases end up on the user's currently-selected coalition rather than
+-- the one baked into the saved prefab.
+run_airbase_apply = function(prefab)
+    if not (prefab and prefab.meta and prefab.meta.airbases and #prefab.meta.airbases > 0) then
+        return  -- no airbases on this prefab; nothing to do
+    end
+
+    local names = {}
+    for _, ab in ipairs(prefab.meta.airbases) do
+        if ab.name then names[#names + 1] = ab.name end
+    end
+
+    local override = selected_country_coalition()
+
+    local function do_apply()
+        local ok, summary = prefab_ops.apply_airbases(prefab, {
+            current_theatre    = current_theatre(),
+            override_coalition = override,
+        })
+        if ok then
+            local msg = ('Airbase supplies: %d applied'):format(summary.applied)
+            if summary.skipped > 0 then
+                msg = msg .. (', %d skipped'):format(summary.skipped)
+                if summary.missing and #summary.missing > 0 then
+                    msg = msg .. ' (' .. table.concat(summary.missing, ', ') .. ')'
+                end
+            end
+            set_status(msg)
+        else
+            set_status('Airbase supplies skipped: ' .. tostring(summary and summary.error or 'unknown'))
+        end
+    end
+
+    -- Keep each line short enough to fit the overlay's 342px message width.
+    -- The Static widget doesn't wrap long lines, so the question gets clipped
+    -- if the airbase name pushes it past the right edge.
+    local prompt
+    if #names == 1 then
+        prompt = 'Apply airbase supplies for\n'
+              .. names[1] .. '?\n\n'
+              .. (override and ('Coalition will be set to ' .. override .. '.') or '')
+    else
+        prompt = 'Apply airbase supplies for ' .. #names .. ' airbases?\n\n'
+              .. table.concat(names, ', ') .. '\n\n'
+              .. (override and ('Coalition will be set to ' .. override .. '.') or '')
+    end
+    -- Avoid trailing blank line when no override is set.
+    prompt = prompt:gsub('\n+$', '')
+
+    show_overlay(prompt, {
+        { label = 'Yes', on_click = do_apply },
+        { label = 'No',  on_click = function() set_status('Airbase supplies not applied.') end },
+    }, 'question')
+end
+
 local function on_place_origin_click()
     local row = require_selection('place at original')
     if not row then return end
@@ -944,9 +1104,10 @@ local function on_place_origin_click()
         log.write('sms.me.prefab', log.WARNING, 'place at original: country dropdown empty — using prefab-stored countries')
     end
     local rec, err = prefab_ops.place(prefab, {
-        keep_position = true,
-        rotation      = rotation_deg,
-        country_name  = country_name,
+        keep_position      = true,
+        rotation           = rotation_deg,
+        country_name       = country_name,
+        override_coalition = selected_country_coalition(),
     })
     if rec then
         undo.record(rec)
@@ -960,6 +1121,7 @@ local function on_place_origin_click()
             #(rec.errors or {}),
             wa.x, wa.y))
         log.write('sms.me.prefab', log.INFO, 'placed ' .. row.name .. ' at original')
+        run_airbase_apply(prefab)
     else
         set_status('Place failed: ' .. tostring(err))
         log.write('sms.me.prefab', log.ERROR, 'place at original failed: ' .. tostring(err))
@@ -1195,21 +1357,88 @@ local function relayout(w, h)
     -- Row 5: Rotation gizmo + place buttons. Row is 43px tall (dial); the
     -- spinbox/label/place-buttons are vertically centered against it.
     set(W.rotation_label, 10, row5_y + 10, 60, 22)
-    set(W.rotation_spin,  70, row5_y + 10, 50, 22)
-    set(W.rotation_dial,  122, row5_y, 47, 43)
-    set(W.rotation_input, 70, row5_y + 10, 50, 22)   -- fallback path
-    set(W.rotation_unit,  122, row5_y + 10, 20, 22)  -- fallback path
+    set(W.rotation_spin,  70, row5_y + 10, 60, 22)
+    set(W.rotation_dial,  132, row5_y, 47, 43)
+    set(W.rotation_input, 70, row5_y + 10, 60, 22)   -- fallback path
+    set(W.rotation_unit,  132, row5_y + 10, 20, 22)  -- fallback path
     -- place_click_btn right-edge at w-10 (122 wide), place_origin_btn 4px
     -- to its left (130 wide). Both stay anchored to the right edge.
     set(W.place_origin_btn, w - 266, row5_y + 10, 130, 22)
     set(W.place_click_btn,  w - 132, row5_y + 10, 122, 22)
 
     set(W.sep3, 10, sep3_y, w - 20, 1)
-    set(W.status, 10, status_y, w - 20, 16)
+    set(W.status, 10, status_y, w - 20, 22)
 end
 
 function M.show()
     log.write('sms.me', log.INFO, 'window.show() called (W.window present=' .. tostring(W.window ~= nil) .. ')')
+
+    -- Subscribe to the marquee hook once. The hook itself was installed in
+    -- init.lua on bootstrap; this just attaches our window's airbase-detect
+    -- handler. Guard with a one-shot flag so multiple M.show() calls don't
+    -- stack subscribers in the same session.
+    --
+    -- Ctrl+Shift+R is a special case: M.reload() clears every dcs_sms_me.*
+    -- module from package.loaded, so a fresh marquee_hook + window pair
+    -- replaces this one. The OLD window's subscriber callback persists on
+    -- the me_multiSelection table (we can't clear me_multiSelection because
+    -- it's outside our namespace) but bails on its own getVisible() check
+    -- since the old W.window is gone. To avoid silent-dead-subscriber
+    -- accumulation across many reloads, we wipe the persistent list before
+    -- re-subscribing.
+    if not W.marquee_subscribed then
+        pcall(function() marquee_hook.reset_subscribers() end)
+        marquee_hook.subscribe(function(start_xy, end_xy)
+            -- Bail if the prefab manager isn't currently visible — we don't
+            -- want to silently capture airbases when the user can't see the
+            -- prompt.
+            if not (W.window and W.window.getVisible and W.window:getVisible()) then return end
+
+            local hits = airbase_detect.airbases_in_rect(start_xy, end_xy) or {}
+            if #hits == 0 then
+                W.pending_airbases = nil
+                return
+            end
+
+            -- Filter out default (untouched) airbases — those have unlimited
+            -- everything and the user can't have meaningfully customised them.
+            -- See warehouse_ops.is_default for the exact rule.
+            local non_default = {}
+            for _, h in ipairs(hits) do
+                local entry = warehouse_ops.extract(h.airdrome_number_at_save)
+                if entry and not warehouse_ops.is_default(entry) then
+                    h.warehouse = entry
+                    non_default[#non_default + 1] = h
+                end
+            end
+
+            if #non_default == 0 then
+                W.pending_airbases = nil
+                set_status('Selection covers ' .. #hits .. ' airbase(s) — all unmodified, nothing to capture.')
+                return
+            end
+
+            W.pending_airbases = non_default
+            if #non_default == 1 then
+                set_status('Airbase in selection: ' .. non_default[1].name
+                           .. '. Save will include its supplies.')
+            else
+                local names = {}
+                for _, h in ipairs(non_default) do names[#names + 1] = h.name end
+                set_status(#non_default .. ' airbases in selection: '
+                           .. table.concat(names, ', ') .. '. Save will include all.')
+            end
+        end)
+        W.marquee_subscribed = true
+    end
+
+    -- Register the status-bar auto-clear tick. UpdateManager fires every
+    -- frame; tick_status_clear is a no-op until a status message ages out.
+    if UpdateManager and not W.status_tick_registered then
+        pcall(function() UpdateManager.add(tick_status_clear) end)
+        W.status_tick_registered = true
+    end
+
     if W.window then
         -- Re-populate so a mission-change between hides surfaces the new
         -- country list; existing selection is preserved if still valid.
