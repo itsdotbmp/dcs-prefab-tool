@@ -1371,9 +1371,19 @@ function M.show()
 
     -- Subscribe to the marquee hook once. The hook itself was installed in
     -- init.lua on bootstrap; this just attaches our window's airbase-detect
-    -- handler. Guard with a one-shot flag so Ctrl+Shift+R reloads don't
-    -- accumulate stacked subscribers.
+    -- handler. Guard with a one-shot flag so multiple M.show() calls don't
+    -- stack subscribers in the same session.
+    --
+    -- Ctrl+Shift+R is a special case: M.reload() clears every dcs_sms_me.*
+    -- module from package.loaded, so a fresh marquee_hook + window pair
+    -- replaces this one. The OLD window's subscriber callback persists on
+    -- the me_multiSelection table (we can't clear me_multiSelection because
+    -- it's outside our namespace) but bails on its own getVisible() check
+    -- since the old W.window is gone. To avoid silent-dead-subscriber
+    -- accumulation across many reloads, we wipe the persistent list before
+    -- re-subscribing.
     if not W.marquee_subscribed then
+        pcall(function() marquee_hook.reset_subscribers() end)
         marquee_hook.subscribe(function(start_xy, end_xy)
             -- Bail if the prefab manager isn't currently visible — we don't
             -- want to silently capture airbases when the user can't see the

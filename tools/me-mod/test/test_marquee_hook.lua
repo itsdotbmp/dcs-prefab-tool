@@ -92,10 +92,38 @@ do
           'expected second subscriber to fire after first one threw')
 end
 
--- NOTE: this case re-requires the module, which wipes the subscriber list
--- and the rect_start/rect_end module-locals. It must remain the LAST test
--- case in this file — moving it earlier will break later tests that rely
--- on the existing subscriber registrations.
+-- Regression: Ctrl+Shift+R reload clears every `dcs_sms_me.*` module from
+-- package.loaded but leaves `me_multiSelection` (the live DCS module) cached.
+-- Earlier marquee_hook held subscribers in module-local closures, so after
+-- a reload the new module's subscribers list was disjoint from the one the
+-- pre-reload wrappers iterated. End result: the new window's subscriber
+-- never fired. This case proves the persistent-state design fixes that —
+-- subscribe via the freshly-required module and verify the pre-reload
+-- wrappers still reach the new callback.
+do
+    package.loaded['dcs_sms_me.marquee_hook'] = nil
+    local mh_reloaded = require('dcs_sms_me.marquee_hook')
+    mh_reloaded.install()  -- no-op: sentinel still set, wrappers intact
+
+    -- Wipe accumulated stale subscribers from the prior tests so we can
+    -- observe only the post-reload one (matches what window.lua does on M.show).
+    mh_reloaded.reset_subscribers()
+
+    local cb_new_fired = false
+    mh_reloaded.subscribe(function() cb_new_fired = true end)
+
+    stub_mms.createRectSelect(500, 500, {})
+    stub_mms.updateRectSelect(550, 550)
+    stub_mms.multiSelectionState_onMouseUp({}, 0, 0, 1)
+
+    check('post-reload subscriber fires through pre-reload wrappers', cb_new_fired,
+          'expected post-reload subscribe to be reachable from old wrappers')
+end
+
+-- NOTE: this case re-requires the module after replacing stub_mms.* with
+-- no-op stubs, which detaches the wrappers entirely. It exercises the
+-- guard that mouse-up without prior drag does not fire subscribers — kept
+-- as the LAST case so it doesn't strip wrappers needed by earlier tests.
 do
     -- Reset module state by re-requiring (clears any retained start/end).
     package.loaded['dcs_sms_me.marquee_hook'] = nil
