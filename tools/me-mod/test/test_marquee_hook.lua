@@ -78,7 +78,24 @@ do
     check('right-button mouseup did not fire subscribers', fired_count == 0, 'got ' .. fired_count)
 end
 
--- Case: mouse-up without prior drag (no createRectSelect) does not fire.
+-- Case: a crashing subscriber does not prevent subsequent subscribers from firing.
+-- This makes the pcall in fire() an explicitly tested contract — without it,
+-- one bad subscriber could silently kill broadcast for every other subscriber.
+do
+    local second_fired = false
+    marquee_hook.subscribe(function() error('boom') end)
+    marquee_hook.subscribe(function() second_fired = true end)
+    stub_mms.createRectSelect(0, 0, {})
+    stub_mms.updateRectSelect(10, 10)
+    stub_mms.multiSelectionState_onMouseUp({}, 0, 0, 1)
+    check('crashing subscriber does not block subsequent subscribers', second_fired,
+          'expected second subscriber to fire after first one threw')
+end
+
+-- NOTE: this case re-requires the module, which wipes the subscriber list
+-- and the rect_start/rect_end module-locals. It must remain the LAST test
+-- case in this file — moving it earlier will break later tests that rely
+-- on the existing subscriber registrations.
 do
     -- Reset module state by re-requiring (clears any retained start/end).
     package.loaded['dcs_sms_me.marquee_hook'] = nil

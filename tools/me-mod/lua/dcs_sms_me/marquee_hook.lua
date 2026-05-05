@@ -36,6 +36,10 @@ function M.install()
     local orig_mouseup = mms.multiSelectionState_onMouseUp
 
     mms.createRectSelect = function(mapX, mapY, color)
+        -- rect_end is seeded to start so a release with no drag ticks
+        -- (createRectSelect → no updateRectSelect → onMouseUp) still produces
+        -- a coherent (start_xy, end_xy) pair. Downstream hit-tests on a
+        -- zero-area rect naturally return no airdromes.
         rect_start = { x = mapX, y = mapY }
         rect_end   = { x = mapX, y = mapY }
         return orig_create(mapX, mapY, color)
@@ -47,6 +51,7 @@ function M.install()
     end
 
     mms.multiSelectionState_onMouseUp = function(self, x, y, button)
+        -- button: 1=LMB, 2=MMB, 3=RMB (dxgui convention)
         if button == 1 and rect_start and rect_end then
             fire(rect_start, rect_end)
             rect_start, rect_end = nil, nil
