@@ -101,7 +101,7 @@ func installMeModCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	fmt.Fprintln(stdout, "")
-	fmt.Fprintln(stdout, "Install complete. Open the Mission Editor; the dcs-sms ME window should appear in the upper right.")
+	fmt.Fprintln(stdout, "Install complete. Restart DCS, then open the Mission Editor — DCS-SMS should appear in the top menu bar.")
 	return 0
 }
 

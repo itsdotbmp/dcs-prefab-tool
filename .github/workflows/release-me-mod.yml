@@ -64,7 +64,7 @@ jobs:
 
           1. Download **dcs-sms.exe** from this release.
           2. Run `dcs-sms.exe install-me-mod`. The .exe auto-detects your DCS install (or prompts the first time), copies the embedded ME-mod Lua files into `<DCS install>/MissionEditor/modules/dcs_sms_me/`, and patches `MissionEditor.lua` with a single bootstrap line bracketed by sentinel comments for clean removal.
-          3. Restart the Mission Editor. You should see **DCS-SMS** in the top menu bar.
+          3. Restart DCS (a full restart, not just closing the Mission Editor — the lua files load once at DCS start). When you open the Mission Editor you should see **DCS-SMS** in the top menu bar.
 
           ## Update
 
