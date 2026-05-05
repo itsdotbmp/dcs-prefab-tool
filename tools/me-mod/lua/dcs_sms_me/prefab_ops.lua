@@ -6,12 +6,13 @@
 -- All public symbols return either a positive value (path, table,
 -- record) on success, or nil + error_string on failure. No throws.
 
-local lfs           = require('lfs')
-local paths         = require('dcs_sms_me.paths')
-local distill       = require('dcs_sms_me.prefab_distill').distill
-local serializer    = require('dcs_sms_me.serializer')
-local selection     = require('dcs_sms_me.selection')
-local warehouse_ops = require('dcs_sms_me.warehouse_ops')
+local lfs            = require('lfs')
+local paths          = require('dcs_sms_me.paths')
+local distill        = require('dcs_sms_me.prefab_distill').distill
+local serializer     = require('dcs_sms_me.serializer')
+local selection      = require('dcs_sms_me.selection')
+local warehouse_ops  = require('dcs_sms_me.warehouse_ops')
+local ship_warehouse = require('dcs_sms_me.ship_warehouse')
 
 local M = {}
 
@@ -83,6 +84,13 @@ function M.save_selection(name, place_at_origin, airbases)
     if not prefab then
         return nil, 'distill returned nil — check log for details'
     end
+
+    -- After distill, attach per-ship warehouse data inline on each unit.
+    -- The data rides through serialization on `unit._sms_warehouse` and
+    -- gets spliced back at the new unitId during M.place. is_default
+    -- filtering inside attach_to_prefab keeps untouched ships from
+    -- bloating the file.
+    pcall(ship_warehouse.attach_to_prefab, prefab)
 
     local serialized = serializer.serialize(prefab)
     if type(serialized) ~= 'string' then
@@ -926,6 +934,15 @@ function M.place(prefab, opts)
     if injection_count() == 0 then
         return nil, 'no entities injected (' .. #record.errors .. ' errors — see log)'
     end
+
+    -- Splice per-ship warehouse entries into mission.AirportsEquipment.warehouses
+    -- using each placed unit's freshly-allocated unitId. Coalition is overridden
+    -- by opts.override_coalition (lowercased) when the user picked a country
+    -- whose coalition differs from what was saved.
+    pcall(ship_warehouse.apply_from_record, record, {
+        override_coalition = opts and opts.override_coalition,
+    })
+
     return record
 end
 

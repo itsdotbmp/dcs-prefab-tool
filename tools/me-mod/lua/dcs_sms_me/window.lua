@@ -584,7 +584,9 @@ end
 -- Place-pending state machine
 -- ---------------------------------------------------------------------------
 
-local exit_place_pending  -- forward declaration; assigned below
+local exit_place_pending           -- forward declaration; assigned below
+local run_airbase_apply            -- forward decl: referenced by the click-place closure
+local selected_country_coalition   -- forward decl: referenced by the click-place closure
 
 -- Read the currently-selected country from the dropdown. Returns nil when
 -- the combo isn't built (test VM, dxgui without ComboBox) or no item is
@@ -832,9 +834,10 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
                 -- it as an upvalue.)
                 local rotation_now = W.rotation_deg or 0
                 local rec, err = prefab_ops.place(prefab_table, {
-                    anchor       = { x = wx, y = wy },
-                    rotation     = rotation_now,
-                    country_name = country_name,
+                    anchor             = { x = wx, y = wy },
+                    rotation           = rotation_now,
+                    country_name       = country_name,
+                    override_coalition = selected_country_coalition(),
                 })
                 if rec then
                     undo.record(rec)
@@ -1017,7 +1020,7 @@ local COALITION_FROM_LOWER = { red = 'RED', blue = 'BLUE', neutral = 'NEUTRAL' }
 -- Used as the override coalition when applying saved airbase supplies, so
 -- the airbase ends up under the user's currently-selected coalition rather
 -- than whatever coalition was saved into the prefab.
-local function selected_country_coalition()
+selected_country_coalition = function()
     local name = get_country_name()
     if not name then return nil end
     local ok_req, Mission = pcall(require, 'me_mission')
@@ -1033,7 +1036,7 @@ end
 -- The coalition override is sourced from the country dropdown so applied
 -- airbases end up on the user's currently-selected coalition rather than
 -- the one baked into the saved prefab.
-local function run_airbase_apply(prefab)
+run_airbase_apply = function(prefab)
     if not (prefab and prefab.meta and prefab.meta.airbases and #prefab.meta.airbases > 0) then
         return  -- no airbases on this prefab; nothing to do
     end
@@ -1101,9 +1104,10 @@ local function on_place_origin_click()
         log.write('sms.me.prefab', log.WARNING, 'place at original: country dropdown empty — using prefab-stored countries')
     end
     local rec, err = prefab_ops.place(prefab, {
-        keep_position = true,
-        rotation      = rotation_deg,
-        country_name  = country_name,
+        keep_position      = true,
+        rotation           = rotation_deg,
+        country_name       = country_name,
+        override_coalition = selected_country_coalition(),
     })
     if rec then
         undo.record(rec)
