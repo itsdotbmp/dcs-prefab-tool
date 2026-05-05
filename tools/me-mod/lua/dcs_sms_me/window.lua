@@ -47,6 +47,11 @@ local Dial;            do local ok, mod = pcall(require, 'Dial');            if 
 local SpinBox;         do local ok, mod = pcall(require, 'SpinBox');         if ok then SpinBox         = mod end end
 local CheckBox;        do local ok, mod = pcall(require, 'CheckBox');        if ok then CheckBox        = mod end end
 local UpdateManager;   do local ok, mod = pcall(require, 'UpdateManager');   if ok then UpdateManager   = mod end end
+-- Native ME message-box dialog factory. Used by show_overlay so our
+-- prompts get the same title bar / icons / button styling as the rest
+-- of the editor (same module everything from me_toolbar to me_mission
+-- requires). pcall-guarded so the module still loads under the test VM.
+local MsgWindow;       do local ok, mod = pcall(require, 'MsgWindow');       if ok then MsgWindow       = mod end end
 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
 local undo       = require('dcs_sms_me.undo')
@@ -379,90 +384,54 @@ end
 M._selected_row = selected_row
 
 -- ---------------------------------------------------------------------------
--- Modal overlay helper. Shows a small centered window with a message and
--- up to 3 buttons. Each button calls the supplied callback then closes the
--- overlay. Buttons:
+-- Modal overlay helper. Wraps MsgWindow.{question,warning,info,error,text}
+-- so our prompts share the native ME title bar, icon set, and button
+-- styling. Buttons:
 --   { {label='OK',  on_click=function() ... end}, ... }
+-- icon: 'question'|'warning'|'error'|'info' or nil for the no-icon variant.
+-- title: caption rendered in the window's title bar.
 -- ---------------------------------------------------------------------------
 
-local function show_overlay(message, buttons, icon)
-    local screen_w, screen_h = Gui.GetWindowSize()
-    -- windowSkinME's title bar + bottom border consume more than the bare
-    -- arithmetic suggests, so h is sized to leave ~30px between the
-    -- buttons (y = h - 52) and the window's bottom edge after the skin
-    -- frame is drawn. Icon, if any, is a 64x64 ME glyph at (10, 14).
-    local w, h = 420, 210
-    local x = (screen_w - w) / 2
-    local y = (screen_h - h) / 2
-    local msg_x = icon and 68 or 10
-    local msg_w = w - msg_x - 10
-    local btn_y = h - 92
-
-    local overlay = nil
-    local function close()
-        pcall(function() if overlay and overlay.setVisible then overlay:setVisible(false) end end)
+local function show_overlay(message, buttons, icon, title)
+    if not MsgWindow then
+        -- Test VM or a DCS build that doesn't expose MsgWindow. Best-effort:
+        -- fire the first button so the calling flow doesn't deadlock.
+        log.write('sms.me', log.ERROR, 'MsgWindow unavailable; firing default button for "' .. tostring(title or message) .. '"')
+        if buttons[1] and buttons[1].on_click then pcall(buttons[1].on_click) end
+        return
     end
 
     local ok, err = pcall(function()
-        overlay = Window.new(x, y, w, h, '')
-        overlay:setSkin((Skin.windowSkinME and Skin.windowSkinME()) or Skin.windowSkin())
-        overlay:setVisible(true)
-        overlay:setDraggable(true)
-        overlay:setResizable(false)
-        overlay:setZOrder(220)
-
-        if icon then
-            local ico = Static.new()
-            ico:setBounds(10, 14, 48, 48)
-            try_skin(ico, 'icon_' .. icon)
-            overlay:insertWidget(ico)
-        end
-
-        -- staticSkin_ME's lineHeight is 0, so a single Static collapses
-        -- multi-line text onto the first line (the rest renders at the same
-        -- y-coord and is invisible). Split on \n and stack one Static per
-        -- line so newlines actually render.
-        local msg_text = tostring(message or '')
-        local lines = {}
-        local start = 1
-        while true do
-            local nl = msg_text:find('\n', start, true)
-            if not nl then
-                lines[#lines + 1] = msg_text:sub(start)
-                break
-            end
-            lines[#lines + 1] = msg_text:sub(start, nl - 1)
-            start = nl + 1
-        end
-
-        local line_h = 16
-        local y = 14
-        for _, line in ipairs(lines) do
-            local s = Static.new()
-            s:setBounds(msg_x, y, msg_w, line_h)
-            s:setText(line)
-            try_skin(s, 'staticSkin_ME')
-            overlay:insertWidget(s)
-            y = y + line_h
-        end
-
-        local n = #buttons
-        local bw = math.floor((w - 20 - (n - 1) * 10) / n)
+        local labels = {}
+        local by_label = {}
         for i, b in ipairs(buttons) do
-            local btn = Button.new()
-            btn:setBounds(10 + (i - 1) * (bw + 10), btn_y, bw, 22)
-            btn:setText(b.label or '?')
-            try_skin(btn, 'dtc_button')
-            btn:addChangeCallback(function()
-                pcall(b.on_click or function() end)
-                close()
-            end)
-            overlay:insertWidget(btn)
+            local lbl = tostring(b.label or '?')
+            labels[i] = lbl
+            by_label[lbl] = b.on_click
         end
+
+        -- Pick the icon variant. Native icons are baked into the dialog
+        -- template — no PNG paths or skin clones needed.
+        local create
+        if icon == 'warning'  then create = MsgWindow.warning
+        elseif icon == 'error'    then create = MsgWindow.error
+        elseif icon == 'info'     then create = MsgWindow.info
+        elseif icon == 'question' then create = MsgWindow.question
+        else                            create = MsgWindow.text  -- no-icon
+        end
+
+        local handler = create(tostring(message or ''), tostring(title or 'DCS-SMS'), unpack(labels))
+
+        function handler:onChange(buttonText)
+            local cb = by_label[buttonText]
+            if cb then pcall(cb) end
+            return false  -- false → MsgWindow closes the window after our cb
+        end
+
+        handler:show()
     end)
     if not ok then
-        log.write('sms.me', log.ERROR, 'overlay construction failed: ' .. tostring(err))
-        -- Best-effort: just call the first (default) button to keep flow.
+        log.write('sms.me', log.ERROR, 'MsgWindow overlay failed: ' .. tostring(err))
         if buttons[1] and buttons[1].on_click then pcall(buttons[1].on_click) end
     end
 end
@@ -526,7 +495,8 @@ local function on_save_click()
                     { label = 'Rename',    on_click = function() focus_name_input(); set_status('Type a new name and click Save.') end },
                     { label = 'Cancel',    on_click = function() set_status('Save cancelled.') end },
                 },
-                'question')
+                'question',
+                'Prefab Already Exists')
             return
         end
 
@@ -1075,26 +1045,25 @@ run_airbase_apply = function(prefab)
         end
     end
 
-    -- Keep each line short enough to fit the overlay's 342px message width.
-    -- The Static widget doesn't wrap long lines, so the question gets clipped
-    -- if the airbase name pushes it past the right edge.
+    -- MsgWindow's editBoxMessage wraps text, so we don't need manual line
+    -- breaks — just write the message naturally. Newlines are still honoured
+    -- where we want a hard break (e.g. before the coalition line).
     local prompt
     if #names == 1 then
-        prompt = 'Apply airbase supplies for\n'
-              .. names[1] .. '?\n\n'
-              .. (override and ('Coalition will be set to ' .. override .. '.') or '')
+        prompt = "The prefab you're placing has custom supplies for "
+              .. names[1] .. '. Do you want to apply these?'
+              .. (override and ('\n\nCoalition of the base will be set to ' .. override .. '.') or '')
     else
-        prompt = 'Apply airbase supplies for ' .. #names .. ' airbases?\n\n'
-              .. table.concat(names, ', ') .. '\n\n'
-              .. (override and ('Coalition will be set to ' .. override .. '.') or '')
+        prompt = "The prefab you're placing has custom supplies for these "
+              .. #names .. ' airbases:\n' .. table.concat(names, ', ')
+              .. '\n\nDo you want to apply them?'
+              .. (override and ('\n\nCoalition of the bases will be set to ' .. override .. '.') or '')
     end
-    -- Avoid trailing blank line when no override is set.
-    prompt = prompt:gsub('\n+$', '')
 
     show_overlay(prompt, {
         { label = 'Yes', on_click = do_apply },
         { label = 'No',  on_click = function() set_status('Airbase supplies not applied.') end },
-    }, 'question')
+    }, 'question', 'Apply Airbase Supplies')
 end
 
 local function on_place_origin_click()
@@ -1271,7 +1240,8 @@ local function on_delete_click()
             end },
             { label = 'Cancel', on_click = function() set_status('Delete cancelled.') end },
         },
-        'warning')
+        'warning',
+        'Delete Prefab')
 end
 local function on_undo_click()
     pcall(function()
