@@ -5,7 +5,6 @@ This is the orientation document for AI agents (and humans) working in this repo
 It is deliberately a **rules-and-conventions** document, not an API reference. Every public `sms.*` symbol is documented per-module with worked examples in [`docs/api/`](docs/api/) — that is the canonical reference. Read the relevant `docs/api/<module>.md` page before you write code that touches that module.
 
 > **Companion documents:**
-> - [`MISSION.md`](MISSION.md) — vision and rationale.
 > - [`docs/api/`](docs/api/) — per-module reference: signatures, options tables, runnable examples, see-also.
 > - [`docs/superpowers/specs/`](docs/superpowers/specs/) — per-module design docs (canonical "why is it shaped this way").
 > - [`docs/superpowers/plans/`](docs/superpowers/plans/) — implementation plans, often with helpful context.
@@ -277,7 +276,7 @@ The `tools/` directory is host-side Go. It produces `dcs-sms` / `dcs-sms.exe`, a
 - `exec --code "<lua>"` — runs Lua in the running mission and returns structured JSON `{ok, return_value, output, error}`.
 - `tail-log -n <N>` — last N lines of `dcs.log`.
 
-Agents writing or testing framework code typically use `dcs-sms exec` to run snippets against a running mission. See [`tools/lua/README.md`](tools/lua/README.md) for the full smoke checklist and the one required edit to `Scripts/MissionScripting.lua`.
+Agents writing or testing framework code typically use `dcs-sms exec` to run snippets against a running mission. See [`tools/cmd/dcs-sms/README.md`](tools/cmd/dcs-sms/README.md) for installation and the required `Scripts/MissionScripting.lua` edit, and [`docs/release-gate/bridge-smoke.md`](docs/release-gate/bridge-smoke.md) for the manual smoke checklist run before each release.
 
 This is separate from in-DCS framework work. Don't conflate the two environments.
 
