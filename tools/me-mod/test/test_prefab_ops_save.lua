@@ -91,6 +91,28 @@ do
           'meta.theatre not found in content')
 end
 
+-- Case: place_at_origin propagates into meta on save.
+do
+    captured.path, captured.content = nil, nil
+    local ok, _ = prefab_ops.save_selection('fixed_jet', true)
+    check('save_selection with place_at_origin=true returns ok', ok == true,
+          'got ' .. tostring(ok))
+    check('saved content has meta.place_at_origin = true',
+          captured.content and captured.content:find('%["place_at_origin"%]%s*=%s*true', 1) ~= nil,
+          'meta.place_at_origin not found in content')
+end
+
+-- Case: place_at_origin omitted (default false) does not write the field.
+do
+    captured.path, captured.content = nil, nil
+    local ok, _ = prefab_ops.save_selection('plain_jet')
+    check('save_selection without place_at_origin returns ok', ok == true,
+          'got ' .. tostring(ok))
+    check('saved content omits place_at_origin when false',
+          captured.content and not captured.content:find('place_at_origin', 1, true),
+          'unexpected place_at_origin field in content')
+end
+
 -- Case: save_selection with empty selection returns nil + reason.
 do
     package.loaded['dcs_sms_me.selection'] = empty_selection_module

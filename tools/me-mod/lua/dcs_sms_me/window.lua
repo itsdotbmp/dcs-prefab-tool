@@ -45,6 +45,7 @@ local ListBoxItem;     do local ok, mod = pcall(require, 'ListBoxItem');     if 
 local ToggleButton;    do local ok, mod = pcall(require, 'ToggleButton');    if ok then ToggleButton    = mod end end
 local Dial;            do local ok, mod = pcall(require, 'Dial');            if ok then Dial            = mod end end
 local SpinBox;         do local ok, mod = pcall(require, 'SpinBox');         if ok then SpinBox         = mod end end
+local CheckBox;        do local ok, mod = pcall(require, 'CheckBox');        if ok then CheckBox        = mod end end
 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
 local undo       = require('dcs_sms_me.undo')
@@ -87,6 +88,8 @@ local W = {
     window     = nil,
     name_input = nil,
     save_btn   = nil,
+    fixed_check     = nil,        -- "Fixed position" checkbox; sets meta.place_at_origin on save
+    fixed_check_lbl = nil,
     reload_btn = nil,
     grid       = nil,
     name_label     = nil,
@@ -130,12 +133,13 @@ local W = {
 -- Column definitions for the prefab grid. Module-level so refresh_list and the
 -- header-click handlers can share key + numeric-flag metadata.
 local COLS = {
-    { key = 'name',          label = 'Name',    width = 190, numeric = false },
-    { key = 'theatre',       label = 'Theatre', width = 90,  numeric = false },
-    { key = 'group_count',   label = 'G',       width = 35,  numeric = true  },
-    { key = 'static_count',  label = 'S',       width = 35,  numeric = true  },
-    { key = 'zone_count',    label = 'Z',       width = 35,  numeric = true  },
-    { key = 'drawing_count', label = 'D',       width = 35,  numeric = true  },
+    { key = 'name',            label = 'Name',      width = 190, numeric = false },
+    { key = 'theatre',         label = 'Theatre',   width = 90,  numeric = false },
+    { key = 'place_at_origin', label = 'Fixed Pos', width = 60,  numeric = false },
+    { key = 'group_count',     label = 'G',         width = 35,  numeric = true  },
+    { key = 'static_count',    label = 'S',         width = 35,  numeric = true  },
+    { key = 'zone_count',      label = 'Z',         width = 35,  numeric = true  },
+    { key = 'drawing_count',   label = 'D',         width = 35,  numeric = true  },
 }
 
 local function find_col(key)
@@ -275,13 +279,15 @@ local function render_grid()
                 W.grid:setCell(3, row, make_cell(''))
                 W.grid:setCell(4, row, make_cell(''))
                 W.grid:setCell(5, row, make_cell(''))
+                W.grid:setCell(6, row, make_cell(''))
             else
                 W.grid:setCell(0, row, make_cell(r.name, r.name))
                 W.grid:setCell(1, row, make_cell(r.theatre or '?'))
-                W.grid:setCell(2, row, make_cell(r.group_count   or 0))
-                W.grid:setCell(3, row, make_cell(r.static_count  or 0))
-                W.grid:setCell(4, row, make_cell(r.zone_count    or 0))
-                W.grid:setCell(5, row, make_cell(r.drawing_count or 0))
+                W.grid:setCell(2, row, make_cell(r.place_at_origin and 'Yes' or ''))
+                W.grid:setCell(3, row, make_cell(r.group_count   or 0))
+                W.grid:setCell(4, row, make_cell(r.static_count  or 0))
+                W.grid:setCell(5, row, make_cell(r.zone_count    or 0))
+                W.grid:setCell(6, row, make_cell(r.drawing_count or 0))
             end
         end
 
@@ -409,8 +415,18 @@ local function focus_name_input()
     end)
 end
 
-local function do_save(name)
-    local ok, path_or_err = prefab_ops.save_selection(name)
+local function read_fixed_check()
+    local v = false
+    pcall(function()
+        if W.fixed_check and W.fixed_check.getState then
+            v = W.fixed_check:getState() == true
+        end
+    end)
+    return v
+end
+
+local function do_save(name, place_at_origin)
+    local ok, path_or_err = prefab_ops.save_selection(name, place_at_origin)
     if ok then
         set_status('Saved ' .. name .. ' → ' .. tostring(path_or_err))
         log.write('sms.me.prefab', log.INFO, 'saved ' .. name)
@@ -428,11 +444,12 @@ local function on_save_click()
     pcall(function()
         local name = ''
         if W.name_input and W.name_input.getText then name = W.name_input:getText() or '' end
+        local fixed = read_fixed_check()
         if name == '' then
             set_status('Empty name — using timestamped fallback. See dcs.log.')
             name = 'prefab-' .. os.date('!%Y%m%dT%H%M%SZ')
             log.write('sms.me.prefab', log.WARNING, 'save with empty name → ' .. name)
-            do_save(name)
+            do_save(name, fixed)
             return
         end
 
@@ -440,7 +457,7 @@ local function on_save_click()
             show_overlay(
                 'Prefab "' .. name .. '" already exists.\n\nOverwrite, rename, or cancel?',
                 {
-                    { label = 'Overwrite', on_click = function() do_save(name) end },
+                    { label = 'Overwrite', on_click = function() do_save(name, fixed) end },
                     { label = 'Rename',    on_click = function() focus_name_input(); set_status('Type a new name and click Save.') end },
                     { label = 'Cancel',    on_click = function() set_status('Save cancelled.') end },
                 },
@@ -448,7 +465,7 @@ local function on_save_click()
             return
         end
 
-        do_save(name)
+        do_save(name, fixed)
     end)
 end
 
@@ -1115,10 +1132,19 @@ local function relayout(w, h)
         end
     end
 
-    -- Row 0: Name row at top.
-    set(W.name_label, 10, 8, 50, 22)
-    set(W.name_input, 60, 8, w - 60 - 90 - 6, 22)
-    set(W.save_btn,   w - 90, 8, 80, 22)
+    -- Row 0: Name + Fixed-position checkbox + Save (all inline).
+    -- Layout right-to-left so the checkbox stays adjacent to Save:
+    --   name_input fills the space between name_label and fixed_check.
+    local check_w   = 130
+    local save_x    = w - 90
+    local check_x   = save_x - 6 - check_w
+    local input_x   = 60
+    local input_w   = math.max(60, check_x - 6 - input_x)
+    set(W.name_label,      10,      8, 50,      22)
+    set(W.name_input,      input_x, 8, input_w, 22)
+    set(W.fixed_check,     check_x, 8, check_w, 22)
+    set(W.fixed_check_lbl, check_x, 8, check_w, 22)  -- fallback Static occupies the same slot
+    set(W.save_btn,        save_x,  8, 80,      22)
 
     -- Separator + Row 1: Search.
     set(W.sep1, 10, 36, w - 20, 1)
@@ -1194,8 +1220,8 @@ function M.show()
     local ok, err = pcall(function()
         local screen_w, _ = Gui.GetWindowSize()
         -- Layout (top → bottom):
-        --   y=8   Name row:    "Name:" + name_input + Save
-        --   y=38  Search row:  filter_input full-width (count → hint text)
+        --   y=8   Name row:    "Name:" + name_input + Fixed-pos check + Save
+        --   y=42  Search row:  filter_input full-width (count → hint text)
         --   y=68  Grid:        h=200, ends y=268
         --   y=276 Action row:  Reload | Undo | gap | Rename | Delete
         --   y=306 Country row: "Place as country:" + combo + Combat toggle
@@ -1203,7 +1229,7 @@ function M.show()
         --   y=387 Status
         -- Title bar (~30) + bottom border (~12) sit outside, so window
         -- total height = content y-extent + ~42 → 460.
-        local w, h = 440, 460
+        local w, h = 720, 460
         local x = screen_w - w - 20
         local y = 80
 
@@ -1263,6 +1289,21 @@ function M.show()
         try_skin(W.save_btn, 'dtc_button')
         W.save_btn:addChangeCallback(on_save_click)
         W.window:insertWidget(W.save_btn)
+
+        -- "Fixed position" checkbox: on save, sets meta.place_at_origin so
+        -- the grid shows a check in the Orig Pos column. Purely a hint —
+        -- both Place buttons remain available regardless.
+        if CheckBox then
+            W.fixed_check = CheckBox.new('Fixed position')
+            try_skin(W.fixed_check, 'checkBoxSkin_MENew')
+            pcall(function() W.fixed_check:setState(false) end)
+            W.window:insertWidget(W.fixed_check)
+        else
+            W.fixed_check_lbl = Static.new()
+            W.fixed_check_lbl:setText('Fixed position (CheckBox unavailable)')
+            try_skin(W.fixed_check_lbl, 'staticSkin_ME')
+            W.window:insertWidget(W.fixed_check_lbl)
+        end
 
         W.sep1 = Static.new()
         try_skin(W.sep1, 'dtc_separator')

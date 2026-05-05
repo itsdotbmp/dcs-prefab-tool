@@ -43,7 +43,7 @@ local function any_selection(snap)
         or (#(snap.drawings or {}) > 0)
 end
 
-function M.save_selection(name)
+function M.save_selection(name, place_at_origin)
     if type(name) ~= 'string' or name == '' then
         return nil, 'name required'
     end
@@ -73,7 +73,11 @@ function M.save_selection(name)
         end
     end)
 
-    local prefab = distill(dump, { name = name, theatre = theatre })
+    local prefab = distill(dump, {
+        name             = name,
+        theatre          = theatre,
+        place_at_origin  = place_at_origin == true,
+    })
     if not prefab then
         return nil, 'distill returned nil — check log for details'
     end
@@ -137,16 +141,17 @@ local function row_from_prefab(name, path, prefab)
     local meta = prefab.meta
     local g_count, s_inline = split_group_counts(prefab.groups)
     return {
-        name          = meta.name or name,
-        path          = path,
-        theatre       = meta.theatre,
-        source_dump   = meta.source_dump,
-        group_count   = g_count,
+        name            = meta.name or name,
+        path            = path,
+        theatre         = meta.theatre,
+        source_dump     = meta.source_dump,
+        place_at_origin = meta.place_at_origin == true,
+        group_count     = g_count,
         -- Statics from inline `type='static'` groups + any in the legacy
         -- top-level statics array (older fixtures / hand-written prefabs).
-        static_count  = s_inline + count(prefab.statics),
-        zone_count    = count(prefab.zones),
-        drawing_count = count(prefab.drawings),
+        static_count    = s_inline + count(prefab.statics),
+        zone_count      = count(prefab.zones),
+        drawing_count   = count(prefab.drawings),
     }
 end
 

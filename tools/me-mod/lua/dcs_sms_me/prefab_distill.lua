@@ -225,15 +225,21 @@ function M.distill(dump_or_path, opts)
     for _, g in ipairs(clean_groups)   do convert_headings(g) end
     for _, s in ipairs(clean_statics)  do convert_headings(s) end
 
+    local meta = {
+        sms_prefab_version = PREFAB_VERSION,
+        name               = opts.name,
+        created_utc        = utc_now(),
+        source_dump        = source_dump_name,
+        world_anchor       = { x = cx, y = cy },
+        theatre            = opts.theatre,
+    }
+    -- Only emit when set so older saves stay byte-stable on no-op resaves.
+    if opts.place_at_origin == true then
+        meta.place_at_origin = true
+    end
+
     return {
-        meta = {
-            sms_prefab_version = PREFAB_VERSION,
-            name               = opts.name,
-            created_utc        = utc_now(),
-            source_dump        = source_dump_name,
-            world_anchor       = { x = cx, y = cy },
-            theatre            = opts.theatre,
-        },
+        meta = meta,
         groups   = clean_groups,
         statics  = clean_statics,
         zones    = clean_zones,
