@@ -97,7 +97,7 @@ local W = {
     window     = nil,
     name_input = nil,
     save_btn   = nil,
-    fixed_check     = nil,        -- "Fixed position" checkbox; sets meta.place_at_origin on save
+    fixed_check     = nil,        -- "Fixed location" checkbox; sets meta.place_at_origin on save
     fixed_check_lbl = nil,
     reload_btn = nil,
     grid       = nil,
@@ -860,7 +860,7 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
         MapWindow.setState(place_state)
     end)
     if not ok then
-        set_status('Place at click unavailable — try Place at original. See dcs.log.')
+        set_status('Place at click unavailable — try Place at original location. See dcs.log.')
         log.write('sms.me.prefab', log.ERROR, 'map-click hook unavailable')
         exit_place_pending()
     end
@@ -1067,7 +1067,7 @@ run_airbase_apply = function(prefab)
 end
 
 local function on_place_origin_click()
-    local row = require_selection('place at original')
+    local row = require_selection('place at original location')
     if not row then return end
     local prefab, lerr = prefab_ops.load(row.path)
     if not prefab then
@@ -1078,7 +1078,7 @@ local function on_place_origin_click()
     local rotation_deg = get_rotation_deg()
     local country_name = get_country_name()
     if not country_name then
-        log.write('sms.me.prefab', log.WARNING, 'place at original: country dropdown empty — using prefab-stored countries')
+        log.write('sms.me.prefab', log.WARNING, 'place at original location: country dropdown empty — using prefab-stored countries')
     end
     local rec, err = prefab_ops.place(prefab, {
         keep_position      = true,
@@ -1101,7 +1101,7 @@ local function on_place_origin_click()
         run_airbase_apply(prefab)
     else
         set_status('Place failed: ' .. tostring(err))
-        log.write('sms.me.prefab', log.ERROR, 'place at original failed: ' .. tostring(err))
+        log.write('sms.me.prefab', log.ERROR, 'place at original location failed: ' .. tostring(err))
     end
 end
 
@@ -1248,7 +1248,7 @@ local function on_undo_click()
         if not undo.has_record() then set_status('Nothing to undo.'); return end
         local ok, err = undo.undo()
         if ok then
-            set_status('Undid last place' .. (err and (' (' .. err .. ')') or ''))
+            set_status('Undid last placement' .. (err and (' (' .. err .. ')') or ''))
         else
             set_status('Undo failed: ' .. tostring(err))
         end
@@ -1258,7 +1258,9 @@ end
 -- Minimum window size below which the layout starts overlapping. Acts as a
 -- floor for #32's resize support (no setMinSize() in dxgui — the size
 -- callback re-sets bounds if the user shrinks past this).
-local MIN_W, MIN_H = 440, 460
+-- 540 floor: place_origin_btn (200 wide, x = w-336) needs w ≥ ~520 to clear
+-- the rotation dial at x=132+47=179. Was 440 when the button was 130 wide.
+local MIN_W, MIN_H = 540, 460
 
 -- Single source of truth for child geometry. Called once at construction and
 -- from the Window:addSizeCallback. Top band (Name + Search) sticks to the
@@ -1319,7 +1321,7 @@ local function relayout(w, h)
 
     -- Row 3: Reload | Undo (left) | gap | Rename | Delete (right).
     set(W.reload_btn, 10,                row3_y, 70,  22)
-    set(W.undo_btn,   84,                row3_y, 110, 22)
+    set(W.undo_btn,   84,                row3_y, 140, 22)
     set(W.rename_btn, w - 90 - 80 - 4,   row3_y, 80,  22)
     set(W.delete_btn, w - 90,            row3_y, 80,  22)
 
@@ -1340,8 +1342,9 @@ local function relayout(w, h)
     set(W.rotation_input, 70, row5_y + 10, 60, 22)   -- fallback path
     set(W.rotation_unit,  132, row5_y + 10, 20, 22)  -- fallback path
     -- place_click_btn right-edge at w-10 (122 wide), place_origin_btn 4px
-    -- to its left (130 wide). Both stay anchored to the right edge.
-    set(W.place_origin_btn, w - 266, row5_y + 10, 130, 22)
+    -- to its left (200 wide — fits "Place at original location"). Both
+    -- stay anchored to the right edge.
+    set(W.place_origin_btn, w - 336, row5_y + 10, 200, 22)
     set(W.place_click_btn,  w - 132, row5_y + 10, 122, 22)
 
     set(W.sep3, 10, sep3_y, w - 20, 1)
@@ -1497,17 +1500,17 @@ function M.show()
         W.save_btn:addChangeCallback(on_save_click)
         W.window:insertWidget(W.save_btn)
 
-        -- "Fixed position" checkbox: on save, sets meta.place_at_origin so
+        -- "Fixed location" checkbox: on save, sets meta.place_at_origin so
         -- the grid shows a check in the Orig Pos column. Purely a hint —
         -- both Place buttons remain available regardless.
         if CheckBox then
-            W.fixed_check = CheckBox.new('Fixed position')
+            W.fixed_check = CheckBox.new('Fixed location')
             try_skin(W.fixed_check, 'checkBoxSkin_MENew')
             pcall(function() W.fixed_check:setState(false) end)
             W.window:insertWidget(W.fixed_check)
         else
             W.fixed_check_lbl = Static.new()
-            W.fixed_check_lbl:setText('Fixed position (CheckBox unavailable)')
+            W.fixed_check_lbl:setText('Fixed location (CheckBox unavailable)')
             try_skin(W.fixed_check_lbl, 'staticSkin_ME')
             W.window:insertWidget(W.fixed_check_lbl)
         end
@@ -1630,7 +1633,7 @@ function M.show()
         W.window:insertWidget(W.reload_btn)
 
         W.undo_btn = Button.new()
-        W.undo_btn:setText('Undo last place')
+        W.undo_btn:setText('Undo last placement')
         try_skin(W.undo_btn, 'dtc_button')
         W.undo_btn:addChangeCallback(on_undo_click)
         W.window:insertWidget(W.undo_btn)
@@ -1754,7 +1757,7 @@ function M.show()
         end
 
         W.place_origin_btn = Button.new()
-        W.place_origin_btn:setText('Place at original')
+        W.place_origin_btn:setText('Place at original location')
         try_skin(W.place_origin_btn, 'dtc_button')
         W.place_origin_btn:addChangeCallback(on_place_origin_click)
         W.window:insertWidget(W.place_origin_btn)
