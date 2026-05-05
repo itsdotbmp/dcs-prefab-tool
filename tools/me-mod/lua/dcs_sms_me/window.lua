@@ -50,6 +50,9 @@ local CheckBox;        do local ok, mod = pcall(require, 'CheckBox');        if 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
 local undo       = require('dcs_sms_me.undo')
 local dtc_skins  = require('dcs_sms_me.dtc_skins')
+local marquee_hook  = require('dcs_sms_me.marquee_hook')
+local airbase_detect = require('dcs_sms_me.airbase_detect')
+local warehouse_ops = require('dcs_sms_me.warehouse_ops')
 
 -- Apply a skin by name. Resolves in this order:
 --   * 'dtc_button' / 'dtc_grid' / 'dtc_grid_header' → DTC-dialog-style skins
@@ -128,6 +131,8 @@ local W = {
     grid_headers   = {},         -- parallel to COLS; lets us re-text headers on sort change
     filter_text    = '',         -- live filter applied to rows → visible_rows
     filter_input   = nil,        -- TextBox widget for the filter
+    pending_airbases = nil,    -- set by marquee callback; consumed by on_save_click
+    marquee_subscribed = false,-- one-shot guard so Ctrl+Shift+R reloads don't multi-subscribe
 }
 
 -- Column definitions for the prefab grid. Module-level so refresh_list and the
@@ -1210,6 +1215,54 @@ end
 
 function M.show()
     log.write('sms.me', log.INFO, 'window.show() called (W.window present=' .. tostring(W.window ~= nil) .. ')')
+
+    -- Subscribe to the marquee hook once. The hook itself was installed in
+    -- init.lua on bootstrap; this just attaches our window's airbase-detect
+    -- handler. Guard with a one-shot flag so Ctrl+Shift+R reloads don't
+    -- accumulate stacked subscribers.
+    if not W.marquee_subscribed then
+        marquee_hook.subscribe(function(start_xy, end_xy)
+            -- Bail if the prefab manager isn't currently visible — we don't
+            -- want to silently capture airbases when the user can't see the
+            -- prompt.
+            if not (W.window and W.window.getVisible and W.window:getVisible()) then return end
+
+            local hits = airbase_detect.airbases_in_rect(start_xy, end_xy) or {}
+            if #hits == 0 then
+                W.pending_airbases = nil
+                return
+            end
+
+            -- Filter out default (untouched) airbases — there's nothing to capture.
+            local non_default = {}
+            for _, h in ipairs(hits) do
+                local entry = warehouse_ops.extract(h.airdrome_number_at_save)
+                if entry and not warehouse_ops.is_default(entry) then
+                    h.warehouse = entry
+                    non_default[#non_default + 1] = h
+                end
+            end
+
+            if #non_default == 0 then
+                W.pending_airbases = nil
+                set_status('Selection covers ' .. #hits .. ' airbase(s) — all unmodified, nothing to capture.')
+                return
+            end
+
+            W.pending_airbases = non_default
+            if #non_default == 1 then
+                set_status('Airbase in selection: ' .. non_default[1].name
+                           .. '. Save will include its supplies.')
+            else
+                local names = {}
+                for _, h in ipairs(non_default) do names[#names + 1] = h.name end
+                set_status(#non_default .. ' airbases in selection: '
+                           .. table.concat(names, ', ') .. '. Save will include all.')
+            end
+        end)
+        W.marquee_subscribed = true
+    end
+
     if W.window then
         -- Re-populate so a mission-change between hides surfaces the new
         -- country list; existing selection is preserved if still valid.
