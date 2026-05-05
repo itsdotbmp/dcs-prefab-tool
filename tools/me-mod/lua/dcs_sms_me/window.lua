@@ -141,6 +141,7 @@ local COLS = {
     { key = 'name',            label = 'Name',      width = 190, numeric = false },
     { key = 'theatre',         label = 'Theatre',   width = 90,  numeric = false },
     { key = 'place_at_origin', label = 'Fixed Pos', width = 60,  numeric = false },
+    { key = 'airbase_count',   label = 'AB',        width = 50,  numeric = true  },
     { key = 'group_count',     label = 'G',         width = 35,  numeric = true  },
     { key = 'static_count',    label = 'S',         width = 35,  numeric = true  },
     { key = 'zone_count',      label = 'Z',         width = 35,  numeric = true  },
@@ -285,14 +286,20 @@ local function render_grid()
                 W.grid:setCell(4, row, make_cell(''))
                 W.grid:setCell(5, row, make_cell(''))
                 W.grid:setCell(6, row, make_cell(''))
+                W.grid:setCell(7, row, make_cell(''))
             else
+                local ab_text = ''
+                if (r.airbase_count or 0) == 1 then ab_text = 'Yes'
+                elseif (r.airbase_count or 0) > 1 then ab_text = tostring(r.airbase_count)
+                end
                 W.grid:setCell(0, row, make_cell(r.name, r.name))
                 W.grid:setCell(1, row, make_cell(r.theatre or '?'))
                 W.grid:setCell(2, row, make_cell(r.place_at_origin and 'Yes' or ''))
-                W.grid:setCell(3, row, make_cell(r.group_count   or 0))
-                W.grid:setCell(4, row, make_cell(r.static_count  or 0))
-                W.grid:setCell(5, row, make_cell(r.zone_count    or 0))
-                W.grid:setCell(6, row, make_cell(r.drawing_count or 0))
+                W.grid:setCell(3, row, make_cell(ab_text))
+                W.grid:setCell(4, row, make_cell(r.group_count   or 0))
+                W.grid:setCell(5, row, make_cell(r.static_count  or 0))
+                W.grid:setCell(6, row, make_cell(r.zone_count    or 0))
+                W.grid:setCell(7, row, make_cell(r.drawing_count or 0))
             end
         end
 
@@ -430,15 +437,20 @@ local function read_fixed_check()
     return v
 end
 
-local function do_save(name, place_at_origin)
-    local ok, path_or_err = prefab_ops.save_selection(name, place_at_origin)
+local function do_save(name, place_at_origin, airbases)
+    local ok, path_or_err = prefab_ops.save_selection(name, place_at_origin, airbases)
     if ok then
-        set_status('Saved ' .. name .. ' → ' .. tostring(path_or_err))
+        local extras = {}
+        if place_at_origin then extras[#extras + 1] = 'fixed' end
+        if airbases and #airbases > 0 then extras[#extras + 1] = #airbases .. ' airbase(s)' end
+        local suffix = #extras > 0 and ' [' .. table.concat(extras, ', ') .. ']' or ''
+        set_status('Saved ' .. name .. suffix .. ' → ' .. tostring(path_or_err))
         log.write('sms.me.prefab', log.INFO, 'saved ' .. name)
         refresh_list()
         pcall(function()
             if W.name_input and W.name_input.setText then W.name_input:setText('') end
         end)
+        W.pending_airbases = nil  -- consumed
     else
         set_status('Save failed: ' .. tostring(path_or_err))
         log.write('sms.me.prefab', log.ERROR, 'save failed: ' .. tostring(path_or_err))
@@ -450,11 +462,12 @@ local function on_save_click()
         local name = ''
         if W.name_input and W.name_input.getText then name = W.name_input:getText() or '' end
         local fixed = read_fixed_check()
+        local airbases = W.pending_airbases
         if name == '' then
             set_status('Empty name — using timestamped fallback. See dcs.log.')
             name = 'prefab-' .. os.date('!%Y%m%dT%H%M%SZ')
             log.write('sms.me.prefab', log.WARNING, 'save with empty name → ' .. name)
-            do_save(name, fixed)
+            do_save(name, fixed, airbases)
             return
         end
 
@@ -462,7 +475,7 @@ local function on_save_click()
             show_overlay(
                 'Prefab "' .. name .. '" already exists.\n\nOverwrite, rename, or cancel?',
                 {
-                    { label = 'Overwrite', on_click = function() do_save(name, fixed) end },
+                    { label = 'Overwrite', on_click = function() do_save(name, fixed, airbases) end },
                     { label = 'Rename',    on_click = function() focus_name_input(); set_status('Type a new name and click Save.') end },
                     { label = 'Cancel',    on_click = function() set_status('Save cancelled.') end },
                 },
@@ -470,7 +483,7 @@ local function on_save_click()
             return
         end
 
-        do_save(name, fixed)
+        do_save(name, fixed, airbases)
     end)
 end
 
