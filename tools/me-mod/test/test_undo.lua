@@ -112,6 +112,98 @@ do
     check('slot cleared after partial-failure undo', undo.has_record() == false)
 end
 
+-- ---------------------------------------------------------------------------
+-- Airbase-snapshot undo path (rolls back warehouse_ops.apply splices).
+-- ---------------------------------------------------------------------------
+
+local warehouse_ops = require('dcs_sms_me.warehouse_ops')
+
+-- add_airbase_snapshots augments the existing slot; undo() restores each
+-- pre-write entry by calling warehouse_ops.apply.
+do
+    local restore_calls = {}
+    warehouse_ops.apply = function(n, w)
+        restore_calls[#restore_calls + 1] = { n = n, w = w }
+        return true
+    end
+    -- prefab_ops._remove must be reset because earlier tests left a stub that
+    -- counts calls; we don't care about per-entity removes here.
+    prefab_ops._remove.group   = function() return true end
+    prefab_ops._remove.zone    = function() return true end
+    prefab_ops._remove.drawing = function() return true end
+
+    local prev_68 = { unlimitedFuel = false, jet_fuel = { InitFuel = 33 } }
+    local prev_12 = { unlimitedFuel = true }
+
+    undo.record({ prefab_name = 'air', groups = {}, zones = {}, drawings = {}, errors = {} })
+    undo.add_airbase_snapshots({
+        { airdrome_number = 68, prev = prev_68 },
+        { airdrome_number = 12, prev = prev_12 },
+    })
+    check('has_record() true after add_airbase_snapshots', undo.has_record() == true)
+
+    local ok = undo.undo()
+    check('undo with airbase snapshots returns ok', ok == true)
+    check('restore called twice', #restore_calls == 2,
+          'got ' .. tostring(#restore_calls))
+    check('first restore: airdrome 68 with pre-write data',
+          restore_calls[1].n == 68 and restore_calls[1].w == prev_68,
+          'got n=' .. tostring(restore_calls[1].n))
+    check('second restore: airdrome 12',
+          restore_calls[2].n == 12 and restore_calls[2].w == prev_12)
+    check('slot cleared after airbase undo', undo.has_record() == false)
+end
+
+-- Snapshots with prev=nil are skipped on undo (no clean DCS path to "remove
+-- airport entry"; leaving the splice is the safer no-op).
+do
+    local restore_calls = {}
+    warehouse_ops.apply = function(n, w)
+        restore_calls[#restore_calls + 1] = { n = n }
+        return true
+    end
+
+    undo.record({ prefab_name = 'air2', groups = {}, zones = {}, drawings = {}, errors = {} })
+    undo.add_airbase_snapshots({
+        { airdrome_number = 68, prev = { unlimitedFuel = false } },
+        { airdrome_number = 12, prev = nil },         -- fresh-write, can't restore
+        { airdrome_number = 99, prev = { unlimitedFuel = true } },
+    })
+
+    undo.undo()
+    check('prev=nil snapshots skipped — only 2 of 3 restored', #restore_calls == 2,
+          'got ' .. tostring(#restore_calls))
+    check('skipped is the middle one',
+          restore_calls[1].n == 68 and restore_calls[2].n == 99)
+end
+
+-- add_airbase_snapshots with no slot is a safe no-op.
+do
+    check('precondition: no slot', undo.has_record() == false)
+    local ok = pcall(undo.add_airbase_snapshots, {
+        { airdrome_number = 68, prev = { unlimitedFuel = false } },
+    })
+    check('add_airbase_snapshots without slot does not error', ok == true)
+    check('still no slot after no-op call', undo.has_record() == false)
+end
+
+-- record() replacing the slot discards old airbase_snapshots too — single-slot
+-- semantics apply to the airbase rollback list as well.
+do
+    local restore_calls = {}
+    warehouse_ops.apply = function(n, w)
+        restore_calls[#restore_calls + 1] = { n = n }
+        return true
+    end
+
+    undo.record({ prefab_name = 'first', groups = {}, zones = {}, drawings = {}, errors = {} })
+    undo.add_airbase_snapshots({ { airdrome_number = 68, prev = {} } })
+    undo.record({ prefab_name = 'second', groups = {}, zones = {}, drawings = {}, errors = {} })
+    undo.undo()
+    check('record() replaces slot — old airbase_snapshots discarded',
+          #restore_calls == 0, 'got ' .. tostring(#restore_calls))
+end
+
 if failures > 0 then
     print(string.format('%d failure(s)', failures))
     os.exit(1)

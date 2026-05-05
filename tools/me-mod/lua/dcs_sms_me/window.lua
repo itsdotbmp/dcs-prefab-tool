@@ -1054,6 +1054,14 @@ run_airbase_apply = function(prefab)
             override_coalition = override,
         })
         if ok then
+            -- Hand the per-airbase pre-write snapshots to undo so a single
+            -- Undo press rolls back both the placed objects AND the warehouse
+            -- splices. apply_airbases captures these synchronously, so the
+            -- undo slot (recorded by the place flow before this prompt fires)
+            -- is still the right one to augment.
+            if summary.snapshots and #summary.snapshots > 0 then
+                undo.add_airbase_snapshots(summary.snapshots)
+            end
             local msg = ('Airbase supplies: %d applied'):format(summary.applied)
             if summary.skipped > 0 then
                 msg = msg .. (', %d skipped'):format(summary.skipped)

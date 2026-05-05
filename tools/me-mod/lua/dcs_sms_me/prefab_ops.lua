@@ -948,9 +948,9 @@ end
 
 -- Apply meta.airbases to the live mission state. Re-resolves each entry by
 -- airbase name (the airdromeNumber at save time may not match in the
--- destination mission). Theatre mismatch (or unknown prefab theatre)
--- refuses the whole step. Returns (true, summary) on success or
--- (nil, summary_with_error) on failure.
+-- destination mission). Theatre mismatch (or unknown prefab theatre) refuses
+-- the whole step. Returns (true, summary) on success or (nil, summary_with_error)
+-- on failure.
 --
 -- opts = {
 --     current_theatre    = string?,  -- if set, refuse on theatre mismatch OR
@@ -964,10 +964,15 @@ end
 -- }
 --
 -- summary = {
---     applied = N,                  -- count of warehouses successfully spliced
---     skipped = N,                  -- count of named airdromes NOT found in destination
---     missing = { name1, ... },     -- names that were skipped
---     error   = string?,            -- set on hard failure (theatre mismatch, etc.)
+--     applied   = N,                 -- count of warehouses successfully spliced
+--     skipped   = N,                 -- count of named airdromes NOT found in destination
+--     missing   = { name1, ... },    -- names that were skipped
+--     snapshots = {                  -- pre-write live state per applied airbase, in
+--         { airdrome_number = N,     --   apply order. Consumed by undo.lua to roll
+--           prev = entry|nil },      --   back the splice. prev=nil means there was
+--         ...                        --   no prior live entry; on undo, those snaps
+--     },                             --   are skipped (no clean "remove entry" path).
+--     error     = string?,           -- set on hard failure (theatre mismatch, etc.)
 -- }
 function M.apply_airbases(prefab, opts)
     if type(prefab) ~= 'table' or type(prefab.meta) ~= 'table' then
@@ -975,7 +980,7 @@ function M.apply_airbases(prefab, opts)
     end
     local airbases = prefab.meta.airbases
     if type(airbases) ~= 'table' or #airbases == 0 then
-        return true, { applied = 0, skipped = 0, missing = {} }
+        return true, { applied = 0, skipped = 0, missing = {}, snapshots = {} }
     end
 
     opts = opts or {}
@@ -1010,11 +1015,16 @@ function M.apply_airbases(prefab, opts)
     end
 
     local override_coalition = opts.override_coalition
-    local applied, skipped, missing = 0, 0, {}
+    local applied, skipped, missing, snapshots = 0, 0, {}, {}
     for _, ab in ipairs(airbases) do
         local ad = ab.name and by_name[ab.name] or nil
         if ad and ad.getAirdromeNumber then
             local n = ad:getAirdromeNumber()
+            -- Snapshot pre-write live state before splicing. Stored on the
+            -- summary so undo.lua can roll back per applied airbase. Capture
+            -- BEFORE warehouse_ops.apply so the deep copy reflects the
+            -- destination's prior state, not what we just wrote.
+            local prev = warehouse_ops.extract(n)
             -- If an override coalition is supplied, build a shallow wrapper
             -- around the saved warehouse with the override applied. We don't
             -- mutate ab.warehouse — warehouse_ops.apply deep-copies what it
@@ -1028,15 +1038,18 @@ function M.apply_airbases(prefab, opts)
                 warehouse_to_apply = wrapped
             end
             local ok = warehouse_ops.apply(n, warehouse_to_apply)
-            if ok then applied = applied + 1
-            else skipped = skipped + 1; missing[#missing + 1] = ab.name
+            if ok then
+                applied = applied + 1
+                snapshots[#snapshots + 1] = { airdrome_number = n, prev = prev }
+            else
+                skipped = skipped + 1; missing[#missing + 1] = ab.name
             end
         else
             skipped = skipped + 1
             if ab.name then missing[#missing + 1] = ab.name end
         end
     end
-    return true, { applied = applied, skipped = skipped, missing = missing }
+    return true, { applied = applied, skipped = skipped, missing = missing, snapshots = snapshots }
 end
 
 return M

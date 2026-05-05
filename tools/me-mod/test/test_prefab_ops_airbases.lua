@@ -303,6 +303,73 @@ do
     check('summary applied == 0', summary.applied == 0)
 end
 
+-- Case: summary.snapshots captures pre-write live state for each successfully
+-- applied airbase. Consumed by undo.lua to roll back the splice.
+do
+    apply_calls = {}
+    local prev_68 = { unlimitedFuel = false, jet_fuel = { InitFuel = 33 }, coalition = 'BLUE' }
+    local prev_12 = { unlimitedFuel = true, coalition = 'NEUTRAL' }
+    live_airports[68] = prev_68
+    live_airports[12] = prev_12
+
+    local prefab = {
+        meta = {
+            theatre  = 'Syria',
+            airbases = {
+                { name = 'Muwaffaq Salti', airdrome_number_at_save = 68,
+                  warehouse = { coalition = 'BLUE', jet_fuel = { InitFuel = 99 } } },
+                { name = 'Khalde', airdrome_number_at_save = 12,
+                  warehouse = { coalition = 'NEUTRAL' } },
+            },
+        }
+    }
+    local ok, summary = prefab_ops.apply_airbases(prefab, { current_theatre = 'Syria' })
+    check('summary.snapshots is a table', type(summary.snapshots) == 'table')
+    check('summary.snapshots has 2 entries',
+          type(summary.snapshots) == 'table' and #summary.snapshots == 2,
+          'got ' .. tostring(summary.snapshots and #summary.snapshots))
+    check('first snapshot.airdrome_number == 68',
+          summary.snapshots[1] and summary.snapshots[1].airdrome_number == 68)
+    check('first snapshot.prev captures pre-write InitFuel=33',
+          summary.snapshots[1] and summary.snapshots[1].prev
+          and summary.snapshots[1].prev.jet_fuel
+          and summary.snapshots[1].prev.jet_fuel.InitFuel == 33,
+          'got ' .. tostring(summary.snapshots[1] and summary.snapshots[1].prev
+                             and summary.snapshots[1].prev.jet_fuel
+                             and summary.snapshots[1].prev.jet_fuel.InitFuel))
+    check('first snapshot.prev is a deep copy (not aliased to live)',
+          summary.snapshots[1].prev ~= prev_68
+          and summary.snapshots[1].prev.jet_fuel ~= prev_68.jet_fuel)
+    check('second snapshot.airdrome_number == 12',
+          summary.snapshots[2] and summary.snapshots[2].airdrome_number == 12)
+end
+
+-- Case: airbases that fail name resolution don't get a snapshot — only
+-- successfully-applied entries do. Undo should only roll back what was written.
+do
+    apply_calls = {}
+    live_airports[68] = { unlimitedFuel = false }
+
+    local prefab = {
+        meta = {
+            theatre  = 'Syria',
+            airbases = {
+                { name = 'Muwaffaq Salti', airdrome_number_at_save = 68,
+                  warehouse = { coalition = 'BLUE' } },
+                { name = 'H4', airdrome_number_at_save = 80,    -- absent from destination
+                  warehouse = { coalition = 'BLUE' } },
+            },
+        }
+    }
+    local _, summary = prefab_ops.apply_airbases(prefab, { current_theatre = 'Syria' })
+    check('snapshots length matches applied count',
+          type(summary.snapshots) == 'table' and #summary.snapshots == summary.applied
+          and summary.applied == 1,
+          'snapshots=' .. tostring(#(summary.snapshots or {})) .. ' applied=' .. tostring(summary.applied))
+    check('the one snapshot is for the resolved airdrome (68)',
+          summary.snapshots[1] and summary.snapshots[1].airdrome_number == 68)
+end
+
 -- Case: opts.override_coalition replaces the saved coalition on every applied
 -- airbase. The saved warehouse table itself must NOT be mutated — apply
 -- builds a wrapper for the override so subsequent calls still see the
