@@ -22,13 +22,28 @@ assert(type(sms.log) == "table", "framework/log.lua must be loaded first")
 ---@class sms.constants
 sms.constants = sms.constants or {}
 
-local CONSTANTS_DIR_FALLBACK = "D:/git/dcs-sms/framework/constants/"
+-- CONSTANTS_DIR_FALLBACK is only consulted when this file is loaded
+-- without a chunkname (the bridge / net.dostring_in path). Most callers
+-- come through load_all.lua → dofile, where derive_dir succeeds. If you
+-- hit the fallback, set _SMS_FRAMEWORK_DIR before loading or edit the
+-- value below to your framework checkout (see load_all.lua header for
+-- the full background).
+local CONSTANTS_DIR_FALLBACK = nil  -- e.g. "D:/path/to/dcs-sms/framework/constants/"
 
 local CONSTANTS_DIR = (function()
   local src = (debug.getinfo(1, "S") or {}).source or ""
   local dir = src:match("^@(.*[/\\])constants%.lua$")
-  return dir and (dir .. "constants/") or CONSTANTS_DIR_FALLBACK
+  if dir then return dir .. "constants/" end
+  if _SMS_FRAMEWORK_DIR then return _SMS_FRAMEWORK_DIR .. "constants/" end
+  return CONSTANTS_DIR_FALLBACK
 end)()
+if not CONSTANTS_DIR then
+  error("sms.constants: could not derive constants directory.\n" ..
+        "  This usually means constants.lua was loaded without a chunkname.\n" ..
+        "  Set _SMS_FRAMEWORK_DIR before loading, or edit CONSTANTS_DIR_FALLBACK\n" ..
+        "  in framework/constants.lua. (See framework/load_all.lua for the full\n" ..
+        "  background — same issue, same set of workarounds.)")
+end
 
 -- Topic files are listed alphabetically so a diff between commits shows
 -- exactly which topic was added without reordering noise.

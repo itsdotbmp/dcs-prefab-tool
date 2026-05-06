@@ -9,7 +9,7 @@ For the framework's cross-cutting rules (failure model, conventions, handle patt
 Every snippet in this directory assumes `sms` is loaded as a global. Load it once per mission:
 
 ```lua
-dofile("D:/git/dcs-sms/framework/load_all.lua")
+dofile("<path-to-dcs-sms>/framework/load_all.lua")
 ```
 
 (Or via the bridge: `./dcs-sms exec --file framework/load_all.lua`. See [`tools/cmd/dcs-sms/README.md`](../../tools/cmd/dcs-sms/README.md) for bridge setup.)

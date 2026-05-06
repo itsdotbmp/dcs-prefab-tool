@@ -18,10 +18,12 @@ You write `.lua` mission scripts that run inside DCS World. You want a smaller, 
 Load the framework once per mission. From a mission script (Triggers → Do Script File or `dofile` from your own loader):
 
 ```lua
-dofile("D:/git/dcs-sms/framework/load_all.lua")
+dofile("<path-to-dcs-sms>/framework/load_all.lua")
 -- sms is now available globally
 sms.log.info("framework version " .. sms.version)
 ```
+
+(Replace `<path-to-dcs-sms>` with wherever you cloned the repo, e.g. `D:/git/dcs-sms` or `~/dcs-sms`.)
 
 Or via the host-side bridge (see [`tools/cmd/dcs-sms/README.md`](../tools/cmd/dcs-sms/README.md)):
 
