@@ -19,6 +19,12 @@ local ok, err = pcall(function()
     -- later (window.lua attaches on its first show).
     local marquee_hook = require('dcs_sms_me.marquee_hook')
     marquee_hook.install()
+
+    -- Install the File > New hook eagerly too, so the wrapper is in place
+    -- before the prefab manager window first opens. Subscribers attach
+    -- from window.lua on its first show.
+    local new_mission_hook = require('dcs_sms_me.new_mission_hook')
+    new_mission_hook.install()
 end)
 if not ok then
     log.write('sms.me', log.ERROR, 'init failed: ' .. tostring(err))

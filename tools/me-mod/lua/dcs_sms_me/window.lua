@@ -57,6 +57,7 @@ local prefab_ops = require('dcs_sms_me.prefab_ops')
 local undo       = require('dcs_sms_me.undo')
 local dtc_skins  = require('dcs_sms_me.dtc_skins')
 local marquee_hook  = require('dcs_sms_me.marquee_hook')
+local new_mission_hook = require('dcs_sms_me.new_mission_hook')
 local airbase_detect = require('dcs_sms_me.airbase_detect')
 local warehouse_ops = require('dcs_sms_me.warehouse_ops')
 local version       = require('dcs_sms_me.version')
@@ -147,6 +148,7 @@ local W = {
     filter_input   = nil,        -- TextBox widget for the filter
     pending_airbases = nil,    -- set by marquee callback; consumed by on_save_click
     marquee_subscribed = false,-- one-shot guard so Ctrl+Shift+R reloads don't multi-subscribe
+    new_mission_subscribed = false,
     status_expires_at = nil,   -- os.time() at which set_status output should auto-clear
     status_tick_registered = false,
 }
@@ -526,8 +528,17 @@ local function on_save_click()
     end)
 end
 
+local populate_country_combo  -- forward decl: defined below, called from on_reload_click
+
 local function on_reload_click()
-    pcall(function() refresh_list(); set_status('Library reloaded.') end)
+    -- Re-populate the country dropdown alongside the library so users who
+    -- changed coalition assignments in the ME (Customize → Coalitions) can
+    -- pick up the change without closing and reopening the window.
+    pcall(function()
+        refresh_list()
+        populate_country_combo()
+        set_status('Library and countries reloaded.')
+    end)
 end
 
 local function require_selection(action_label)
@@ -631,11 +642,13 @@ local function is_filter_all()
 end
 
 -- (Re-)populate the country combobox from Mission.missionCountry. Called
--- on first build, on every M.show, and on Combat/All toggle. Per-item
--- skin shows a colored dot for the country's mission coalition (red /
--- blue / neutral). In Combat mode neutral countries are hidden — same
--- convention as the ME's airplane group panel (tbFilter).
-local function populate_country_combo()
+-- on first build, on every M.show, on Combat/All toggle, and on Reload
+-- (so users who change coalition assignments in the ME pick up the change
+-- without closing the window). Per-item skin shows a colored dot for the
+-- country's mission coalition (red / blue / neutral). In Combat mode
+-- neutral countries are hidden — same convention as the ME's airplane
+-- group panel (tbFilter).
+populate_country_combo = function()
     pcall(function()
         if not (W.country_combo and ListBoxItem) then return end
         local ok_req, Mission = pcall(require, 'me_mission')
@@ -1439,6 +1452,17 @@ function M.show()
             end
         end)
         W.marquee_subscribed = true
+    end
+
+    -- Subscribe to File > New so the prefab manager auto-closes alongside
+    -- the ME's own panels (coords_info, flightPlans, multiTemplate,
+    -- managerDTC) when the user starts a new mission. Same reload-safety
+    -- pattern as the marquee subscriber: reset the persistent list, then
+    -- attach this window's M.hide as the live subscriber.
+    if not W.new_mission_subscribed then
+        pcall(function() new_mission_hook.reset_subscribers() end)
+        new_mission_hook.subscribe(function() M.hide() end)
+        W.new_mission_subscribed = true
     end
 
     -- Register the status-bar auto-clear tick. UpdateManager fires every

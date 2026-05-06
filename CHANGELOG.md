@@ -78,6 +78,14 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.3.2] — 2026-05-06
+
+Two small UX fixes for the Prefab Manager.
+
+**Changed**
+- The Reload button now also re-populates the country dropdown. Users who change coalition assignments mid-session in `Customize → Coalitions` can pick up the change without closing and reopening the window. Status bar message updated to "Library and countries reloaded."
+- The Prefab Manager now auto-closes when the current mission is torn down — `File → New` or `File → Open` — matching the behavior of the ME's own panels (`coords_info`, `flightPlans`, `multiTemplate`, `managerDTC`). Wraps `me_toolbar.newMission` and `me_toolbar.loadMission` via a small `new_mission_hook` module that mirrors `marquee_hook`'s reload-safe subscriber pattern.
+
 ### [0.3.1] — 2026-05-06
 
 Fixes a placement bug where intra-prefab unit/group references were destroyed: statics linked to a carrier no longer followed the AC after spawn, aircraft set to start on a carrier deck spawned at world coordinates instead, and the carrier's own TACAN / ICLS / Link 4 task params, Link 16 datalinks, and Escort / EPLRS task references all kept the source-mission ids and broke at runtime.
