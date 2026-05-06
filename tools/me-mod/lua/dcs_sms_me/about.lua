@@ -65,7 +65,7 @@ function M.show()
         local Gui     = require('dxgui')
         local version = require('dcs_sms_me.version')
 
-        local w, h = 360, 320
+        local w, h = 360, 360
         local screen_w, screen_h = Gui.GetWindowSize()
         local x = math.floor((screen_w - w) / 2)
         local y = math.floor((screen_h - h) / 2)
