@@ -1873,10 +1873,10 @@ end
 -- DCS. Works cleanly because the Customize-menu item's click callback
 -- (set in menu.lua) does `require('dcs_sms_me.window')` AT CLICK TIME,
 -- not at registration — so once package.loaded is cleared, the menu
--- entry naturally picks up the new code on the next click. Same for
--- the floating-button fallback. The menu widget itself is in the dxgui
--- scene and outlives the require, and add_menu_entry's `_dcs_sms_prefab_added`
--- idempotency flag prevents a duplicate entry on the re-bootstrap.
+-- entry naturally picks up the new code on the next click. The menu
+-- widget itself is in the dxgui scene and outlives the require, and
+-- add_menu_entry's `_dcs_sms_prefab_added` idempotency flag prevents a
+-- duplicate entry on the re-bootstrap.
 function M.reload()
     log.write('sms.me', log.INFO, 'dev reload triggered')
     pcall(M.dispose)

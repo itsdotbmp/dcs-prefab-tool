@@ -128,7 +128,7 @@ Check `<Saved Games>\DCS\Logs\dcs.log` for any `[sms.me]` lines around the time 
 
 ## Prefab Manager
 
-The mod is one floating window — the **Prefab Manager** — under **Tools → DCS-SMS Prefab Manager** in the editor menu (or a floating button at the top-right on builds where the Tools menu API isn't exposed).
+The mod is one floating window — the **Prefab Manager** — opened from **DCS-SMS → Prefab Manager** in the editor's top menu bar.
 
 ### Saving a prefab
 

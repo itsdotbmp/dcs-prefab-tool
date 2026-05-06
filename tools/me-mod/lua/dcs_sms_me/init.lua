@@ -1,8 +1,8 @@
 -- init.lua — loaded by the require() line patched into MissionEditor.lua.
 --
--- Sub-project 3: registers a Tools-menu entry (with floating-button
--- fallback) instead of auto-showing the Prefab Manager window. The
--- window is constructed lazily on first toggle.
+-- Sub-project 3: registers a Tools-menu entry instead of auto-showing
+-- the Prefab Manager window. The window is constructed lazily on first
+-- toggle.
 --
 -- Outer pcall is the last-line defense: even if our require chain
 -- breaks, the ME continues loading normally.

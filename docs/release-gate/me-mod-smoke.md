@@ -6,9 +6,9 @@ For installation instructions and feature overview, see [`tools/me-mod/README.md
 
 ## Setup
 
-1. Run `tools/dcs-sms.exe install-me-mod`. Open the ME. Verify the Tools menu has a "DCS-SMS Prefab Manager" entry. Verify the window does NOT appear automatically.
-   - If the floating-button fallback fires instead (visible in `dcs.log` as `Tools menu API unavailable; using floating-button fallback`), that's expected on builds where the menu API isn't exposed — verify the floating button appears at top-right and clicking it opens the Manager.
-2. Open Tools → "DCS-SMS Prefab Manager". Window appears with all panels (Save / Library / Action / Status).
+1. Run `tools/dcs-sms.exe install-me-mod`. Open the ME. Verify the top menu bar shows a **DCS-SMS** entry containing **Prefab Manager** and **About**. Verify the Prefab Manager window does NOT appear automatically.
+2. Open **DCS-SMS → Prefab Manager**. Window appears with all panels (Save / Library / Action / Status).
+3. Open **DCS-SMS → About**. Dialog appears centered with the Coconut Cockpit logo, version string, and project URLs. Close button dismisses it.
 
 ## Save flow
 
