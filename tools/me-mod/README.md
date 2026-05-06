@@ -4,6 +4,10 @@
 
 # dcs-sms — Mission Editor mod
 
+[![Latest ME-mod release](https://img.shields.io/github/v/release/nielsvaes/dcs-sms?filter=me-mod-v*&label=latest&color=blue)](https://github.com/nielsvaes/dcs-sms/releases/latest)
+
+> **🚀 Quick start:** [**Download `dcs-sms.exe`**](https://github.com/nielsvaes/dcs-sms/releases/latest/download/dcs-sms.exe) → open a terminal in the folder you saved it to → run `dcs-sms.exe install-me-mod` → restart DCS. Open the Mission Editor and **DCS-SMS** will appear in the top menu bar.
+
 Custom in-editor extension that adds a **Prefab Manager** to DCS World's Mission Editor. Save a selection of groups / statics / zones / drawings to a reusable prefab; place them later by click or at their original location. Supports rotation, country override, airbase warehouse capture, per-ship warehouses, and undo.
 
 <p align="center">
