@@ -4,7 +4,15 @@
 
 # dcs-sms — Mission Editor mod
 
-> **🚀 Quick start:** [**Download `dcs-sms.exe`**](https://github.com/nielsvaes/dcs-sms/releases/latest/download/dcs-sms.exe) → open a terminal in the folder you saved it to → run `dcs-sms.exe install-me-mod` → restart DCS. Open the Mission Editor and **DCS-SMS** will appear in the top menu bar.
+> **🚀 Quick start:**
+>
+> 1. [**Download `dcs-sms.exe`**](https://github.com/nielsvaes/dcs-sms/releases/latest/download/dcs-sms.exe) — save it anywhere (Downloads is fine).
+> 2. Open a **CMD** or **PowerShell** terminal in that folder. (Don't know how? In File Explorer click the address bar, type `cmd`, press Enter.)
+> 3. Run: `dcs-sms.exe install-me-mod`
+> 4. **Fully quit DCS** (not just the Mission Editor) and start it again.
+> 5. Open the Mission Editor — **DCS-SMS** will appear in the top menu bar.
+>
+> Hit a snag? Jump to [Troubleshooting](#troubleshooting).
 
 Custom in-editor extension that adds a **Prefab Manager** to DCS World's Mission Editor. Save a selection of groups / statics / zones / drawings to a reusable prefab; place them later by click or at their original location. Supports rotation, country override, airbase warehouse capture, per-ship warehouses, and undo.
 
@@ -18,7 +26,7 @@ You design DCS missions in the Mission Editor and want to reuse pieces of one mi
 
 ## Install
 
-`dcs-sms.exe` is a command-line tool, not a GUI installer — double-clicking it won't do anything useful. Open a **CMD** or **PowerShell** terminal in the folder where you saved it and run:
+`dcs-sms.exe` is a command-line tool, not a GUI installer — double-clicking it won't do anything useful. Save it anywhere convenient (Downloads, Desktop, `C:\Tools`, wherever — the .exe doesn't write anything to that folder; it just needs to be where you can run it from). Then open a **CMD** or **PowerShell** terminal in that folder and run:
 
 ```powershell
 dcs-sms.exe install-me-mod
@@ -31,6 +39,8 @@ A successful run looks like this:
 <p align="center">
   <img src="../../assets/cmd.png" alt="dcs-sms.exe install-me-mod running in a CMD window — output shows 'copied', 'patched', 'Install complete. Restart DCS.'" width="780">
 </p>
+
+> 🛡️ **First-run Windows warning:** `dcs-sms.exe` is unsigned (signing certs cost money this project doesn't have), so Windows / Edge / Chrome may flag it as "unrecognised" on download or first run. Tell the warning to keep going — see [Troubleshooting → SmartScreen](#windows-smartscreen-says-windows-protected-your-pc) for the click path.
 
 That's the whole command. It auto-detects DCS at the standard install path (`C:\Program Files\Eagle Dynamics\DCS World` and similar locations).
 
@@ -54,6 +64,18 @@ After installing, **restart DCS** (a full restart, not just closing the Mission 
 
 For the binary itself, see [`tools/cmd/dcs-sms/README.md`](../cmd/dcs-sms/README.md).
 
+## Update
+
+When a new ME-mod release ships, [download the new `dcs-sms.exe`](https://github.com/nielsvaes/dcs-sms/releases/latest/download/dcs-sms.exe) and re-run the install command:
+
+```powershell
+dcs-sms.exe install-me-mod
+```
+
+The patch line in `MissionEditor.lua` stays in place; the Lua files under `MissionEditor/modules/dcs_sms_me/` get overwritten with the new version. Idempotent — re-running install as often as you like is safe.
+
+After updating, **fully quit DCS and start it again** (same reason as install — Lua files load once at DCS start).
+
 ## Uninstall
 
 ```powershell
@@ -61,6 +83,43 @@ dcs-sms.exe uninstall-me-mod
 ```
 
 Removes the patch block from `MissionEditor.lua` (surgically, by markers; falls back to backup-restore if the markers were edited away), deletes the modules directory, and deletes the backup.
+
+## Troubleshooting
+
+### Windows SmartScreen says "Windows protected your PC"
+
+`dcs-sms.exe` is unsigned, so Windows treats it as suspicious by default. You'll see this in two places:
+
+- **On download** — Edge / Chrome may warn that the file "might be dangerous" or block it. Click **Keep** (Edge) or the **^** menu → **Keep anyway** (Chrome).
+- **On first run** — Windows may show a blue dialog titled **"Windows protected your PC"**. Click **More info** (small text in the dialog) → **Run anyway**.
+
+You only have to do this once per binary. Subsequent runs of the same .exe go through silently.
+
+### I ran the .exe and nothing happened
+
+Most likely you double-clicked it. `dcs-sms.exe` is a command-line tool — double-clicking briefly opens and closes a terminal window with the help text and you don't see any output.
+
+Open a terminal *in the folder where you saved the .exe* (File Explorer → click the address bar → type `cmd` → Enter), then run `dcs-sms.exe install-me-mod` from there. The output stays visible until you close the terminal.
+
+### Install said "Install complete" but DCS-SMS isn't in the Mission Editor menu
+
+Almost always: you closed and re-opened the Mission Editor without restarting DCS itself. The patched `MissionEditor.lua` loads exactly once when DCS starts; closing-and-reopening the ME doesn't re-load it.
+
+Quit DCS World entirely (close it from the main menu, or kill it via Steam → right-click DCS → Manage → Stop). Start it again. Open the Mission Editor — the **DCS-SMS** menu should now be there.
+
+### "DCS install path not found"
+
+Auto-detect couldn't find DCS at the standard path. Pass `--dcs-path` once with the full path to your DCS install folder (the one containing `bin/`, `MissionEditor/`, and `Scripts/`):
+
+```powershell
+dcs-sms.exe install-me-mod --dcs-path "D:\Program Files\Eagle Dynamics\DCS World"
+```
+
+The path is cached to `%AppData%\dcs-sms\config.toml` for next time, so you only need this once.
+
+### Something else broke
+
+Check `<Saved Games>\DCS\Logs\dcs.log` for any `[sms.me]` lines around the time of the issue, then [open a bug report](https://github.com/nielsvaes/dcs-sms/issues/new?template=bug_report.yml) — paste the relevant log lines and the version number from the Prefab Manager title bar.
 
 ## Prefab Manager
 
