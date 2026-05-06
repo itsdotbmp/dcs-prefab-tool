@@ -73,8 +73,6 @@ Removes the patch block from `MissionEditor.lua` (surgically, by markers; falls 
 - **Per-ship warehouses.** Capture and apply per-ship warehouse data, riding inline on `unit._sms_warehouse` through serialization.
 - **Single-slot Undo.** Press **Ctrl-Z** with the Prefab Manager focused to undo the most recent place (groups + zones + drawings + airbase splices restored together).
 - **Library actions.** Reload, Rename, Delete; live name+theatre search; click-to-sort grid columns.
-- **Native ME confirmations.** Save-overwrite, Apply-airbase-supplies, Delete confirmations use DCS's `MsgWindow` — same look as the rest of the editor.
-- **Severity-coloured status bar.** Info (white), warning (yellow), error (red), placement (green). Auto-clears after 6 s except during place mode.
 
 ## Versioning
 
