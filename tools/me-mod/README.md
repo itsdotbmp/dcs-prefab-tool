@@ -6,9 +6,13 @@
 
 Custom in-editor extension that adds a **Prefab Manager** to DCS World's Mission Editor. Save a selection of groups / statics / zones / drawings to a reusable prefab; place them later by click or at their original location. Supports rotation, country override, airbase warehouse capture, per-ship warehouses, and undo.
 
+<p align="center">
+  <img src="../../assets/prefab-manager.png" alt="dcs-sms Prefab Manager — library on the left, click-to-place in progress on the map" width="900">
+</p>
+
 ## Audience
 
-You design DCS missions in the Mission Editor and want to reuse pieces of one mission in another. You don't need to write any Lua.
+You design DCS missions in the Mission Editor and want to reuse pieces of one mission in another.
 
 ## Install
 
