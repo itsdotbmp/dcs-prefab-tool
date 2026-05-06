@@ -26,6 +26,33 @@ Custom in-editor extension that adds a **Prefab Manager** to DCS World's Mission
 
 You design DCS missions in the Mission Editor and want to reuse pieces of one mission in another.
 
+## Features
+
+### Scope
+
+- Single unit, single static, or any selection up to a full FOB / airbase complex.
+- Drawings (lines, polygons, circles, arcs) saved with vertex deltas relative to the polygon anchor.
+- Trigger zones saved with name, position, radius, properties, color, type, and points.
+- Per-ship warehouses captured inline on each ship unit (coalition, jet fuel, aircraft, weapons, operating levels).
+- Per-airbase warehouses captured by marquee-selecting around the airbase: same data the `.miz` `warehouses` file holds.
+- Theatre captured at save time, used to refuse cross-theatre airbase apply.
+
+### Group fidelity
+
+- All waypoints preserved with route geometry, altitude, speed, ETA, formation template.
+- All waypoint actions / tasks preserved, including nested ComboTasks, conditions, and any Lua.
+- All group options preserved: ROE, alarm state, formations, callsigns, frequencies, payloads, liveries.
+- Aircraft-specific: Link 16 datalink network with team members, AIC/FF/VOC channels, STN codes, voice callsign labels, onboard numbers.
+- Naval-specific: TACAN, ICLS, Link 4 task params bound to the placed ship unit.
+
+### Cross-unit references
+
+- Statics linked to a host unit are preserved.
+- Aircraft set to start on a ship deck keep their parking binding.
+- Escort, EPLRS, and other group-id-bearing task params are remapped to the placed group.
+- Link 16 references preserverd.
+- References to units not present in the prefab are nil'd (cross-mission references that wouldn't resolve).
+
 ## Install
 
 `dcs-sms.exe` is a command-line tool, not a GUI installer — double-clicking it won't do anything useful. Save it anywhere convenient (Downloads, Desktop, `C:\Tools`, wherever — the .exe doesn't write anything to that folder; it just needs to be where you can run it from). Then open a **CMD** or **PowerShell** terminal in that folder and run:
