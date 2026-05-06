@@ -1,4 +1,10 @@
+<p align="center">
+  <img src="assets/logo.png" alt="Coconut Cockpit" width="160">
+</p>
+
 # dcs-sms
+
+[![Release ME-mod](https://github.com/nielsvaes/dcs-sms/actions/workflows/release-me-mod.yml/badge.svg)](https://github.com/nielsvaes/dcs-sms/actions/workflows/release-me-mod.yml)
 
 DCS scripting framework, Mission Editor extension, and host-side tooling.
 

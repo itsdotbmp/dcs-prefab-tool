@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../../../assets/logo.png" alt="Coconut Cockpit" width="160">
+</p>
+
 # dcs-sms.exe — host-side CLI
 
 Single Go-built binary that installs both the framework hook and the ME-mod, executes Lua snippets in a running DCS mission, and generates the framework's data catalogs.

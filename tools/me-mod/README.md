@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../../assets/logo.png" alt="Coconut Cockpit" width="160">
+</p>
+
 # dcs-sms — Mission Editor mod
 
 Custom in-editor extension that adds a **Prefab Manager** to DCS World's Mission Editor. Save a selection of groups / statics / zones / drawings to a reusable prefab; place them later by click or at their original location. Supports rotation, country override, airbase warehouse capture, per-ship warehouses, and undo.
