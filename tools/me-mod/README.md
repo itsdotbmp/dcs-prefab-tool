@@ -18,9 +18,19 @@ You design DCS missions in the Mission Editor and want to reuse pieces of one mi
 
 ## Install
 
+`dcs-sms.exe` is a command-line tool, not a GUI installer — double-clicking it won't do anything useful. Open a **CMD** or **PowerShell** terminal in the folder where you saved it and run:
+
 ```powershell
 dcs-sms.exe install-me-mod
 ```
+
+> 💡 Easiest way to open a terminal in a specific folder: in File Explorer, click the address bar, type `cmd`, and press Enter. The terminal opens with that folder as the working directory.
+
+A successful run looks like this:
+
+<p align="center">
+  <img src="../../assets/cmd.png" alt="dcs-sms.exe install-me-mod running in a CMD window — output shows 'copied', 'patched', 'Install complete. Restart DCS.'" width="780">
+</p>
 
 That's the whole command. It auto-detects DCS at the standard install path (`C:\Program Files\Eagle Dynamics\DCS World` and similar locations).
 
