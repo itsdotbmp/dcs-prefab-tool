@@ -34,10 +34,10 @@ dcs-sms.exe exec --file framework/load_all.lua
 ```lua
 local cap = sms.group.create({
   name     = "f18-cap",
-  position = {x = 0, y = 0, z = 0},
+  position = {x = 0, y = sms.utils.feet_to_meters(24000), z = 0},
   country  = sms.K.countries.USA,
   category = sms.K.category.AIRPLANE,
-  units    = { {type = sms.K.units.planes.FA_18C_hornet, alt = 6000, heading = 90} },
+  units    = { {type = sms.K.units.planes.FA_18C_hornet, alt = sms.utils.feet_to_meters(24000), heading = 90} },
 })
 
 local orbit_task = sms.task.orbit({x = 50000, y = 0, z = 0}, {
