@@ -66,15 +66,20 @@ For the binary itself, see [`tools/cmd/dcs-sms/README.md`](../cmd/dcs-sms/README
 
 ## Update
 
-When a new ME-mod release ships, [download the new `dcs-sms.exe`](https://github.com/nielsvaes/dcs-sms/releases/latest/download/dcs-sms.exe) and re-run the install command:
+The `dcs-sms.exe` you have can update itself in place — no manual re-download needed:
 
 ```powershell
+dcs-sms.exe update
 dcs-sms.exe install-me-mod
 ```
 
-The patch line in `MissionEditor.lua` stays in place; the Lua files under `MissionEditor/modules/dcs_sms_me/` get overwritten with the new version. Idempotent — re-running install as often as you like is safe.
+The first command pulls the newest release from GitHub and replaces this `dcs-sms.exe` (the previous binary is renamed to `dcs-sms.exe.old`, which is harmless and safe to delete). The second command applies the new ME-mod files to your DCS install. Re-running `install-me-mod` is idempotent — the patch line in `MissionEditor.lua` stays put; only the Lua files under `MissionEditor/modules/dcs_sms_me/` get overwritten.
 
-After updating, **fully quit DCS and start it again** (same reason as install — Lua files load once at DCS start).
+After updating, **fully quit DCS and start it again** — Lua files in `MissionEditor.lua` load once at DCS start.
+
+> 💡 Curious whether there's actually anything new? `dcs-sms.exe update --check` reports the available version without downloading.
+
+If you'd rather grab the binary by hand: [download the new `dcs-sms.exe`](https://github.com/nielsvaes/dcs-sms/releases/latest/download/dcs-sms.exe) directly, drop it over the old one, and run `dcs-sms.exe install-me-mod`. Same end state.
 
 ## Uninstall
 
