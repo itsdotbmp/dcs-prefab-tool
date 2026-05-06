@@ -20,3 +20,10 @@ DCS scripting framework, Mission Editor extension, and host-side tooling.
 - [`docs/api/`](docs/api/) — framework API reference.
 - [`CHANGELOG.md`](CHANGELOG.md) — release history (two parallel tracks).
 - [`AGENTS.md`](AGENTS.md) — contributor rules and conventions.
+
+## Licensing
+
+This repo is split-licensed. See [`LICENSE.md`](LICENSE.md) for the rationale.
+
+- **`framework/`** — [MIT](framework/LICENSE). Free for any use, including paid missions and ED-store campaigns.
+- **`tools/`** — [GNU GPL v3](tools/LICENSE). Covers the CLI, the ME-mod, and the in-DCS hook. Derivative works must remain GPL v3.

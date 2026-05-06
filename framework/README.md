@@ -80,6 +80,12 @@ The same type annotations and worked-example docs that drive editor autocomplete
 - [`AGENTS.md`](../AGENTS.md) — rules, conventions, and the failure model (log + return nil, never throw).
 - [`CHANGELOG.md`](../CHANGELOG.md) — release history; the **Framework** section tracks `framework-v*` tags.
 
+## License
+
+The framework is [MIT-licensed](LICENSE). Embed it in your missions — including paid campaigns sold on the ED store — without restriction.
+
+The wider repo is split-licensed: the `tools/` tree (CLI, ME-mod, in-DCS hook) ships under GPL v3. See [`LICENSE.md`](../LICENSE.md) at the repo root for the rationale.
+
 ## Versioning
 
 The framework ships under tags `framework-v0.x.y`. The canonical version string is `sms.version` in [`sms.lua`](sms.lua). See [`AGENTS.md` §11](../AGENTS.md#11-versioning-and-releases) for the full versioning rules.

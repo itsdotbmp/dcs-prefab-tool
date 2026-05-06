@@ -199,6 +199,12 @@ Apply is refused across theatres (a Caucasus airbase prefab can't be applied on 
 - **Undo** — `Ctrl-Z` with the Manager window focused undoes the most recent placement (groups, zones, drawings, and airbase splices all restored together).
 - **Library** — Reload (rescan disk), Rename, Delete, live name+theatre search, click-to-sort columns.
 
+## License
+
+The ME-mod is licensed under the [GNU General Public License, version 3](../LICENSE) (covering everything under `tools/`). You may use, modify, and distribute it, but derivative works must also be GPL v3 and ship with source.
+
+The framework (`framework/`) is MIT-licensed separately so mission makers can embed it freely. See [`LICENSE.md`](../../LICENSE.md) at the repo root for the full rationale.
+
 ## Versioning
 
 The ME-mod ships under tags `me-mod-v0.x.y`. The canonical version string lives at [`lua/dcs_sms_me/version.lua`](lua/dcs_sms_me/version.lua). See [`AGENTS.md` §11](../../AGENTS.md#11-versioning-and-releases) for the full rules.

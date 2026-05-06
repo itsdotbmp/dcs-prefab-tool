@@ -138,6 +138,12 @@ dcs-sms.exe update --check
 
 Self-update is currently Windows-only. Linux/macOS users are expected to rebuild from source via `go build ./cmd/dcs-sms`.
 
+## License
+
+The CLI is licensed under the [GNU General Public License, version 3](../../LICENSE) (covering everything under `tools/`). You may use, modify, and distribute it, but derivative works must also be GPL v3 and ship with source.
+
+The framework (`framework/`) is MIT-licensed separately so mission makers can embed it freely. See [`LICENSE.md`](../../../LICENSE.md) at the repo root for the full rationale.
+
 ## Versioning
 
 The CLI binary is bundled with each ME-mod release (`me-mod-v0.x.y` tag). It does not have its own version track. See [`AGENTS.md` §11](../../../AGENTS.md#11-versioning-and-releases).
