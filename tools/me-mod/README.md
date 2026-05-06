@@ -62,17 +62,73 @@ dcs-sms.exe uninstall-me-mod
 
 Removes the patch block from `MissionEditor.lua` (surgically, by markers; falls back to backup-restore if the markers were edited away), deletes the modules directory, and deletes the backup.
 
-## Features
+## Prefab Manager
 
-- **Prefab Manager window.** Tools menu → DCS-SMS Prefab Manager (or floating-button fallback on builds without the menu API).
-- **Save flow.** Distill a selection of groups, statics, zones, and drawings into a single prefab file under `<Saved Games>\DCS\dcs-sms\prefabs\<name>.lua`. Multi-selection supported.
-- **Place flow.** Place at original location, or click-to-place with a yellow bbox preview. Right-drag pan, mouse-wheel zoom, Esc to cancel. Double-click a library row to enter click-place for that prefab.
-- **Rotation.** Rotation dial + spinbox; rotation applies to groups, statics, drawings, and zones together.
-- **Country override.** Pick a country at place time; placement is refused if any unit type is missing from the chosen country's catalog (avoids silent fallbacks like ships becoming "Boat Armed Hi-Speed").
-- **Airbase warehouse capture.** Marquee-detect customised airbases inside a rect at save time and bundle their warehouse data (coalition, fuel, aircraft, weapons, operating levels) into the prefab. Apply on Place to the same-named airbase, with theatre-mismatch refusal and country-coalition override.
-- **Per-ship warehouses.** Capture and apply per-ship warehouse data, riding inline on `unit._sms_warehouse` through serialization.
-- **Single-slot Undo.** Press **Ctrl-Z** with the Prefab Manager focused to undo the most recent place (groups + zones + drawings + airbase splices restored together).
-- **Library actions.** Reload, Rename, Delete; live name+theatre search; click-to-sort grid columns.
+The mod is one floating window — the **Prefab Manager** — under **Tools → DCS-SMS Prefab Manager** in the editor menu (or a floating button at the top-right on builds where the Tools menu API isn't exposed).
+
+### Saving a prefab
+
+Select what you want to capture (groups, statics, zones, drawings — multi-selection works), type a name in the **Name** field, click **Save**. The prefab is written to:
+
+```
+<Saved Games>\DCS\dcs-sms\prefabs\<name>.lua
+```
+
+These are plain Lua tables — readable, editable in any text editor, version-controllable.
+
+**Marquee-selecting over an airbase** puts the airbase into the selection too, alongside any groups / zones / drawings inside the rect. This is how you capture airbase customisations (warehouse contents, coalition) into a prefab — there's no other way to add an airbase by clicking it directly.
+
+<p align="center">
+  <img src="../../assets/airbase-in-selection.png" alt="Marquee selection in the editor — the 'Snow city' airbase appears in the multi-selection panel alongside groups and zones" width="900">
+</p>
+
+### Placing a prefab — two modes
+
+**Place at original location** drops the prefab back at the exact world coordinates it was saved from. Useful when the prefab was saved on this same theatre and you want it back where it was.
+
+**Place at click** enters cursor-following placement. The yellow preview rectangle tracks your mouse; left-click to commit, right-drag to pan the map, mouse-wheel to zoom, Esc to cancel.
+
+<p align="center">
+  <img src="../../assets/placement-mode.png" alt="Place-at-click mode — yellow preview rectangle following the cursor on an empty map" width="900">
+</p>
+
+> 💡 **Shortcut:** double-click any row in the library to jump straight into Place-at-click mode for that prefab. Saves the row-then-button click.
+
+Rotation, country override, and the airbase-supplies prompt all happen at place time — set them in the controls before clicking Place.
+
+### Library columns
+
+| Column | Meaning |
+|---|---|
+| **Name** | The prefab's filename (without `.lua`). Click the header to sort. |
+| **Theatre** | The map the prefab was saved on. Place-at-original-location refuses across theatres. |
+| **Fixed Pos** | `Yes` if the prefab is meant to live at one specific spot on its theatre (e.g. a SAM site defending a specific airfield). You can still Place-at-click it elsewhere — just know you're going off-script. |
+| **AB** | `Yes` if the prefab includes airbase warehouse data (see below). |
+| **G** / **S** / **Z** / **D** | Counts of groups / statics / zones / drawings inside. |
+
+The **Fixed Pos** column at a glance:
+
+<p align="center">
+  <img src="../../assets/save-at-orig.png" alt="Library grid with the Fixed Pos column highlighted on a row that has Yes" width="900">
+</p>
+
+### Airbase supplies (AB column)
+
+When a prefab has `Yes` in the **AB** column, it's bundled with custom warehouse data for one or more airbases (coalition, fuel stocks, aircraft inventory, weapons inventory, operating levels). Placing the prefab pops a confirmation asking whether you want to apply those supplies to the destination airbase:
+
+<p align="center">
+  <img src="../../assets/airbase-supplies.png" alt="Apply Airbase Supplies confirmation dialog over the editor — 'The prefab you're placing has custom supplies for Ramat David. Apply?'" width="900">
+</p>
+
+Apply is refused across theatres (a Caucasus airbase prefab can't be applied on Syria) and the destination airbase's coalition is forced to match the place-time country.
+
+### Other actions
+
+- **Rotation** — dial + spinbox at the bottom-left. Rotation applies to all entities in the prefab together (groups, statics, drawings, zones).
+- **Country override** — dropdown with a Combat/All toggle and coalition-coloured dots. Placement is refused if any unit type isn't in the chosen country's catalog (no silent ship-becomes-fast-boat fallbacks).
+- **Per-ship warehouses** — captured and applied per-ship through the same airbase-supplies flow.
+- **Undo** — `Ctrl-Z` with the Manager window focused undoes the most recent placement (groups, zones, drawings, and airbase splices all restored together).
+- **Library** — Reload (rescan disk), Rename, Delete, live name+theatre search, click-to-sort columns.
 
 ## Versioning
 
