@@ -112,6 +112,32 @@ Regenerates the unit / static catalogs (under `framework/constants/`) from `dcs-
 dcs-sms.exe gen-units --datamine-root D:/git/dcs-lua-datamine
 ```
 
+### Self-update — fetch the latest release in place
+
+#### `update`
+
+Hits the GitHub Releases API, finds the most recent release that ships a `dcs-sms.exe` asset, and replaces this binary in place. The previous binary is renamed to `dcs-sms.exe.old` (harmless; safe to delete manually).
+
+```sh
+dcs-sms.exe update
+```
+
+After a successful update, run `dcs-sms.exe install-me-mod` to apply the new ME-mod files inside DCS.
+
+#### `update --check`
+
+Reports whether an update is available without downloading or modifying anything. Useful for periodic "is there anything new?" checks.
+
+```sh
+dcs-sms.exe update --check
+# Up to date (v0.2.0)
+#   - or -
+# Update available: v0.1.0 → v0.2.0
+# Run `dcs-sms.exe update` to install.
+```
+
+Self-update is currently Windows-only. Linux/macOS users are expected to rebuild from source via `go build ./cmd/dcs-sms`.
+
 ## Versioning
 
 The CLI binary is bundled with each ME-mod release (`me-mod-v0.x.y` tag). It does not have its own version track. See [`AGENTS.md` §11](../../../AGENTS.md#11-versioning-and-releases).
