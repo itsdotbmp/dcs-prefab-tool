@@ -78,6 +78,15 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.3.1] — 2026-05-06
+
+Fixes a placement bug where intra-prefab unit/group references were destroyed: statics linked to a carrier no longer followed the AC after spawn, aircraft set to start on a carrier deck spawned at world coordinates instead, and the carrier's own TACAN / ICLS / Link 4 task params, Link 16 datalinks, and Escort / EPLRS task references all kept the source-mission ids and broke at runtime.
+
+**Fixed**
+- `Place` now does a four-pass injection (allocate → remap → inject → relink). A prefab-wide old→new id map is built across every group BEFORE any insertion, then every known id-bearing field (`linkUnit.unitId`, `helipadId`, `missionUnitId`, ActivateBeacon / ActivateICLS / ActivateLink4 `unitId`, Escort / EPLRS `groupId`) is rewritten via the map. Ids that don't resolve in-prefab are nilled (matches the pre-fix safety for cross-mission references). `airdromeId` is preserved when placing at the original anchor (`Place at original location`) and nilled otherwise (would otherwise bind aircraft to a far-away airbase at click-anchor placements).
+- After insertion, every linked waypoint has its runtime link re-established via `Mission.linkWaypoint` — same dance `me_copy_paste.duplicateGroup` does. This populates the host unit's `linkChildren` list, which is what the ME's delete-cascade walks. Without this step, the data on disk was correct but the runtime didn't know about the link: moving the host unit didn't move its dependents until the mission was saved (forcing a re-parse), and deleting the host left orphans that broke `File > New`. `helipadId` / `airdromeId` are stashed around the relink because `unlinkWaypoint` clears them as a side effect.
+- `unit.linkChildren` and `unit.linkChildrenTZone` are now cleared on every placed unit before relinking. The source mission may have populated them with live runtime waypoint references; distill strips the `boss` back-refs, so the entries survive into the placed unit half-dead. ME's drag handler walks the list and nil-indexes on `wpt.boss`, breaking ME state to the point where `File > New` errors out. Mirrors `me_copy_paste.duplicateGroup` lines 337–338.
+
 ### [0.3.0] — 2026-05-06
 
 The mod's chrome now identifies the project. New About dialog with the Coconut Cockpit logo, plus a branded window title.

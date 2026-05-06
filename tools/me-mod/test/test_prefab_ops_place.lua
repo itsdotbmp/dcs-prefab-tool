@@ -375,6 +375,193 @@ do
           type(m) == 'table' and #m == 1 and m[1] == 'CVN_71_Theodore_Roosevelt')
 end
 
+-- ---------------------------------------------------------------------------
+-- _remap_ids: rewrite stale source unit/group ids inside a placed group to
+-- the new ids allocated for the same prefab. Driven by the carrier-test bug
+-- where statics linked to the carrier (linkUnit.unitId), aircraft starting
+-- on the carrier (helipadId), the carrier's own beacon tasks (ActivateBeacon
+-- unitId), Link 16 datalinks (missionUnitId), and Escort/EPLRS task params
+-- (groupId) all kept the source-mission ids and broke at runtime.
+--
+-- Maps are { [old_id] = new_id }. Anything not in the map is treated as a
+-- truly cross-mission reference and gets nilled (matches the pre-fix safety
+-- behavior for fields that were nilled unconditionally).
+-- ---------------------------------------------------------------------------
+do
+    local uid_map = { [225] = 14, [226] = 4, [227] = 5, [228] = 6, [229] = 7, [234] = 1 }
+    local gid_map = { [698] = 50, [700] = 51 }
+
+    -- Carrier-style group: the unit's own unitId remaps to its new value.
+    local carrier = {
+        groupId = 698,
+        units = { { unitId = 225, type = 'CVN_71_Theodore_Roosevelt' } },
+        route = {
+            points = {
+                [1] = {
+                    task = {
+                        params = {
+                            tasks = {
+                                [1] = { id = 'WrappedAction', params = {
+                                    action = { id = 'ActivateBeacon', params = { unitId = 225 } } } },
+                                [2] = { id = 'WrappedAction', params = {
+                                    action = { id = 'ActivateICLS', params = { unitId = 225 } } } },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+    prefab_ops._remap_ids(carrier, uid_map, gid_map, { keep_airdrome_ids = false })
+    check('remap: carrier groupId 698→50', carrier.groupId == 50, 'got ' .. tostring(carrier.groupId))
+    check('remap: carrier unit unitId 225→14', carrier.units[1].unitId == 14,
+          'got ' .. tostring(carrier.units[1].unitId))
+    check('remap: ActivateBeacon unitId 225→14',
+          carrier.route.points[1].task.params.tasks[1].params.action.params.unitId == 14)
+    check('remap: ActivateICLS unitId 225→14',
+          carrier.route.points[1].task.params.tasks[2].params.action.params.unitId == 14)
+
+    -- Static linked to the carrier: route.points[1].linkUnit.unitId remaps.
+    local static = {
+        groupId = 234,                      -- not in gid_map; nil out
+        linkOffset = true,
+        units = { { unitId = 234, type = 'AS32-31A' } },
+        route = {
+            points = {
+                [1] = {
+                    helipadId = 225,        -- ref to carrier
+                    linkUnit = { unitId = 225, alt = 0, frequency = 127500000 },
+                },
+            },
+        },
+    }
+    prefab_ops._remap_ids(static, uid_map, gid_map, { keep_airdrome_ids = false })
+    check('remap: static linkUnit.unitId 225→14',
+          static.route.points[1].linkUnit.unitId == 14)
+    check('remap: static helipadId 225→14',
+          static.route.points[1].helipadId == 14)
+    check('remap: static.linkOffset preserved (not an id field)',
+          static.linkOffset == true)
+    check('remap: static.groupId not in map → nilled',
+          static.groupId == nil)
+    check('remap: static unit.unitId 234→1', static.units[1].unitId == 1)
+
+    -- Aircraft starting on the carrier: TakeOffParking with helipadId + linkUnit.
+    -- Datalink network has missionUnitId references to its own flight members.
+    local aircraft = {
+        groupId = 698,                      -- not the carrier's group; coincidence — both 698 in source
+        units = {
+            { unitId = 226, type = 'FA-18C_hornet', datalinks = { Link16 = { network = { teamMembers = {
+                [1] = { missionUnitId = 226 },
+                [2] = { missionUnitId = 227 },
+                [3] = { missionUnitId = 228 },
+                [4] = { missionUnitId = 229 },
+            } } } } },
+        },
+        route = {
+            points = {
+                [1] = {
+                    type = 'TakeOffParking',
+                    helipadId = 225,
+                    linkUnit = { unitId = 225 },
+                    airdromeId = 12,        -- map airbase id; behaviour depends on opts
+                },
+            },
+        },
+    }
+    prefab_ops._remap_ids(aircraft, uid_map, gid_map, { keep_airdrome_ids = false })
+    check('remap: aircraft helipadId 225→14',
+          aircraft.route.points[1].helipadId == 14)
+    check('remap: aircraft linkUnit.unitId 225→14',
+          aircraft.route.points[1].linkUnit.unitId == 14)
+    check('remap: aircraft Link16 missionUnitId[1] 226→4',
+          aircraft.units[1].datalinks.Link16.network.teamMembers[1].missionUnitId == 4)
+    check('remap: aircraft Link16 missionUnitId[4] 229→7',
+          aircraft.units[1].datalinks.Link16.network.teamMembers[4].missionUnitId == 7)
+    check('remap: airdromeId nilled when keep_airdrome_ids=false',
+          aircraft.route.points[1].airdromeId == nil)
+
+    -- airdromeId preserved when keep_airdrome_ids=true (place at original anchor).
+    local aircraft2 = {
+        groupId = 700, units = { { unitId = 226 } },
+        route = { points = { [1] = { airdromeId = 12 } } },
+    }
+    prefab_ops._remap_ids(aircraft2, uid_map, gid_map, { keep_airdrome_ids = true })
+    check('remap: airdromeId preserved when keep_airdrome_ids=true',
+          aircraft2.route.points[1].airdromeId == 12)
+
+    -- Escort task: route.points[].task.params.tasks[].params.groupId is a
+    -- reference to the bombers; remap via gid_map.
+    local viper_escort = {
+        groupId = 700,                      -- in gid_map → remaps to 51
+        units = { { unitId = 226 } },
+        route = {
+            points = {
+                [1] = {
+                    task = { params = { tasks = {
+                        [1] = { id = 'ControlledTask', params = {
+                            task = { id = 'Escort', params = { groupId = 698 } } } },
+                    } } },
+                },
+            },
+        },
+    }
+    prefab_ops._remap_ids(viper_escort, uid_map, gid_map, { keep_airdrome_ids = false })
+    check('remap: Escort task groupId 698→50',
+          viper_escort.route.points[1].task.params.tasks[1].params.task.params.groupId == 50)
+    check('remap: viper_escort own groupId 700→51',
+          viper_escort.groupId == 51)
+
+    -- EPLRS task: action.params.groupId is also a group reference.
+    local eplrs = {
+        groupId = 700, units = { { unitId = 226 } },
+        route = { points = { [1] = { task = { params = { tasks = {
+            [1] = { id = 'WrappedAction', params = {
+                action = { id = 'EPLRS', params = { value = true, groupId = 698 } } } },
+        } } } } } },
+    }
+    prefab_ops._remap_ids(eplrs, uid_map, gid_map, { keep_airdrome_ids = false })
+    check('remap: EPLRS groupId 698→50',
+          eplrs.route.points[1].task.params.tasks[1].params.action.params.groupId == 50)
+
+    -- Cross-mission reference (id not in any map): nil it. Matches pre-fix
+    -- safety for linkUnit/helipadId.
+    local stale = {
+        groupId = 9999,                     -- not in gid_map
+        units = { { unitId = 9998 } },      -- not in uid_map
+        route = { points = { [1] = {
+            helipadId = 12345,              -- not in uid_map → nil
+            linkUnit  = { unitId = 12345 }, -- inner unitId nilled; rest of linkUnit kept
+        } } },
+    }
+    prefab_ops._remap_ids(stale, uid_map, gid_map, { keep_airdrome_ids = false })
+    check('remap: stale groupId nilled', stale.groupId == nil)
+    check('remap: stale unit.unitId nilled', stale.units[1].unitId == nil)
+    check('remap: stale helipadId nilled', stale.route.points[1].helipadId == nil)
+    check('remap: stale linkUnit.unitId nilled',
+          stale.route.points[1].linkUnit and stale.route.points[1].linkUnit.unitId == nil)
+
+    -- Robust against missing route / units (statics-only minimal shape).
+    local minimal = { groupId = 234, units = nil, route = nil }
+    prefab_ops._remap_ids(minimal, uid_map, gid_map, {})
+    check('remap: minimal group (no route, no units) does not error',
+          minimal.groupId == nil)  -- 234 is in uid_map but not gid_map → nil
+
+    -- Idempotent: a second pass over already-remapped data is a no-op (new
+    -- ids are not in the maps, so nothing matches).
+    local twice = {
+        groupId = 698,
+        units = { { unitId = 225 } },
+        route = { points = { [1] = { linkUnit = { unitId = 225 } } } },
+    }
+    prefab_ops._remap_ids(twice, uid_map, gid_map, {})
+    prefab_ops._remap_ids(twice, uid_map, gid_map, {})
+    check('remap: idempotent — groupId stays at new value 50', twice.groupId == 50)
+    check('remap: idempotent — unit.unitId stays at new value 14', twice.units[1].unitId == 14)
+    check('remap: idempotent — linkUnit.unitId stays at new value 14',
+          twice.route.points[1].linkUnit.unitId == 14)
+end
+
 if failures > 0 then
     print(string.format('%d failure(s)', failures))
     os.exit(1)

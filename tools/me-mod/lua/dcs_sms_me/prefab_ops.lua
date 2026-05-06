@@ -533,6 +533,76 @@ local function transform_headings(t, rotation_deg)
 end
 M._transform_headings = transform_headings
 
+-- Cross-prefab id remap. Walks a placed group recursively and rewrites every
+-- known unit/group id reference using the supplied old→new maps. Driven by
+-- the carrier-test bug: when a prefab contains units that reference each
+-- other (statics linked to a carrier, aircraft starting on the carrier's
+-- deck, the carrier's own TACAN/ICLS broadcasts, Link 16 datalinks, Escort/
+-- EPLRS task params), the source mission ids must be remapped to the new
+-- ids allocated for this placement — otherwise links silently break.
+--
+-- Reference fields handled:
+--   unitId        — `linkUnit.unitId`, `helipadId` (waypoint), `missionUnitId`
+--                   (Link 16 teamMembers), and ActivateBeacon / ActivateICLS
+--                   / ActivateLink4 task params. Also rewrites the unit's
+--                   own `unit.unitId` when it appears as a key.
+--   groupId       — `task.params.groupId` (EPLRS, Escort), and the group's
+--                   own `group.groupId`.
+--   missionUnitId — Link 16 datalink network teamMembers.
+--   helipadId     — waypoint binding to a ship deck slot.
+--   airdromeId    — map airbase id; preserved when keep_airdrome_ids=true
+--                   (placing at original anchor), nilled otherwise.
+--
+-- Lookup behaviour:
+--   - If the value is in the map → rewritten to the new id.
+--   - If the value is NOT in the map → nilled. Matches the pre-fix safety
+--     behaviour for fields that were unconditionally nilled (linkUnit,
+--     helipadId), and prevents stale cross-mission references from
+--     surviving for fields that were unconditionally kept (task params,
+--     datalink network).
+--   - airdromeId is nilled-or-kept based solely on opts.keep_airdrome_ids.
+--
+-- Caller MUST pass maps built from the OLD ids of every group in the
+-- prefab (across all groups, not just this one — that's the whole point;
+-- a static linked to a carrier needs the carrier's old→new entry to
+-- resolve the linkUnit reference).
+local UID_KEYS = { unitId = true, missionUnitId = true, helipadId = true }
+local GID_KEYS = { groupId = true }
+function M._remap_ids(group, uid_map, gid_map, opts)
+    if type(group) ~= 'table' then return end
+    opts = opts or {}
+    local keep_airdrome_ids = opts.keep_airdrome_ids == true
+    uid_map = uid_map or {}
+    gid_map = gid_map or {}
+
+    -- Build "already a new id" sets so a second pass over already-remapped
+    -- data is a no-op (idempotency: call-twice does not nil out fresh ids).
+    local is_new_uid, is_new_gid = {}, {}
+    for _, new in pairs(uid_map) do is_new_uid[new] = true end
+    for _, new in pairs(gid_map) do is_new_gid[new] = true end
+
+    local seen = {}
+    local function walk(t)
+        if type(t) ~= 'table' then return end
+        if seen[t] then return end
+        seen[t] = true
+        for k, v in pairs(t) do
+            if type(v) == 'number' then
+                if UID_KEYS[k] then
+                    if not is_new_uid[v] then t[k] = uid_map[v] end
+                elseif GID_KEYS[k] then
+                    if not is_new_gid[v] then t[k] = gid_map[v] end
+                elseif k == 'airdromeId' then
+                    if not keep_airdrome_ids then t[k] = nil end
+                end
+            elseif type(v) == 'table' then
+                walk(v)
+            end
+        end
+    end
+    walk(group)
+end
+
 -- Deep-copy a table. Used so place can transform without mutating the
 -- registered template (caller may place the same prefab multiple times).
 local function deep_copy(v, seen)
@@ -591,16 +661,21 @@ local function resolve_country(group)
 end
 
 -- Groups (and statics, which are groups of type='static') — full
--- duplicateGroup-style injection: regenerate ids, set boss links,
--- prep mapObjects, then create + insert + create_map_objects.
+-- duplicateGroup-style injection: assumes group.groupId / unit.unitId have
+-- already been replaced with freshly-allocated ids by the caller (and that
+-- intra-prefab id references have been remapped — see M._remap_ids), then
+-- sets boss links, prep mapObjects, then create + insert + create_map_objects.
 --
 -- Mirrors the behavior of me_copy_paste.duplicateGroup but:
 --   - resolves country from numeric id (we strip boss during distill)
 --   - skips the Surface check (would pop a UI warning on water-placed)
---   - skips EPLRS / INUFixPoints / NavTargetPoints regeneration (rare;
+--   - skips INUFixPoints / NavTargetPoints regeneration (rare;
 --     v2 work if a real prefab needs them)
---   - skips link-waypoint resolution (linkUnit/linkParent reference IDs
---     from the source mission and won't resolve here — nilled out)
+--
+-- Id allocation + cross-prefab id remap happen in M.place's three-pass
+-- pipeline (allocate → remap → inject) so that statics linked to a carrier
+-- in the same prefab keep their linkUnit pointing at the carrier's NEW id
+-- instead of being nilled. See the carrier-test bug write-up.
 --
 -- Removal (undo) goes through Mission.remove_group(group_obj) — see the
 -- M._remove.group wrapper below.
@@ -617,19 +692,14 @@ local function inject_group(group)
     if not country[group.type] then country[group.type] = { group = {} } end
     if not country[group.type].group then country[group.type].group = {} end
 
-    -- Regenerate group identity. check_group_name appends -1, -2, ... if
-    -- the name is taken; getNewGroupId reserves a fresh id. Both are
-    -- module-public functions in me_mission.
+    -- Reserve a fresh, conflict-free group name. The new groupId was
+    -- already written by M.place via _remap_ids before we got here.
     local fresh_name = group.name or 'group'
     if type(Mission.check_group_name) == 'function' then
         local ok, n = pcall(Mission.check_group_name, fresh_name)
         if ok and type(n) == 'string' then fresh_name = n end
     end
     group.name = fresh_name
-    if type(Mission.getNewGroupId) == 'function' then
-        local ok, gid = pcall(Mission.getNewGroupId)
-        if ok then group.groupId = gid end
-    end
     if type(Mission.group_by_name) == 'table' then
         Mission.group_by_name[group.name] = group
     end
@@ -646,9 +716,8 @@ local function inject_group(group)
         group.color = Mission.countryCoalition[country_name].color
     end
 
-    -- Regenerate units. Each unit needs a fresh name+id and back-link to
-    -- the group. Strip parking links — they reference airfield slots from
-    -- the source mission that won't be valid at the new anchor.
+    -- Reserve fresh unit names; back-link to the group; strip parking links.
+    -- Unit ids were already remapped by _remap_ids before we got here.
     if type(group.units) == 'table' then
         for _, u in pairs(group.units) do
             if type(u) == 'table' then
@@ -656,15 +725,20 @@ local function inject_group(group)
                     local ok, nm = pcall(Mission.getUnitName, group.name)
                     if ok and type(nm) == 'string' then u.name = nm end
                 end
-                if type(Mission.getNewUnitId) == 'function' then
-                    local ok, uid = pcall(Mission.getNewUnitId)
-                    if ok then u.unitId = uid end
-                end
                 u.boss = group
                 u.parking = nil
                 u.parking_landing = nil
                 u.parking_id = nil
                 u.parking_landing_id = nil
+                -- Clear runtime link lists baked into the unit data by the
+                -- source mission. distill strips `boss` back-refs, so each
+                -- entry in here is half-dead — its `boss` is nil. ME's drag
+                -- handler walks unit.linkChildren and accesses wpt.boss
+                -- (me_map_window.lua:3086), which would nil-index and break
+                -- ME state. Pass E rebuilds these lists with live entries
+                -- via Mission.linkWaypoint. Mirrors me_copy_paste:337-338.
+                u.linkChildren     = nil
+                u.linkChildrenTZone = nil
                 if type(Mission.unit_by_name) == 'table' and u.name then
                     Mission.unit_by_name[u.name] = u
                 end
@@ -675,19 +749,13 @@ local function inject_group(group)
         end
     end
 
-    -- Reset route waypoints (only present on non-static groups). Clear
-    -- linkUnit/linkParent — they reference units from the source mission
-    -- that don't exist here. Targets array also gets cleared (per
-    -- duplicateGroup line 306) since target IDs are source-mission-scoped.
+    -- Set the boss back-link on every route waypoint. linkUnit / helipadId /
+    -- airdromeId / nested task params were already handled by _remap_ids in
+    -- M.place's pipeline.
     if type(group.route) == 'table' and type(group.route.points) == 'table' then
         for _, wpt in pairs(group.route.points) do
             if type(wpt) == 'table' then
                 wpt.boss = group
-                wpt.linkUnit = nil
-                wpt.linkParent = nil
-                wpt.targets = {}
-                wpt.airdromeId = nil
-                wpt.helipadId = nil
             end
         end
     end
@@ -881,47 +949,126 @@ function M.place(prefab, opts)
         return #record.groups + #record.zones + #record.drawings
     end
 
-    -- Groups (includes statics — they are groups with type='static' in DCS).
-    for _, g_template in ipairs(prefab.groups or {}) do
-        local g = deep_copy(g_template)
+    -- Three-pass placement (allocate → remap → inject). Driven by the
+    -- carrier-test bug: a static's linkUnit, an aircraft's helipadId, the
+    -- carrier's own ActivateBeacon/ICLS unitId, Link 16 missionUnitId, and
+    -- Escort/EPLRS task params all reference unit/group ids from the SOURCE
+    -- mission. Allocating new ids per-group and nilling references (the old
+    -- behavior) destroyed every intra-prefab link. The three-pass version
+    -- builds a cross-prefab old→new id map first, then rewrites every
+    -- known-id-bearing field via _remap_ids, then inject_group runs without
+    -- re-allocating ids or nilling links.
+
+    -- Pass A: deep-copy + transform every group/static into "placeable"
+    -- entries. Keeps the per-group injection loop below working off the same
+    -- copies _remap_ids will walk.
+    local placeable = {}
+    local function add_placeable(template, kind)
+        local g = deep_copy(template)
         override_country(g, opts.country_name)
         transform_coords(g, anchor, rotation)
         transform_headings(g, rotation)
+        placeable[#placeable + 1] = { template = template, copy = g, kind = kind }
+    end
+    for _, g_t in ipairs(prefab.groups  or {}) do add_placeable(g_t, 'group')  end
+    for _, s_t in ipairs(prefab.statics or {}) do add_placeable(s_t, 'static') end
+
+    -- Pass B: allocate fresh group + unit ids across ALL placeables and
+    -- record old→new in cross-prefab maps. Uses Mission.getNewGroupId /
+    -- getNewUnitId — same module-public allocators me_copy_paste relies on.
+    local Mission = require('me_mission')
+    local uid_map, gid_map = {}, {}
+    for _, p in ipairs(placeable) do
+        local g = p.copy
+        if g.groupId and type(Mission.getNewGroupId) == 'function' then
+            local ok, gid = pcall(Mission.getNewGroupId)
+            if ok then gid_map[g.groupId] = gid end
+        end
+        if type(g.units) == 'table' then
+            for _, u in ipairs(g.units) do
+                if u.unitId and type(Mission.getNewUnitId) == 'function' then
+                    local ok, uid = pcall(Mission.getNewUnitId)
+                    if ok then uid_map[u.unitId] = uid end
+                end
+            end
+        end
+    end
+
+    -- Pass C: remap. Rewrites group.groupId / unit.unitId AND every nested
+    -- id reference (linkUnit, helipadId, missionUnitId, task params, ...)
+    -- via the maps. References that don't resolve in-prefab get nilled
+    -- (matches the pre-fix safety for cross-mission references). airdromeId
+    -- is preserved only when placing at the original anchor.
+    local remap_opts = { keep_airdrome_ids = opts.keep_position == true }
+    for _, p in ipairs(placeable) do
+        M._remap_ids(p.copy, uid_map, gid_map, remap_opts)
+    end
+
+    -- Pass D: per-group inject. inject_group no longer allocates ids or nils
+    -- linkUnit/etc — passes A/B/C already handled both.
+    for _, p in ipairs(placeable) do
+        local g = p.copy
+        local label = p.kind == 'static' and 'static' or 'group'
         local result, err = inject_group(g)
         if result then
             record.groups[#record.groups + 1] = {
-                orig_name  = g_template.name,
+                orig_name  = p.template.name,
                 runtime_id = (type(result) == 'number') and result or g.groupId,
                 group_obj  = g,  -- kept for undo (remove_group needs the full object)
             }
             if err then
-                -- Partial success: inserted into data table but map objects failed.
-                record.errors[#record.errors + 1] = 'group ' .. tostring(g_template.name) .. ' (partial): ' .. err
+                record.errors[#record.errors + 1] = label .. ' ' .. tostring(p.template.name)
+                    .. ' (partial): ' .. err
             end
         else
-            record.errors[#record.errors + 1] = 'group ' .. tostring(g_template.name) .. ': ' .. tostring(err)
+            record.errors[#record.errors + 1] = label .. ' ' .. tostring(p.template.name)
+                .. ': ' .. tostring(err)
         end
     end
 
-    -- Statics (distilled separately from groups in the prefab).
-    -- Like groups, statics in DCS are groups with type='static'; inject_group handles them.
-    for _, s_template in ipairs(prefab.statics or {}) do
-        local s = deep_copy(s_template)
-        override_country(s, opts.country_name)
-        transform_coords(s, anchor, rotation)
-        transform_headings(s, rotation)
-        local result, err = inject_group(s)
-        if result then
-            record.groups[#record.groups + 1] = {
-                orig_name  = s_template.name,
-                runtime_id = (type(result) == 'number') and result or s.groupId,
-                group_obj  = s,
-            }
-            if err then
-                record.errors[#record.errors + 1] = 'static ' .. tostring(s_template.name) .. ' (partial): ' .. err
+    -- Pass E: establish the runtime link for any waypoint with a linkUnit
+    -- that resolves to an in-prefab unit. _remap_ids set the right unitId
+    -- in the linkUnit snapshot, but the ME's runtime needs a Mission.linkWaypoint
+    -- call to:
+    --   1. Replace the snapshot table with a live reference to the actual
+    --      unit table (so move-handlers can reach it via wpt.linkUnit).
+    --   2. Append the waypoint to unit.linkChildren — the list ME's delete
+    --      logic walks. Without this, deleting the linked-to unit (e.g. the
+    --      carrier) leaves orphaned statics/aircraft, which then breaks ME
+    --      state walks like File > New (the orphan references a dead id).
+    --
+    -- This must run AFTER all groups are inserted (Pass D) so unit_by_id is
+    -- fully populated. Mirrors me_copy_paste.duplicateGroup lines 383-391.
+    --
+    -- unlinkWaypoint nils helipadId / airdromeId as a side effect (see
+    -- me_mission.lua linkWaypoint/unlinkWaypoint), so we stash + restore
+    -- those — otherwise an aircraft starting on the carrier deck would lose
+    -- its parking-spot binding to the relink dance.
+    for _, p in ipairs(placeable) do
+        local g = p.copy
+        local wpt = g.route and g.route.points and g.route.points[1]
+        if wpt and type(wpt.linkUnit) == 'table' then
+            local link_uid = wpt.linkUnit.unitId
+            if link_uid then
+                local unitP = Mission.unit_by_id and Mission.unit_by_id[link_uid]
+                if unitP and type(Mission.linkWaypoint) == 'function' then
+                    local saved_linkOffset = g.linkOffset
+                    local saved_helipadId = wpt.helipadId
+                    local saved_airdromeId = wpt.airdromeId
+                    pcall(Mission.unlinkWaypoint, wpt)
+                    local ok = pcall(Mission.linkWaypoint, wpt, unitP.boss, unitP)
+                    if ok then
+                        g.linkOffset = saved_linkOffset
+                        if saved_helipadId  then wpt.helipadId  = saved_helipadId  end
+                        if saved_airdromeId then wpt.airdromeId = saved_airdromeId end
+                    end
+                end
+            else
+                -- linkUnit snapshot exists but its unitId was nilled by
+                -- _remap_ids (out-of-prefab reference). Drop the half-broken
+                -- snapshot so it doesn't surface as a phantom link.
+                wpt.linkUnit = nil
             end
-        else
-            record.errors[#record.errors + 1] = 'static ' .. tostring(s_template.name) .. ': ' .. tostring(err)
         end
     end
 
