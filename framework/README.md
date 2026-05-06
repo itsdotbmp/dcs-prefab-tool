@@ -50,6 +50,24 @@ cap:connect(sms.events.DEAD, function(evt)
 end)
 ```
 
+## Editor support
+
+Every public `sms.*` symbol is type-annotated (EmmyLua / lua-language-server). With VSCode's [Lua extension](https://marketplace.visualstudio.com/items?itemName=sumneko.lua), autocomplete works the whole way down — through chained calls, indexed lookups, and option-table keys — with the inline signature and the full doc comment.
+
+For example, `vipers:get_units()[2]:` correctly resolves to `sms.unit` and offers every unit method:
+
+<p align="center">
+  <img src="../assets/autocomplete.png" alt="VSCode autocomplete on a chained sms.group call resolving to sms.unit" width="900">
+</p>
+
+The repo also ships workspace snippets at [`.vscode/sms.code-snippets`](../.vscode/sms.code-snippets) — ready-made skeletons for the patterns you write most often (groups, units, statics, rules). Type `##` to open the menu:
+
+<p align="center">
+  <img src="../assets/snippets.png" alt="VSCode snippet menu listing the ##sms.* skeletons" width="900">
+</p>
+
+The same type annotations and worked-example docs that drive editor autocomplete also make the framework well-suited for AI coding assistants (Cursor, Copilot, Claude Code). A narrow public surface, a predictable `log + nil` failure model, per-module reference pages under [`docs/api/`](../docs/api/), and a top-level [`AGENTS.md`](../AGENTS.md) written specifically for agent orientation give an AI enough structure to write valid mission code without hallucinating DCS API signatures.
+
 ## Reference
 
 - [`docs/api/`](../docs/api/) — per-module reference with runnable examples for every public symbol.
