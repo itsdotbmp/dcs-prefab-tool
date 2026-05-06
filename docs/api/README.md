@@ -1,5 +1,9 @@
 # dcs-sms API reference
 
+[![Release ME-mod](https://github.com/nielsvaes/dcs-sms/actions/workflows/release-me-mod.yml/badge.svg)](https://github.com/nielsvaes/dcs-sms/actions/workflows/release-me-mod.yml)
+[![Discord — Coconut Cockpit](https://img.shields.io/badge/discord-Coconut_Cockpit-5865F2?logo=discord&logoColor=white)](https://discord.gg/8tbdGY45hM)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F1F4PYTO7)
+
 Per-module reference with worked code examples. Inspired by Autodesk Maya's MEL / Python command docs: every public function gets a signature, a description, an arguments table, a return value, and at least one runnable example.
 
 For the framework's cross-cutting rules (failure model, conventions, handle pattern, loading order), see [`AGENTS.md`](../../AGENTS.md). For copy-and-paste recipes that combine multiple modules, see [`examples.md`](examples.md).
