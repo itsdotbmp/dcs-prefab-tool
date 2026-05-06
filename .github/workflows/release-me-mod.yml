@@ -68,7 +68,16 @@ jobs:
 
           ## Update
 
-          Download the new `dcs-sms.exe` and re-run `install-me-mod`. Idempotent — the patch line is left in place, the Lua files get overwritten with the new version.
+          From an existing install, run:
+
+          ```
+          dcs-sms.exe update
+          dcs-sms.exe install-me-mod
+          ```
+
+          The first command pulls the new `dcs-sms.exe` from this release in place; the second re-applies the bundled ME-mod files. Idempotent — the patch line in `MissionEditor.lua` stays put, the Lua files get overwritten. After updating, fully quit DCS and start it again.
+
+          (`dcs-sms.exe update` requires you already have a `dcs-sms.exe` from a previous install. First-time users follow the **Install** steps above instead.)
 
           ## Uninstall
 

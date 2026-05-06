@@ -78,6 +78,22 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.2.0] — 2026-05-06
+
+The marquee feature: `dcs-sms.exe update`. Self-updates the host-side binary in place from GitHub Releases, so users never have to manually re-download `dcs-sms.exe` again — and never accidentally regress their installed mod by running `install-me-mod` from a stale older binary.
+
+**Added**
+- `dcs-sms.exe update` — fetches the latest release from GitHub and replaces the running binary in place (Windows only). The previous binary is renamed to `dcs-sms.exe.old`.
+- `dcs-sms.exe update --check` — reports whether an update is available without downloading.
+
+**Fixed**
+- Released binaries now embed their tag version (e.g. `0.2.0`) via `-ldflags="-X main.version=$VERSION"` at build time. Previously every released binary identified as `0.1.0-dev`, which broke version comparison for the new `update` command.
+
+**Internal**
+- Inline semver comparator (no new module dependency — stdlib only).
+- GitHub Releases API helper, asset-based release filter (robust to future release-track changes — only releases that actually ship `dcs-sms.exe` are considered).
+- Binary-swap helper with rename-and-rollback safety on mid-write failures.
+
 ### [0.1.0] — 2026-05-05
 
 First tracked ME-mod release. Wraps everything shipped to date into a single point-in-time tag.
