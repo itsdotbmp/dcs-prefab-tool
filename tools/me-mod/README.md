@@ -141,6 +141,10 @@ These are plain Lua tables — readable, editable in any text editor, version-co
   <img src="../../assets/airbase-in-selection.png" alt="Marquee selection in the editor — the 'Snow city' airbase appears in the multi-selection panel alongside groups and zones" width="900">
 </p>
 
+**Ships save with their custom loadouts.** A ship's warehouse (fuel, weapons, aircraft inventory, operating levels) is captured per-vessel and re-applied when you place. If you edited a Stennis to carry custom Hornets on deck and a non-default fuel state, that's exactly what you get back when the prefab is placed.
+
+**Aircraft carriers bring their linked entities.** Selecting a carrier pulls in everything parented to it — deck crew statics, standby aircraft on the catapults, helicopters on the well deck — so a fully-dressed carrier can be saved and re-placed as one unit instead of rebuilding the air wing each time.
+
 ### Placing a prefab — two modes
 
 **Place at original location** drops the prefab back at the exact world coordinates it was saved from. Useful when the prefab was saved on this same theatre and you want it back where it was.
@@ -185,7 +189,6 @@ Apply is refused across theatres (a Caucasus airbase prefab can't be applied on 
 
 - **Rotation** — dial + spinbox at the bottom-left. Rotation applies to all entities in the prefab together (groups, statics, drawings, zones).
 - **Country override** — dropdown with a Combat/All toggle and coalition-coloured dots. Placement is refused if any unit type isn't in the chosen country's catalog (no silent ship-becomes-fast-boat fallbacks).
-- **Per-ship warehouses** — captured and applied per-ship through the same airbase-supplies flow.
 - **Undo** — `Ctrl-Z` with the Manager window focused undoes the most recent placement (groups, zones, drawings, and airbase splices all restored together).
 - **Library** — Reload (rescan disk), Rename, Delete, live name+theatre search, click-to-sort columns.
 
