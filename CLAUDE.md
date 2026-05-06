@@ -9,7 +9,7 @@
 `AGENTS.md` is load-bearing. Agents and humans both rely on it as the orientation document. **It must not drift from the code.** Per-symbol API details live in `docs/api/`; what `AGENTS.md` carries is the §7 module index (one line per `sms.*` module) plus cross-cutting rules.
 
 - **When you write a spec** under `docs/superpowers/specs/` that adds, removes, or renames a public `sms.*` module, the spec must explicitly list "Update `AGENTS.md` §7 module index" as part of its scope. Specs that only add or change symbols *within* an existing module update `docs/api/<module>.md` instead.
-- **When you write a plan** under `docs/superpowers/plans/`, the plan must include a concrete task for the AGENTS.md / docs/api update. It is part of the deliverable, not a follow-up.
+- **When you write an implementation plan** (kept locally — plans are not committed to the repo), it must include a concrete task for the AGENTS.md / docs/api update. It is part of the deliverable, not a follow-up.
 - **When you implement**, those doc updates land in the same PR / commit-set as the code change. A PR that adds new public surface without the corresponding doc update is incomplete.
 - **When you review code**, treat a missing doc update as a review blocker for any change touching public surface.
 

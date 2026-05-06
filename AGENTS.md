@@ -7,7 +7,6 @@ It is deliberately a **rules-and-conventions** document, not an API reference. E
 > **Companion documents:**
 > - [`docs/api/`](docs/api/) — per-module reference: signatures, options tables, runnable examples, see-also.
 > - [`docs/superpowers/specs/`](docs/superpowers/specs/) — per-module design docs (canonical "why is it shaped this way").
-> - [`docs/superpowers/plans/`](docs/superpowers/plans/) — implementation plans, often with helpful context.
 > - This file is a *summary*. When the spec disagrees with this file, the spec wins.
 
 ---
@@ -46,7 +45,6 @@ This is non-negotiable. The framework only grows by noticing where it falls shor
 - **`tools/`** — host-side Go. Produces the `dcs-sms` CLI and the embedded `Scripts/Hooks` Lua hook. Not loaded into DCS missions; talks to them via a filesystem mailbox.
 - **`docs/api/`** — per-module reference pages with worked examples. Canonical source for "how do I call this".
 - **`docs/superpowers/specs/`** — design docs, one per sub-project / module. Canonical source for "why is it shaped this way".
-- **`docs/superpowers/plans/`** — implementation plans.
 
 **Two distinct Lua environments:**
 

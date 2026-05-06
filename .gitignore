@@ -4,6 +4,9 @@
 # Superpowers brainstorm companion (mockups, server state)
 .superpowers/
 
+# Implementation plans are kept locally, not committed (specs are committed)
+docs/superpowers/plans/
+
 # Go build artifacts
 tools/dcs-sms
 tools/dcs-sms.exe
