@@ -60,6 +60,12 @@ For example, `vipers:get_units()[2]:` correctly resolves to `sms.unit` and offer
   <img src="../assets/autocomplete.png" alt="VSCode autocomplete on a chained sms.group call resolving to sms.unit" width="900">
 </p>
 
+Same thing happens at the call site — `vipers:set_task(sms.task.` lists every task constructor with its full signature and options-table type:
+
+<p align="center">
+  <img src="../assets/autocomplete-2.png" alt="VSCode autocomplete on sms.task.* inside a set_task call" width="900">
+</p>
+
 The repo also ships workspace snippets at [`.vscode/sms.code-snippets`](../.vscode/sms.code-snippets) — ready-made skeletons for the patterns you write most often (groups, units, statics, rules). Type `##` to open the menu:
 
 <p align="center">
