@@ -59,6 +59,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  install-me-mod   install/update the Mission Editor mod into <DCS install>/MissionEditor/")
 	fmt.Fprintln(w, "  uninstall-me-mod remove the Mission Editor mod (revert MissionEditor.lua, delete modules)")
 	fmt.Fprintln(w, "  gen-units     regenerate framework/constants/{units,statics}.lua from dcs-lua-datamine")
+	fmt.Fprintln(w, "  update        download the latest dcs-sms.exe from GitHub and replace this binary")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Run `dcs-sms <command> --help` for command-specific flags.")
 }
