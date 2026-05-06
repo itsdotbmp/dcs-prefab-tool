@@ -78,6 +78,16 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.3.0] — 2026-05-06
+
+The mod's chrome now identifies the project. New About dialog with the Coconut Cockpit logo, plus a branded window title.
+
+**Added**
+- `Tools → DCS-SMS → About` menu entry — opens a small dialog with the 128×128 Coconut Cockpit logo, the mod version, and the project's GitHub and Discord URLs. The logo PNG is bundled into the mod and rendered via the existing `staticSkin` + `picture` override pattern (the same trick `dtc_skins.icon_static` already uses for warning/question glyphs).
+
+**Changed**
+- Prefab Manager window title now reads `Coconut Cockpit · DCS-SMS — Prefab Manager v0.3.0` instead of `dcs-sms — Prefab Manager v…`.
+
 ### [0.2.0] — 2026-05-06
 
 The marquee feature: `dcs-sms.exe update`. Self-updates the host-side binary in place from GitHub Releases, so users never have to manually re-download `dcs-sms.exe` again — and never accidentally regress their installed mod by running `install-me-mod` from a stale older binary.
