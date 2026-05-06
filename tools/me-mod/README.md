@@ -127,13 +127,15 @@ The mod is one floating window — the **Prefab Manager** — under **Tools → 
 
 ### Saving a prefab
 
-Select what you want to capture (groups, statics, zones, drawings — multi-selection works), type a name in the **Name** field, click **Save**. The prefab is written to:
+Select what you want to capture (groups, statics, zones, drawings, airbases), type a name in the **Name** field, click **Save**. The prefab is written to:
 
 ```
 <Saved Games>\DCS\dcs-sms\prefabs\<name>.lua
 ```
 
 These are plain Lua tables — readable, editable in any text editor, version-controllable.
+
+> 💡 **Always marquee-select when saving a prefab — even for a single group.** Drawing a selection rectangle grabs every entity inside it (groups, statics, zones, drawings, airbases). Click-to-select grabs one entity at a time, which works fine for a lone group but quietly misses linked pieces — the parented aircraft on an aircraft carrier, the deck crew statics next to it, an airbase you wanted bundled. Get into the habit of marquee and you'll never wonder "why isn't my stuff there?" after placing.
 
 **Marquee-selecting over an airbase** puts the airbase into the selection too, alongside any groups / zones / drawings inside the rect. This is how you capture airbase customisations (warehouse contents, coalition) into a prefab — there's no other way to add an airbase by clicking it directly.
 
@@ -143,7 +145,7 @@ These are plain Lua tables — readable, editable in any text editor, version-co
 
 **Ships save with their custom loadouts.** A ship's warehouse (fuel, weapons, aircraft inventory, operating levels) is captured per-vessel and re-applied when you place. If you edited a Stennis to carry custom Hornets on deck and a non-default fuel state, that's exactly what you get back when the prefab is placed.
 
-**Aircraft carriers bring their linked entities.** Selecting a carrier pulls in everything parented to it — deck crew statics, standby aircraft on the catapults, helicopters on the well deck — so a fully-dressed carrier can be saved and re-placed as one unit instead of rebuilding the air wing each time.
+**Aircraft carriers travel with their deck setup — if you marquee around everything.** Clicking the carrier alone saves the hull and that's it. Drawing the marquee around the carrier *and* its parented aircraft, deck crew statics, helicopters on the well deck, refuelling tankers etc. captures the whole package; placement brings the entire air wing back intact instead of you rebuilding the deck by hand each time.
 
 ### Placing a prefab — two modes
 
