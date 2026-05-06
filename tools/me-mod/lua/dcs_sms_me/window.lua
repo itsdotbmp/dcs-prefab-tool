@@ -64,7 +64,7 @@ local version       = require('dcs_sms_me.version')
 -- Window title shown in the title bar in normal (non-place-pending) mode.
 -- Single source of truth so the placement-mode title and the post-place
 -- restore both pull the version from the same place.
-local WINDOW_TITLE = 'dcs-sms — Prefab Manager v' .. tostring(version)
+local WINDOW_TITLE = 'Coconut Cockpit · DCS-SMS — Prefab Manager v' .. tostring(version)
 
 -- Apply a skin by name. Resolves in this order:
 --   * 'dtc_button' / 'dtc_grid' / 'dtc_grid_header' → DTC-dialog-style skins

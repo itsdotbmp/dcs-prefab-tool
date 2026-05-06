@@ -88,6 +88,32 @@ local function add_top_level_menu()
         end
     end
 
+    -- Sibling "About" menu entry. Same skin-clone pattern as the Prefab
+    -- Manager item; opens the about-dialog via require('dcs_sms_me.about').
+    local about_item
+    local ok_about, about_err = pcall(function() about_item = menu:newItem('About') end)
+    if ok_about and about_item then
+        pcall(function()
+            local sibling_item = sibling_menu
+                and (sibling_menu.missionOptions or sibling_menu.mapOptions
+                     or sibling_menu.setPosition  or sibling_menu.logbook)
+            if sibling_item and sibling_item.getSkin and about_item.setSkin then
+                about_item:setSkin(sibling_item:getSkin())
+            end
+        end)
+        about_item.func = function()
+            log.write('sms.me', log.INFO, 'DCS-SMS > About menu clicked')
+            local ok_a, aerr = pcall(function()
+                require('dcs_sms_me.about').show()
+            end)
+            if not ok_a then
+                log.write('sms.me', log.ERROR, 'About dialog failed: ' .. tostring(aerr))
+            end
+        end
+    else
+        log.write('sms.me', log.ERROR, 'About menu:newItem failed: ' .. tostring(about_err))
+    end
+
     -- Wrap the menu in a MenuBarItem and insert at the end of the bar.
     local bar_item
     local ok_bar, bar_err = pcall(function() bar_item = MenuBarItem.new('DCS-SMS', menu) end)
