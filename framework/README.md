@@ -1,6 +1,13 @@
+<p align="center">
+  <img src="../assets/logo.png" alt="Coconut Cockpit" width="160">
+</p>
+
 # dcs-sms — framework
 
 In-DCS Lua scripting framework. Loaded once per mission; everything else is the `sms.*` namespace.
+
+> **⚠️ Work in progress — not ready for real missions.**
+> The framework is in active development; the public surface is still in flux and breaking changes land between minor versions. Don't build a mission against `sms.*` yet — symbols, options-table keys, and module names will move under you. Try it for experiments, file issues, but expect to rewrite anything you author here once the surface stabilises.
 
 ## Audience
 
@@ -29,8 +36,8 @@ local cap = sms.group.create({
   name     = "f18-cap",
   position = {x = 0, y = 0, z = 0},
   country  = sms.K.countries.USA,
-  category = "airplane",
-  units    = { {type = "FA-18C_hornet", alt = 6000, heading = 90} },
+  category = sms.K.category.AIRPLANE,
+  units    = { {type = sms.K.units.planes.FA_18C_hornet, alt = 6000, heading = 90} },
 })
 
 local orbit_task = sms.task.orbit({x = 50000, y = 0, z = 0}, {
