@@ -78,6 +78,16 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.4.1] — 2026-05-07
+
+Adds an OVGME-friendly install path for users whose browser blocks `dcs-sms.exe` as "unsigned" (Edge SmartScreen / Windows Defender). No runtime mod changes — packaging only.
+
+**Added**
+- The `Release ME-mod` GitHub Actions workflow now also builds and uploads `dcs-sms-me-mod-vX.Y.Z.zip` alongside the existing `dcs-sms.exe`. The zip contains the OVGME-shaped `dcs-sms-me-mod/MissionEditor/modules/dcs_sms_me/` mod tree plus a `README.md` walking the user through the install. Because the mod needs one line appended to `MissionEditor.lua` and OVGME can't surgically edit files, the README instructs the user to do that one-line edit by hand on their own copy. We deliberately do *not* ship a pre-patched `MissionEditor.lua` — DCS EULA §3.1(a) prohibits redistributing modified ED files; users editing their own copy on their own machine is permitted.
+- Release notes now include an "Alternative install (OVGME / no .exe)" section pointing at the zip and summarising the four install steps.
+
+The `dcs-sms.exe install-me-mod` path remains the recommended install — it patches `MissionEditor.lua` automatically and supports `update` / `uninstall` subcommands. The OVGME zip is the fallback for users who can't run unsigned binaries.
+
 ### [0.4.0] — 2026-05-07
 
 Three Prefab Manager fixes / UX improvements driven by [#37](https://github.com/nielsvaes/dcs-sms/issues/37) and follow-up testing feedback.

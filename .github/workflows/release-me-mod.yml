@@ -51,6 +51,60 @@ jobs:
         working-directory: tools
         run: go build -trimpath -ldflags="-s -w -X main.version=${{ steps.ver.outputs.version }}" -o ../dcs-sms.exe ./cmd/dcs-sms
 
+      - name: Stage OVGME mod tree
+        # Builds an OVGME-shaped zip alongside the .exe so users whose
+        # browsers block unsigned binaries (Edge SmartScreen / Defender)
+        # have a no-binary install path. We deliberately do NOT ship a
+        # patched MissionEditor.lua — DCS EULA §3.1(a) prohibits
+        # redistributing modified ED files. The README in the zip walks
+        # the user through a one-line manual edit they apply to their
+        # own copy on their own machine, which is permitted.
+        run: |
+          version="${{ steps.ver.outputs.version }}"
+          stage="ovgme-stage"
+          mod="dcs-sms-me-mod"
+          dst="$stage/$mod/MissionEditor/modules/dcs_sms_me"
+          mkdir -p "$dst"
+          cp -r tools/me-mod/lua/dcs_sms_me/. "$dst/"
+          cat > "$stage/README.md" <<'README_EOF'
+          # dcs-sms ME-mod — OVGME install
+
+          This OVGME-friendly zip exists for users who can't run `dcs-sms.exe install-me-mod` (typically because Edge SmartScreen / Windows Defender blocks the unsigned binary). The runtime mod is identical to what the .exe installs — you're just doing the file-copy step via OVGME and the `MissionEditor.lua` patch step by hand.
+
+          ## Install
+
+          1. Drop the `dcs-sms-me-mod` folder into your OVGME mods directory (or in OVGME: **Add Mod → Folder → dcs-sms-me-mod**).
+          2. Enable **dcs-sms-me-mod** in OVGME. This copies our Lua module files into `<DCS install>/MissionEditor/modules/dcs_sms_me/`.
+          3. **Manually patch `MissionEditor.lua`.** Open `<DCS install>/MissionEditor/MissionEditor.lua` in a text editor (Notepad is fine — run as Administrator if your DCS is in Program Files). Append this single line at the very end of the file:
+
+             ```lua
+             require('dcs_sms_me.init')
+             ```
+
+             Save the file.
+          4. Fully quit DCS and start it again (a full restart, not just closing the Mission Editor — Lua modules load once at DCS start). On next open of the Mission Editor you should see **DCS-SMS** in the top menu bar.
+
+          ## Update
+
+          Replace the OVGME mod folder with the new release's contents and re-enable the mod. The `MissionEditor.lua` patch line stays where you put it — no re-edit needed unless DCS itself replaced your `MissionEditor.lua` (which happens on some DCS updates; if the mod stops appearing after a DCS update, re-apply step 3).
+
+          ## Uninstall
+
+          Disable the mod in OVGME (this removes the Lua files). Delete the `require('dcs_sms_me.init')` line from `MissionEditor.lua` if you want a fully clean uninstall.
+
+          ## Why the manual edit?
+
+          OVGME can copy files but can't surgically edit them. The mod needs one line added to `MissionEditor.lua` so the ME actually loads it at startup. The `dcs-sms.exe install-me-mod` path does this automatically; the OVGME path requires you to do it once by hand.
+
+          We considered shipping a pre-patched `MissionEditor.lua` in this zip, but that would mean redistributing a modified copy of an ED-owned file, which the DCS EULA §3.1(a) prohibits without express written consent. Editing your own copy on your own machine is fine; us shipping a modified copy is not. Hence the one-line manual step.
+
+          ## Prefer the .exe install if you can
+
+          If your browser blocked `dcs-sms.exe` as "unsigned", you can usually right-click the downloaded file → **Properties** → tick **Unblock** at the bottom → **OK**, and Windows will let you run it. Or in Edge's download warning, click **…** → **Keep** → **Show more** → **Keep anyway**. The .exe handles both file-copy and `MissionEditor.lua` patching in one shot, and supports `dcs-sms.exe update` / `dcs-sms.exe uninstall-me-mod`.
+          README_EOF
+          (cd "$stage" && zip -r "../dcs-sms-me-mod-v${version}.zip" .)
+          ls -la "dcs-sms-me-mod-v${version}.zip"
+
       - name: Compose release notes
         run: |
           tag="${{ steps.tag.outputs.ref }}"
@@ -86,6 +140,17 @@ jobs:
           ```
 
           Removes the patch block from `MissionEditor.lua` and deletes the modules directory.
+
+          ## Alternative install (OVGME / no .exe)
+
+          If your browser blocks **dcs-sms.exe** as "unsigned" and you can't unblock it, an OVGME-friendly zip is also attached to this release: **dcs-sms-me-mod-vX.Y.Z.zip**.
+
+          1. Download the zip and extract it.
+          2. Drop the `dcs-sms-me-mod` folder into your OVGME mods directory; enable it in OVGME.
+          3. Open `<DCS install>/MissionEditor/MissionEditor.lua` in a text editor and append this single line at the end of the file: `require('dcs_sms_me.init')` — then save.
+          4. Restart DCS.
+
+          Full instructions are in the `README.md` inside the zip. The .exe path is still recommended where possible — it patches `MissionEditor.lua` for you and supports `dcs-sms.exe update` / `dcs-sms.exe uninstall-me-mod`.
           EOF
           } > release-notes.md
           echo '--- preview ---'
@@ -97,11 +162,12 @@ jobs:
         run: |
           tag="${{ steps.tag.outputs.ref }}"
           title="ME-mod v${{ steps.ver.outputs.version }}"
+          zip="dcs-sms-me-mod-v${{ steps.ver.outputs.version }}.zip"
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag exists; updating notes + asset."
+            echo "Release $tag exists; updating notes + assets."
             gh release edit   "$tag" --title "$title" --notes-file release-notes.md
-            gh release upload "$tag" dcs-sms.exe --clobber
+            gh release upload "$tag" dcs-sms.exe "$zip" --clobber
           else
             echo "Creating new release for $tag."
-            gh release create "$tag" --title "$title" --notes-file release-notes.md dcs-sms.exe
+            gh release create "$tag" --title "$title" --notes-file release-notes.md dcs-sms.exe "$zip"
           fi
