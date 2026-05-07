@@ -591,9 +591,17 @@ local exit_place_pending           -- forward declaration; assigned below
 local run_airbase_apply            -- forward decl: referenced by the click-place closure
 local selected_country_coalition   -- forward decl: referenced by the click-place closure
 
+-- Sentinel label for the "use prefab's saved countries" combobox entry.
+-- Selected by default after every populate (so users get original-country
+-- placement out of the box, supporting mixed-coalition prefabs without
+-- having to know to leave the dropdown blank). get_country_name maps this
+-- back to nil so the place pipeline takes the no-override branch.
+local KEEP_ORIGINAL_LABEL = '<keep prefab countries>'
+
 -- Read the currently-selected country from the dropdown. Returns nil when
--- the combo isn't built (test VM, dxgui without ComboBox) or no item is
--- selected — caller falls back to the prefab's stored country.
+-- the combo isn't built (test VM, dxgui without ComboBox), no item is
+-- selected, OR the special "<keep prefab countries>" sentinel is selected
+-- — caller falls back to the prefab's stored country in all three cases.
 local function get_country_name()
     local name
     pcall(function()
@@ -601,7 +609,9 @@ local function get_country_name()
         local item = W.country_combo:getSelectedItem()
         if item and item.getText then
             local txt = item:getText()
-            if type(txt) == 'string' and txt ~= '' then name = txt end
+            if type(txt) == 'string' and txt ~= '' and txt ~= KEEP_ORIGINAL_LABEL then
+                name = txt
+            end
         end
     end)
     return name
@@ -658,9 +668,20 @@ populate_country_combo = function()
         end
 
         local show_all = is_filter_all()
-        local prev = get_country_name()
+        local prev = get_country_name()  -- nil if "<keep prefab countries>" was active
 
         if W.country_combo.removeAllItems then W.country_combo:removeAllItems() end
+
+        -- Sentinel "use prefab's saved countries" entry first. Default
+        -- selection lands here unless the user previously had a real
+        -- country chosen (prev is non-nil). When this is selected,
+        -- get_country_name returns nil → place pipeline preserves
+        -- whatever country each group/unit had at distill time, so
+        -- mixed-coalition prefabs round-trip correctly.
+        local keep_item = ListBoxItem.new(KEEP_ORIGINAL_LABEL)
+        W.country_combo:insertItem(keep_item)
+        local first_item = keep_item
+        local prev_item
 
         local names = {}
         for name in pairs(Mission.missionCountry) do
@@ -668,7 +689,6 @@ populate_country_combo = function()
         end
         table.sort(names)
 
-        local first_item, prev_item
         for _, name in ipairs(names) do
             local coalition = country_coalition(Mission, name)
             -- Combat mode: red/blue only. All mode: include neutral (and
@@ -679,7 +699,6 @@ populate_country_combo = function()
                 local skin_name = COALITION_SKIN[coalition or 'neutral']
                 if skin_name then try_skin(item, skin_name) end
                 W.country_combo:insertItem(item)
-                if not first_item then first_item = item end
                 if name == prev then prev_item = item end
             end
         end

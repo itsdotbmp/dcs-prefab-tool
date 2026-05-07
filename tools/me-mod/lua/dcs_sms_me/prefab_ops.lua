@@ -679,7 +679,13 @@ end
 --
 -- Removal (undo) goes through Mission.remove_group(group_obj) — see the
 -- M._remove.group wrapper below.
-local function inject_group(group)
+--
+-- ctx.keep_position (bool) — when true, preserve the source unit's
+-- parking_id / parking / parking_landing[_id] verbatim (the prefab is being
+-- placed at its original world anchor, so the source airfield IS the
+-- destination airfield and parking-spot names are stable). When false,
+-- strip the parking binding and let Pass F re-attract.
+local function inject_group(group, ctx)
     local Mission = require('me_mission')
 
     local country, country_name_or_err = resolve_country(group)
@@ -716,7 +722,8 @@ local function inject_group(group)
         group.color = Mission.countryCoalition[country_name].color
     end
 
-    -- Reserve fresh unit names; back-link to the group; strip parking links.
+    -- Reserve fresh unit names; back-link to the group; strip parking links
+    -- (only when not placing at original anchor — see ctx.keep_position).
     -- Unit ids were already remapped by _remap_ids before we got here.
     if type(group.units) == 'table' then
         for _, u in pairs(group.units) do
@@ -726,10 +733,12 @@ local function inject_group(group)
                     if ok and type(nm) == 'string' then u.name = nm end
                 end
                 u.boss = group
-                u.parking = nil
-                u.parking_landing = nil
-                u.parking_id = nil
-                u.parking_landing_id = nil
+                if not (ctx and ctx.keep_position) then
+                    u.parking = nil
+                    u.parking_landing = nil
+                    u.parking_id = nil
+                    u.parking_landing_id = nil
+                end
                 -- Clear runtime link lists baked into the unit data by the
                 -- source mission. distill strips `boss` back-refs, so each
                 -- entry in here is half-dead — its `boss` is nil. ME's drag
@@ -793,7 +802,18 @@ local function inject_zone(zone)
     local y      = zone.y or 0
     local radius = zone.radius or 1000
     local props  = zone.properties or {}
-    local color  = zone.color  -- may be nil; addTriggerZone accepts nil
+    -- Color: prefer the .miz-shape `color = {r,g,b,a}` table written by
+    -- prefab_distill's normalize_zone_color. Fall back to synthesizing
+    -- from the live ME object's separate red/green/blue/alpha fields —
+    -- backward compat for prefabs saved by ME-mod ≤ v0.3.2 (and any
+    -- other source that captured the live TriggerZone's pairs() shape
+    -- without normalizing). nil means "use addTriggerZone's default".
+    local color = zone.color
+    if not color and (type(zone.red) == 'number' or type(zone.green) == 'number'
+        or type(zone.blue) == 'number' or type(zone.alpha) == 'number')
+    then
+        color = { zone.red or 1, zone.green or 1, zone.blue or 1, zone.alpha or 1 }
+    end
     local ztype  = zone.type or 0
     local points = zone.points -- may be nil for circle zones
     local ok, result = pcall(ctrl.addTriggerZone, name, x, y, radius, props, color, ztype, points)
@@ -1006,10 +1026,14 @@ function M.place(prefab, opts)
 
     -- Pass D: per-group inject. inject_group no longer allocates ids or nils
     -- linkUnit/etc — passes A/B/C already handled both.
+    -- ctx.keep_position carries through so the parking-strip can be skipped
+    -- when placing at the original anchor (parking_id is airfield-relative
+    -- and stable, so the source binding is meaningful at the destination).
+    local inject_ctx = { keep_position = opts.keep_position == true }
     for _, p in ipairs(placeable) do
         local g = p.copy
         local label = p.kind == 'static' and 'static' or 'group'
-        local result, err = inject_group(g)
+        local result, err = inject_group(g, inject_ctx)
         if result then
             record.groups[#record.groups + 1] = {
                 orig_name  = p.template.name,
@@ -1068,6 +1092,74 @@ function M.place(prefab, opts)
                 -- _remap_ids (out-of-prefab reference). Drop the half-broken
                 -- snapshot so it doesn't surface as a phantom link.
                 wpt.linkUnit = nil
+            end
+        end
+    end
+
+    -- Pass F: airfield re-attraction. Mirrors me_copy_paste.lua:393-398.
+    --
+    -- For airfield waypoints (TakeOffParking / TakeOff / TakeOffParkingHot /
+    -- Landing / LandingReFuAr) that don't have a live linkUnit binding from
+    -- Pass E, ask vanilla ME to assign a parking/runway slot at the
+    -- destination. me_route.attractToAirfield(wpt, group) calls
+    -- mod_parking.setAirGroupOnAirport(group, wpt.x, wpt.y) for parking-type
+    -- takeoffs, which writes parking / parking_id / parking_landing[_id] back
+    -- onto every unit in the group at the assigned slot.
+    --
+    -- Per-group, runs when EITHER:
+    --   (a) opts.keep_position is false — placing at a new anchor, the source
+    --       parking_id is meaningless at the destination airfield. *Or:*
+    --   (b) any unit in the group has parking_id == nil after inject_group —
+    --       prefab is from a pre-mid-2024 source mission that DCS never
+    --       migrated in memory (ED added explicit parking_id storage around
+    --       mid-2024; ME populates it at save time, not load time, so a
+    --       2024-saved .miz opened in current ME keeps the un-migrated shape
+    --       — the distilled prefab inherits it). attractToAirfield resolves
+    --       the closest spot at the unit's (x, y); for a ramp-start aircraft
+    --       the last-drag (x, y) is typically within tens of meters of the
+    --       intended spot, so it usually picks correctly.
+    --
+    -- Skipped per-waypoint when wpt.linkUnit is a live table: that's a
+    -- carrier-deck takeoff bound by Pass E. attractToAirfield internally
+    -- calls module_mission.unlinkWaypoint(wpt) (me_route.lua:484), which
+    -- would clobber the binding we just established.
+    local ok_pr, panel_route = pcall(require, 'me_route')
+    if ok_pr and panel_route
+        and type(panel_route.isAirfieldWaypoint) == 'function'
+        and type(panel_route.attractToAirfield) == 'function'
+    then
+        for _, p in ipairs(placeable) do
+            local g = p.copy
+            local needs_attract = (not opts.keep_position)
+            if not needs_attract and type(g.units) == 'table' then
+                -- Read parking_id AFTER inject_group ran. In keep_position mode
+                -- the field is preserved verbatim, so a nil here means the source
+                -- prefab never had it (pre-mid-2024 source mission, see comment
+                -- block above). Iteration order doesn't matter — we just need
+                -- to know whether ANY unit lacks parking_id.
+                for _, u in ipairs(g.units) do
+                    if type(u) == 'table' and not u.parking_id then
+                        needs_attract = true
+                        break
+                    end
+                end
+            end
+            if needs_attract and type(g.route) == 'table' and type(g.route.points) == 'table' then
+                -- ipairs over route.points: attractToAirfield for non-takeoff
+                -- waypoints (e.g. Landing) calls MapWindow.move_waypoint which
+                -- mutates group.x/y, so processing waypoints in order matters.
+                for _, wpt in ipairs(g.route.points) do
+                    if type(wpt) == 'table'
+                        and panel_route.isAirfieldWaypoint(wpt.type)
+                        and not (type(wpt.linkUnit) == 'table' and wpt.linkUnit.unitId)
+                    then
+                        -- airdromeId nilled to match the vanilla mirror;
+                        -- attractToAirfield writes a fresh airdromeId for
+                        -- non-ship takeoffs anyway.
+                        wpt.airdromeId = nil
+                        pcall(panel_route.attractToAirfield, wpt, g)
+                    end
+                end
             end
         end
     end

@@ -37,6 +37,29 @@ local function utc_now()
     return os.date('!%Y-%m-%dT%H:%M:%SZ')
 end
 
+-- ME's TriggerZone class stores color as four separate fields — see
+-- Mission/TriggerZone.lua:38 (`ModuleProperty.make4arg(M, 'setColor',
+-- 'getColor', 'red', 'green', 'blue', 'alpha')`). The .miz format wraps
+-- those into `color = {r, g, b, a}` (Mission/TriggerZoneData.lua:559).
+-- Place-side inject_zone reads zone.color, so distill must normalise to
+-- the .miz shape — strip_back_refs walks the live object via pairs() and
+-- only sees the four separate fields. Without this, zones round-trip
+-- through a prefab with the default (1,1,1,0.15) color regardless of
+-- what the user actually set.
+local function normalize_zone_color(z)
+    if type(z) ~= 'table' then return end
+    if z.color ~= nil then return end
+    if type(z.red) == 'number' or type(z.green) == 'number'
+        or type(z.blue) == 'number' or type(z.alpha) == 'number' then
+        z.color = {
+            z.red   or 1,
+            z.green or 1,
+            z.blue  or 1,
+            z.alpha or 1,
+        }
+    end
+end
+
 local function is_static_entity(entry)
     if entry.units and entry.units[1] and STATIC_TYPES[entry.units[1].type] then
         return true
@@ -191,7 +214,10 @@ function M.distill(dump_or_path, opts)
     local clean_zones = {}
     for _, z in ipairs(raw_zones) do
         local cleaned = strip_back_refs(z, {})
-        if cleaned then clean_zones[#clean_zones + 1] = cleaned end
+        if cleaned then
+            normalize_zone_color(cleaned)
+            clean_zones[#clean_zones + 1] = cleaned
+        end
     end
     local clean_drawings = {}
     for _, d in ipairs(raw_drawings) do

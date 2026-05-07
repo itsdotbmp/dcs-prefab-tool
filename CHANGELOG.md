@@ -78,6 +78,19 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.4.0] — 2026-05-07
+
+Three Prefab Manager fixes / UX improvements driven by [#37](https://github.com/nielsvaes/dcs-sms/issues/37) and follow-up testing feedback.
+
+**Fixed**
+- `Place at original location` now preserves the source unit's `parking` / `parking_id` / `parking_landing` / `parking_landing_id` instead of stripping them. The on-disk prefab format already carried these fields; the place pipeline was unconditionally nilling them — mirroring vanilla ME's `me_copy_paste.lua:331-334` strip — but skipping vanilla's compensating call to `panel_route.attractToAirfield(wpt, group)` (`me_copy_paste.lua:393-398`). Result was a unit with the right `(x, y)` for the editor display but no parking binding for DCS at mission start, so DCS picked the nearest free slot at runtime instead of the one the user originally chose.
+- Placements at a non-original anchor now run a "Pass F" that mirrors vanilla ME's airfield re-attraction: for every placed group's airfield-type waypoints (`TakeOffParking` / `TakeOff` / `Landing` / `LandingReFuAr`) without a live `linkUnit`, `panel_route.attractToAirfield(wpt, group)` is called to assign a free parking/runway slot at the destination airfield. Carrier-deck takeoffs are detected by their live `linkUnit` and left to Pass E's `linkWaypoint` dance — Pass F skips them so the unlink/relink dance isn't clobbered.
+- Pass F also fires when a placed group has any unit with `parking_id == nil`, even at the original anchor. This handles prefabs distilled from pre-mid-2024 source missions: ED started writing `parking_id` on parked aircraft around then, and ME doesn't migrate the field at load time — only at save time. A 2024 `.miz` opened in current ME and turned into a prefab without an intervening File → Save inherits the un-migrated shape, so Prong 1 has nothing to preserve and the place pipeline must run `attractToAirfield` to assign a spot at the unit's saved `(x, y)`. The fast user-side workaround remains "open the source mission in current DCS, save, re-make the prefab" — that bakes `parking_id` into the prefab data and lets Prong 1 preserve the exact original spot rather than relying on attract's nearest-free-spot heuristic.
+- Trigger zone color is now preserved through the prefab round-trip. ME's `TriggerZone` class stores color as four separate fields (`red` / `green` / `blue` / `alpha` — `Mission/TriggerZone.lua:38`) but the `.miz` save format and `addTriggerZone` API expect a single `color = {r, g, b, a}` table (`Mission/TriggerZoneData.lua:559`). `selection.lua` captures the live zone object, `prefab_distill` walks it via `pairs()`, so the four separate fields landed in the prefab but `inject_zone` reads `zone.color` and got `nil`. Distill now synthesizes the `color` table during normalisation; `inject_zone` carries a backward-compat fallback that synthesises from `red/green/blue/alpha` for prefabs saved by ME-mod ≤ v0.3.2.
+
+**Added**
+- New `<keep prefab countries>` entry in the country dropdown, selected by default. When this entry is active, place uses each unit's stored country verbatim — supporting mixed-coalition prefabs (e.g. an airbase package with US, UK, and CJTF Blue units in one save) without forcing the user to leave the dropdown blank. Picking any other dropdown entry continues to override every unit to that country, matching the old behavior.
+
 ### [0.3.2] — 2026-05-06
 
 Two small UX fixes for the Prefab Manager.
