@@ -1238,7 +1238,7 @@ local function rename_file(old_path, old_name, new_name)
     local serializer = require('dcs_sms_me.serializer')
     local serialized = serializer.serialize(prefab)
     local paths = require('dcs_sms_me.paths')
-    local new_path = paths.PREFABS_DIR .. new_name .. '.lua'
+    local new_path = paths.PREFABS_DIR .. new_name .. '.prefab'
     if old_path == new_path then return true, old_path end  -- no-op rename
     if prefab_ops.exists(new_name) then return false, 'target name already exists' end
 

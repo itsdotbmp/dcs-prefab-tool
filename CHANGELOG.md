@@ -11,6 +11,11 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com). Both trac
 
 ## Framework
 
+### [0.11.0] — 2026-05-07
+
+**Changed**
+- `sms.prefab.load_dir` now accepts both `.prefab` and `.lua` files. Saves still go through `sms.prefab.save` with whatever path you pass; the canonical extension going forward is `.prefab`.
+
 ### [0.10.0] — 2026-05-05
 
 This is the first tag after a long quiet period — `sms.version` had been frozen at `"0.1.0"` while nine `framework-v0.x.0` tags shipped through April 27. 0.10.0 catches the in-source string up to reality and folds in everything added since `framework-v0.9.0`.
@@ -77,6 +82,11 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 ---
 
 ## ME-mod
+
+### [0.4.2] — 2026-05-07
+
+**Changed**
+- Prefab files are saved with a `.prefab` extension instead of `.lua`. Existing `.lua` files in your prefabs directory are silently renamed to `.prefab` the first time the Prefab Manager scans the directory; the file content is unchanged. Both extensions remain readable indefinitely.
 
 ### [0.4.1] — 2026-05-07
 

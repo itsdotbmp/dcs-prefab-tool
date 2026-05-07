@@ -32,6 +32,11 @@ package.preload['lfs'] = function()
     }
 end
 
+-- Stub os.rename to a no-op so scan_dir's migration logic doesn't mutate
+-- the committed fixtures. This simulates the "rename failed" branch — scan_dir
+-- should fall through and load files from their original .lua paths.
+os.rename = function() return false end
+
 -- Override paths.PREFABS_DIR to point at fixtures.
 package.path = '../lua/dcs_sms_me/?.lua;../lua/?.lua;' .. package.path
 local paths = require('dcs_sms_me.paths')
@@ -51,20 +56,21 @@ local function check(name, ok, msg)
     end
 end
 
--- Case: scan_dir returns one row per .lua file.
+-- Case: scan_dir returns one row per prefab file (both .lua and .prefab).
 do
     local rows = prefab_ops.scan_dir()
-    check('scan_dir returns array of length 4', type(rows) == 'table' and #rows == 4,
+    check('scan_dir returns array of length 5', type(rows) == 'table' and #rows == 5,
           'got ' .. tostring(rows and #rows or nil))
 
     -- Find each row by name.
     local by_name = {}
     for _, r in ipairs(rows) do by_name[r.name] = r end
 
-    check('farp_alpha row present',   by_name['farp_alpha']   ~= nil)
-    check('sam_site row present',     by_name['sam_site']     ~= nil)
-    check('broken row present',       by_name['broken']       ~= nil)
-    check('modern_mixed row present', by_name['modern_mixed'] ~= nil)
+    check('farp_alpha row present',      by_name['farp_alpha']      ~= nil)
+    check('sam_site row present',        by_name['sam_site']        ~= nil)
+    check('broken row present',          by_name['broken']          ~= nil)
+    check('modern_mixed row present',    by_name['modern_mixed']    ~= nil)
+    check('coastal_battery row present', by_name['coastal_battery'] ~= nil)
 
     if by_name['farp_alpha'] then
         local r = by_name['farp_alpha']
@@ -85,8 +91,6 @@ do
               'expected error string, got ' .. tostring(r.error))
     end
     if by_name['modern_mixed'] then
-        -- 3 entries inside `groups`: vehicle + plane + static. The static
-        -- should be pulled out of group_count and surface as static_count.
         local r = by_name['modern_mixed']
         check('modern_mixed group_count == 2 (excludes type=static)',
               r.group_count == 2, 'got ' .. tostring(r.group_count))
@@ -94,6 +98,16 @@ do
               r.static_count == 1, 'got ' .. tostring(r.static_count))
         check('modern_mixed zone_count == 1',
               r.zone_count == 1, 'got ' .. tostring(r.zone_count))
+    end
+    if by_name['coastal_battery'] then
+        local r = by_name['coastal_battery']
+        check('coastal_battery loaded from .prefab (no error)', r.error == nil,
+              'got error: ' .. tostring(r.error))
+        check('coastal_battery path ends with .prefab',
+              type(r.path) == 'string' and r.path:sub(-7) == '.prefab',
+              'got path: ' .. tostring(r.path))
+        check('coastal_battery group_count == 1',
+              r.group_count == 1, 'got ' .. tostring(r.group_count))
     end
 end
 

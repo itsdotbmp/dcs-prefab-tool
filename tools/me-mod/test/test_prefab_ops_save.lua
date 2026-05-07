@@ -77,7 +77,7 @@ do
     captured.path, captured.content = nil, nil
     local ok, path = prefab_ops.save_selection('test_jet')
     check('save_selection returns ok', ok == true, 'got ' .. tostring(ok))
-    check('save_selection returns path', path == fake_writedir .. 'dcs-sms\\prefabs\\test_jet.lua',
+    check('save_selection returns path', path == fake_writedir .. 'dcs-sms\\prefabs\\test_jet.prefab',
           'got ' .. tostring(path))
     check('io.open was called with that path', captured.path == path, 'got ' .. tostring(captured.path))
     check('content begins with "return {"',
@@ -150,22 +150,26 @@ do
     check('empty save returns error', type(err) == 'string' and err:find('selection'), 'got ' .. tostring(err))
 end
 
--- Case: exists() with a file present.
+-- Case: exists() with a file present, both .prefab and legacy .lua.
 do
-    -- Simulate file presence by stubbing io.open in read mode for the path.
-    local target = fake_writedir .. 'dcs-sms\\prefabs\\already_here.lua'
-    local missing = fake_writedir .. 'dcs-sms\\prefabs\\not_here.lua'
+    -- Simulate file presence by stubbing io.open in read mode for specific paths.
+    local prefab_target = fake_writedir .. 'dcs-sms\\prefabs\\already_here.prefab'
+    local legacy_target = fake_writedir .. 'dcs-sms\\prefabs\\legacy_one.lua'
     io.open = function(path, mode)
         if mode == 'r' or mode == nil then
-            if path == target then return { close = function() end } end
+            if path == prefab_target or path == legacy_target then
+                return { close = function() end }
+            end
             return nil, 'not found'
         end
         return real_open(path, mode)
     end
     package.loaded['prefab_ops'] = nil
     local prefab_ops3 = require('prefab_ops')
-    check('exists() true for present file', prefab_ops3.exists('already_here') == true,
-          'expected true')
+    check('exists() true for .prefab file', prefab_ops3.exists('already_here') == true,
+          'expected true for .prefab')
+    check('exists() true for legacy .lua file', prefab_ops3.exists('legacy_one') == true,
+          'expected true for legacy .lua')
     check('exists() false for absent file', prefab_ops3.exists('not_here') == false,
           'expected false')
 end

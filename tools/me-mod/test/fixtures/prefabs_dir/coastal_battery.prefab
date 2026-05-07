@@ -1,0 +1,14 @@
+return {
+    ["meta"] = {
+        ["name"] = "coastal_battery",
+        ["sms_prefab_version"] = "0.1.0",
+        ["theatre"] = "Caucasus",
+        ["created_utc"] = "2026-05-07T12:00:00Z",
+        ["world_anchor"] = { ["x"] = 1500, ["y"] = 2500 },
+    },
+    ["groups"]   = { [1] = { ["name"] = "Battery", ["x"] = 0, ["y"] = 0,
+                             ["units"] = { [1] = { ["name"] = "Gun" } } } },
+    ["statics"]  = {},
+    ["zones"]    = {},
+    ["drawings"] = {},
+}

@@ -17,12 +17,18 @@ local ship_warehouse = require('dcs_sms_me.ship_warehouse')
 local M = {}
 
 local function prefab_path(name)
+    return paths.PREFABS_DIR .. name .. '.prefab'
+end
+
+local function legacy_prefab_path(name)
     return paths.PREFABS_DIR .. name .. '.lua'
 end
 
 function M.exists(name)
     if type(name) ~= 'string' or name == '' then return false end
     local f = io.open(prefab_path(name), 'r')
+    if f then f:close(); return true end
+    f = io.open(legacy_prefab_path(name), 'r')
     if f then f:close(); return true end
     return false
 end
@@ -168,6 +174,34 @@ local function row_from_prefab(name, path, prefab)
     }
 end
 
+-- Try to rename a legacy .lua prefab to .prefab. Returns the path the
+-- caller should load from afterwards (the new .prefab path on success;
+-- the original .lua path if a collision is detected or os.rename fails).
+local function migrate_legacy_to_prefab(legacy_path, name)
+    local new_path = paths.PREFABS_DIR .. name .. '.prefab'
+    local existing = io.open(new_path, 'r')
+    if existing then
+        existing:close()
+        if log and log.write then
+            log.write('sms.me.prefab', log.WARNING,
+                'collision: ' .. name .. '.lua and ' .. name .. '.prefab both present, leaving as-is')
+        end
+        return legacy_path
+    end
+    if os.rename(legacy_path, new_path) then
+        if log and log.write then
+            log.write('sms.me.prefab', log.INFO,
+                'migrated ' .. name .. '.lua -> ' .. name .. '.prefab')
+        end
+        return new_path
+    end
+    if log and log.write then
+        log.write('sms.me.prefab', log.WARNING,
+            'rename failed for ' .. name .. '.lua, keeping as-is')
+    end
+    return legacy_path
+end
+
 function M.scan_dir()
     paths.ensure_prefabs()
     local rows = {}
@@ -183,14 +217,26 @@ function M.scan_dir()
     -- throw.
     local ok, err = pcall(function()
         for entry in lfs.dir(paths.PREFABS_DIR) do
-            if entry ~= '.' and entry ~= '..' and entry:match('%.lua$') then
-                local name = entry:gsub('%.lua$', '')
-                local path = paths.PREFABS_DIR .. entry
-                local prefab, lerr = M.load(path)
-                if prefab then
-                    rows[#rows + 1] = row_from_prefab(name, path, prefab)
-                else
-                    rows[#rows + 1] = { name = name, path = path, error = lerr }
+            if entry ~= '.' and entry ~= '..' then
+                local name, is_legacy
+                if entry:match('%.prefab$') then
+                    name = entry:gsub('%.prefab$', '')
+                    is_legacy = false
+                elseif entry:match('%.lua$') then
+                    name = entry:gsub('%.lua$', '')
+                    is_legacy = true
+                end
+                if name then
+                    local path = paths.PREFABS_DIR .. entry
+                    if is_legacy then
+                        path = migrate_legacy_to_prefab(path, name)
+                    end
+                    local prefab, lerr = M.load(path)
+                    if prefab then
+                        rows[#rows + 1] = row_from_prefab(name, path, prefab)
+                    else
+                        rows[#rows + 1] = { name = name, path = path, error = lerr }
+                    end
                 end
             end
         end

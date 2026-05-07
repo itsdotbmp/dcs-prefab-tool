@@ -100,7 +100,7 @@ function sms.prefab.load_dir(dir)
                 local attr = lfs.attributes(full)
                 if attr and attr.mode == 'directory' then
                     recurse(full)
-                elseif attr and entry:match('%.lua$') then
+                elseif attr and (entry:match('%.prefab$') or entry:match('%.lua$')) then
                     if sms.prefab.load(full) then count = count + 1 end
                 end
             end

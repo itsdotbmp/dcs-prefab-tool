@@ -2,7 +2,7 @@
 
 Portable bundles of DCS entities — groups, statics, trigger zones, map drawings — distilled from a Mission Editor selection and respawnable at runtime anywhere on any map.
 
-A prefab is a Lua chunk file produced by `sms.prefab.distill(...)` from a hello-world ME selection dump. Once loaded into the runtime registry via `sms.prefab.load(path)`, you can `sms.prefab.spawn("name", {anchor=..., rotation=..., country=...})` as many times as you want; each call returns an instance handle for lifecycle management.
+A prefab is a `.prefab` file (a Lua chunk that returns a table) produced by `sms.prefab.distill(...)` from a hello-world ME selection dump. Once loaded into the runtime registry via `sms.prefab.load(path)`, you can `sms.prefab.spawn("name", {anchor=..., rotation=..., country=...})` as many times as you want; each call returns an instance handle for lifecycle management.
 
 See [the design spec](../superpowers/specs/2026-05-03-sms-prefab-design.md) for the file format details and design rationale.
 
@@ -14,10 +14,10 @@ local prefab = sms.prefab.distill(
     "C:/Users/.../Saved Games/DCS/dcs-sms/me/selection-2026-05-03T091254Z.lua",
     { name = "farp_alpha", theatre = "Caucasus" }
 )
-sms.prefab.save(prefab, "C:/Users/.../Saved Games/DCS/dcs-sms/prefabs/farp_alpha.lua")
+sms.prefab.save(prefab, "C:/Users/.../Saved Games/DCS/dcs-sms/prefabs/farp_alpha.prefab")
 
 -- Per-mission: load the registry, spawn copies.
-sms.prefab.load("C:/Users/.../Saved Games/DCS/dcs-sms/prefabs/farp_alpha.lua")
+sms.prefab.load("C:/Users/.../Saved Games/DCS/dcs-sms/prefabs/farp_alpha.prefab")
 
 local north = sms.prefab.spawn("farp_alpha", {
     anchor   = { x = 12000, z = -3500 },
@@ -57,7 +57,7 @@ Serializes `prefab_table` via `sms.utils.serialize` and writes to `path`. Return
 
 ### `sms.prefab.load_dir(dir) → number`
 
-Recursively loads every `*.lua` under `dir`. Per-file failures log + continue. Returns the count of successful loads. Requires `lfs`.
+Recursively loads every `*.prefab` and `*.lua` under `dir`. The `.lua` extension is accepted for backward compatibility — files written by older releases of the ME-mod use it. Per-file failures log + continue. Returns the count of successful loads. Requires `lfs`.
 
 ### `sms.prefab.register(name, template) → template_table | nil`
 
