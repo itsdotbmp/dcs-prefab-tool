@@ -72,7 +72,7 @@ A successful run looks like this:
   <img src="../../assets/cmd.png" alt="dcs-sms.exe install-me-mod running in a CMD window — output shows 'copied', 'patched', 'Install complete. Restart DCS.'" width="780">
 </p>
 
-> 🛡️ **First-run Windows warning:** `dcs-sms.exe` is unsigned (signing certs cost money this project doesn't have), so Windows / Edge / Chrome may flag it as "unrecognised" on download or first run. Tell the warning to keep going — see [Troubleshooting → SmartScreen](#windows-smartscreen-says-windows-protected-your-pc) for the click path.
+> 🛡️ **First-run Windows warning:** `dcs-sms.exe` is unsigned (signing certs cost money this project doesn't have), so Windows / Edge / Chrome may flag it as "unrecognised" on download or first run. Tell the warning to keep going — see [Troubleshooting → SmartScreen](#windows-smartscreen-says-windows-protected-your-pc) for the click path. If your environment refuses to let you run unsigned binaries at all, the [OVGME-friendly install](#alternative-install-ovgme-no-exe) is a fallback.
 
 That's the whole command. It auto-detects DCS at the standard install path (`C:\Program Files\Eagle Dynamics\DCS World` and similar locations).
 
@@ -95,6 +95,26 @@ Re-running the install is safe — it re-copies module files, but does not re-pa
 After installing, **restart DCS** (a full restart, not just closing the Mission Editor — Lua files in `MissionEditor.lua` load once at DCS start). Open the Mission Editor; you should see **DCS-SMS** in the top menu bar.
 
 For the binary itself, see [`tools/cmd/dcs-sms/README.md`](../cmd/dcs-sms/README.md).
+
+## Alternative install: OVGME (no `.exe`)
+
+If your environment refuses to run unsigned binaries (e.g. corporate machine, locked-down browser), each release also ships an OVGME-friendly zip — `dcs-sms-me-mod-vX.Y.Z.zip` — alongside `dcs-sms.exe` on the [Releases page](https://github.com/nielsvaes/dcs-sms/releases/latest).
+
+The runtime mod is identical to what the `.exe` installs. The trade-off: OVGME can only copy files, so you handle the one-line `MissionEditor.lua` patch by hand. (We'd ship a pre-patched copy in the zip, but that file belongs to ED and the [DCS EULA §3.1(a)](https://www.digitalcombatsimulator.com/en/support/license/) prohibits redistributing modified ED files. Editing your own copy on your own machine is permitted, hence the manual step.)
+
+1. Download **`dcs-sms-me-mod-vX.Y.Z.zip`** from the latest release; extract it.
+2. Drop the `dcs-sms-me-mod` folder into your OVGME mods directory and enable it in OVGME — that copies our Lua module files into `<DCS install>\MissionEditor\modules\dcs_sms_me\`.
+3. Open `<DCS install>\MissionEditor\MissionEditor.lua` in a text editor (Notepad is fine — run it as Administrator if your DCS sits under Program Files), append this single line at the very end of the file, save:
+   ```lua
+   require('dcs_sms_me.init')
+   ```
+4. Fully quit DCS and start it again. Open the Mission Editor — **DCS-SMS** appears in the top menu bar.
+
+Updates: replace the OVGME mod folder with the new release's contents and re-enable. The `MissionEditor.lua` patch line stays where you put it; no re-edit needed unless DCS itself replaced your `MissionEditor.lua` during a DCS update (in which case re-apply step 3).
+
+Uninstall: disable the mod in OVGME (removes the Lua files), and delete the `require('dcs_sms_me.init')` line from `MissionEditor.lua` if you want a fully clean uninstall.
+
+The `dcs-sms.exe install-me-mod` path is still the recommended install when you can use it — it patches `MissionEditor.lua` automatically and supports `dcs-sms.exe update` / `dcs-sms.exe uninstall-me-mod`. The OVGME zip is the fallback.
 
 ## Update
 
@@ -131,6 +151,8 @@ Removes the patch block from `MissionEditor.lua` (surgically, by markers; falls 
 - **On first run** — Windows may show a blue dialog titled **"Windows protected your PC"**. Click **More info** (small text in the dialog) → **Run anyway**.
 
 You only have to do this once per binary. Subsequent runs of the same .exe go through silently.
+
+If your environment refuses to let you bypass this at all (locked-down corporate machine, group policy blocking unsigned binaries, etc.), use the [OVGME-friendly install](#alternative-install-ovgme-no-exe) instead. It uses the OVGME zip from the same release and skips the `.exe` entirely.
 
 ### I ran the .exe and nothing happened
 
