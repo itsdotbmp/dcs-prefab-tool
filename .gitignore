@@ -10,6 +10,11 @@ docs/superpowers/plans/
 # Per-session Claude handoff snapshots — local-only orientation notes
 .claude-handoff-*.md
 
+# Claude Code per-project config — local-only by default; track only the
+# project-shared slash commands under .claude/commands/.
+.claude/*
+!.claude/commands/
+
 # Go build artifacts
 tools/dcs-sms
 tools/dcs-sms.exe
