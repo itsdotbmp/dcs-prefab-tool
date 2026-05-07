@@ -17,6 +17,9 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.ref }}
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - name: Resolve tag
         id: tag
@@ -171,3 +174,35 @@ jobs:
             echo "Creating new release for $tag."
             gh release create "$tag" --title "$title" --notes-file release-notes.md dcs-sms.exe "$zip"
           fi
+
+  notify-discord:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Post release embed to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          TAG: ${{ needs.release.outputs.tag }}
+          VERSION: ${{ needs.release.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          desc=$(git tag -l --format='%(contents)' "$TAG" | head -c 1500)
+          url="https://github.com/${REPO}/releases/tag/${TAG}"
+          payload=$(jq -n \
+            --arg title "ME-mod v${VERSION}" \
+            --arg url "$url" \
+            --arg desc "$desc" \
+            '{
+              embeds: [{
+                title: $title,
+                url: $url,
+                description: $desc,
+                color: 5763719
+              }]
+            }')
+          curl -fsSL -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK"
