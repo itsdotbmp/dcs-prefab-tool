@@ -200,6 +200,58 @@ end
 - **Implication for the proposal:** `me group create vehicle --units "[type1,type2,...]"` synthesis can be implemented without `--from-template ref:samsite.<x>` for the common case. Templates are only needed when the GROUP SHAPE is rich (the broken-F-16 problem was about waypoint/task structure complexity, not unit-list complexity). For stationary ground sites with no waypoint tasks, synthesis suffices.
 - **What we did NOT yet test:** synthesis of groups with rich waypoint tasks (FAC_AttackGroup, FireAtPoint, EngageTargets), multi-unit *air* groups (CAP flights with 2-4 aircraft), or groups with `formation_template` non-empty. Those may still need template extraction.
 
+## save survival requires `fixWaypointForGroup` post-injection
+**Tag:** command-worthy (now mandatory in the canonical injection sequence)
+**Touches:** `Mission.fixWaypointForGroup`, `me_route.lua:2413` (the crash site), save→reload lifecycle
+**Snippet:**
+```lua
+-- Add as the LAST step of the inject helper, after create_group_map_objects.
+if type(Mission.fixWaypointForGroup) == "function" then
+  pcall(Mission.fixWaypointForGroup, g)
+end
+```
+**Notes:**
+- Without this, **save hangs and corrupts the .miz**, requiring a DCS restart to recover.
+- The lifecycle ED expects: load-from-.miz puts `wpt.type = "Turning Point"` (string) and `wpt.action = "Turning Point"` (string) into the in-memory waypoint. Then `fixWaypointForGroup` runs as part of load and **transforms `wpt.type` into a TABLE `{type="...", action="..."}` and clears `wpt.action`**. From that point forward, the in-memory waypoint's `type` is a table and `action` is nil. Save reads via `s.type.type` and `s.type.action` (`me_mission.lua:4035-4036` in `unload_air_groups`).
+- Our injection (which built the waypoint with string `type`+`action`) skipped that fix, leaving the waypoint in the post-load shape ED never expects to see at save time. Save's `unload_air_groups` reads `s.type.type` (string-indexes a string, silently returns nil), writes nil/nil to disk, then save's post-write reload chokes at `me_route.lua:2413` doing `nil .. ':' .. nil`.
+- **Save's post-write reload** — confirmed: `save_mission` writes the .miz, then calls `load(fName)` to verify integrity. Both write AND verify-reload must succeed for save to complete.
+- Validated end-to-end: F-16 CAP injected with the fix, File > Save As completes cleanly, saved .miz reopens with the F-16 intact and clickable.
+
+## delete groups via `Mission.remove_group` — iterate-collect-then-remove
+**Tag:** command-worthy
+**Touches:** `Mission.remove_group(group_obj)` — takes the full group object, not an id
+**Snippet:**
+```lua
+-- Collect first (mutating-while-iterating coalition.<side>.country.<cat>.group is unsafe)
+local groups = {}
+for _, side in pairs(m.coalition) do
+  if type(side) == "table" and side.country then
+    for _, country in ipairs(side.country) do
+      for _, cat in ipairs({ "plane", "helicopter", "vehicle", "ship", "static" }) do
+        if country[cat] and country[cat].group then
+          for _, g in ipairs(country[cat].group) do table.insert(groups, g) end
+        end
+      end
+    end
+  end
+end
+-- Then remove
+for _, g in ipairs(groups) do pcall(Mission.remove_group, g) end
+```
+**Notes:**
+- Validated by clearing 2 spawned groups (Hawk site + F-16 flight) — both gone, map empty, `coalition.<side>.country[N].<cat>.group` arrays empty, no errors.
+- **groupIds and unitIds are NOT reused after delete** — they increment monotonically. After deleting groupId 1 (Hawk) and 2 (F-16) and re-spawning, the new groups got groupId 3 and 4. Worth noting in CLI documentation so users don't expect a freshly-allocated mission to start at id=1 if anything's been deleted.
+- Per-side / per-category iteration uses the same coalition-tree walk we already do for `me group list`. Filter combinations work as expected.
+
+## option command runtime semantics confirmed
+**Tag:** confirms the proposal §2.11 mappings
+**Touches:** WrappedAction[Option] in waypoint task array
+**Notes:**
+- **Alarm State (name=9):** `value=1` (Green) → radars off, no engagement, even when targets fly directly overhead. `value=2` (Red) → radars active, engages overflying enemies. Confirmed by spawning the same Hawk site setup twice, only changing this option, and observing engagement behavior. Both runtime-active during mission run.
+- **ROE (name=0):** `value=0` (Weapons Free) — engages everything in range. `value=4` (Weapon Hold) — defensive only. Both runtime-active.
+- F-16 overflight scenario validated: 4×F-16C_50 at 23000ft passing directly over Hawk site, alarm Green / ROE Hold → unmolested overflight; alarm Red / ROE Free → Hawk lit them up and engaged.
+- Combined "natural-language test" (red coalition + multi-unit air + multi-waypoint route + ground option commands + save survival) all in one shot — proves the canonical injection sequence handles the full command-surface scope.
+
 ## bridge response timeout — 15s sometimes not enough
 **Tag:** needs-more
 **Touches:** CLI `--timeout` default
