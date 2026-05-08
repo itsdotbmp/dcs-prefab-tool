@@ -910,11 +910,19 @@ exit_place_pending = function()
     pcall(function()
         if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Place at click') end
     end)
-    -- No explicit skin reset here — set_status itself handles the swap
-    -- per severity, so the next message after exit_place_pending will set
-    -- the right colour. Leaving the green skin briefly while the place
-    -- result is set is fine; if no follow-up message fires (rare), the
-    -- empty status bar after the auto-clear is invisible regardless.
+    -- Clear the sticky 'PLACING ...' baseline that enter_place_pending set
+    -- via set_status_sticky. Without this, the success/cancel flash that
+    -- preceded this call (set_status() above) would auto-revert to the
+    -- now-stale PLACING message after its 5-second timeout — the user sees
+    -- "Place: ..." for 5s, then it jumps back to the green PLACING text.
+    -- clear_sticky_status() only updates the baseline; it doesn't touch
+    -- the active flash, so the success/cancel message remains visible for
+    -- its full duration before reverting to an empty footer.
+    pcall(function()
+        if W.sms_window and W.sms_window.clear_sticky_status then
+            W.sms_window:clear_sticky_status()
+        end
+    end)
     -- Tear down the bbox preview overlay before restoring map state so the
     -- yellow rectangle doesn't briefly persist after Esc / click.
     pcall(function()

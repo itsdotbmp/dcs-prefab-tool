@@ -401,6 +401,20 @@ function SMSWindow:set_status(text, severity)
     self:_render_status(text, severity)
 end
 
+-- Clear the sticky baseline that flash_status reverts to when its timeout
+-- expires, WITHOUT affecting any active flash. Use this to end a previously
+-- set sticky message (so the next flash reverts to empty rather than back
+-- to the stale sticky text), but not to replace what's currently rendered.
+--
+-- Typical use: a consumer enters some "mode" via set_status('mode banner'),
+-- and exits that mode via a transient flash_status('mode result'). Without
+-- clear_sticky_status, the flash would auto-revert to the stale mode banner
+-- after its 5-second timeout. With it, the flash reverts to an empty footer.
+function SMSWindow:clear_sticky_status()
+    self._flash_state.sticky_text     = nil
+    self._flash_state.sticky_severity = nil
+end
+
 -- Flash a status message that auto-reverts to the last sticky baseline
 -- after `timeout` seconds (default 5). Calling set_status during a flash
 -- cancels it; calling flash_status during a flash replaces it.
