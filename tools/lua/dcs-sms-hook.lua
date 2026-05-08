@@ -4,7 +4,7 @@
 -- Protocol: see docs/superpowers/specs/2026-04-25-execution-bridge-design.md
 
 local DCS_SMS = {
-  version = "0.1.0",
+  version = "0.2.0",
   heartbeat_every_frames = 30,
   cleanup_max_age_seconds = 60,
 }
@@ -15,10 +15,12 @@ DCS_SMS.outbox = DCS_SMS.root .. "outbox\\"
 DCS_SMS.state  = DCS_SMS.root .. "state\\"
 DCS_SMS.logdir = DCS_SMS.root .. "log\\"
 
-DCS_SMS.frame                 = 0
-DCS_SMS.last_heartbeat_frame  = -1e9  -- force first heartbeat immediately
+DCS_SMS.tick                  = 0
+DCS_SMS.last_heartbeat_tick   = -1e9  -- force first heartbeat immediately
 DCS_SMS.mission_loaded        = false
 DCS_SMS.mission_name          = ""
+DCS_SMS.state_label           = "starting"  -- mirror of HookState.state
+DCS_SMS.tick_source           = "update_manager" -- swaps to "simulation_frame" on sim start
 
 -- ----------------------------------------------------------------------------
 -- helpers
@@ -78,16 +80,25 @@ local function escape_json_string(s)
 end
 
 local function write_heartbeat()
+  -- Pure-Lua JSON for the heartbeat. Keep last_frame / last_frame_at populated
+  -- as aliases of last_tick / last_tick_at for one release so older CLIs that
+  -- don't know about the new field names still work.
   local payload = string.format(
-    '{"hook_version":"%s","mission_loaded":%s,"mission_name":"%s","last_frame":%d,"last_frame_at":"%s"}',
+    '{"hook_version":"%s","state":"%s","mission_loaded":%s,"mission_name":"%s",' ..
+    '"gui_bridge_enabled":%s,"tick_source":"%s",' ..
+    '"last_tick":%d,"last_tick_at":"%s",' ..
+    '"last_frame":%d,"last_frame_at":"%s"}',
     DCS_SMS.version,
+    DCS_SMS.state_label,
     tostring(DCS_SMS.mission_loaded),
     escape_json_string(DCS_SMS.mission_name),
-    DCS_SMS.frame,
-    iso_now()
+    tostring(_G.DCS_SMS_GUI_BRIDGE_ENABLED == true),
+    DCS_SMS.tick_source,
+    DCS_SMS.tick, iso_now(),
+    DCS_SMS.tick, iso_now()
   )
   write_atomic(DCS_SMS.state .. "hook.json", payload)
-  DCS_SMS.last_heartbeat_frame = DCS_SMS.frame
+  DCS_SMS.last_heartbeat_tick = DCS_SMS.tick
 end
 
 local function sweep_stale(dir, suffix)
@@ -287,7 +298,7 @@ local function execute_request(filename)
   local code = parsed.code
   local outbox_path = DCS_SMS.outbox .. req_id .. ".res.json"
 
-  local wrapper = build_wrapper(req_id, DCS_SMS.frame, code, outbox_path)
+  local wrapper = build_wrapper(req_id, DCS_SMS.tick, code, outbox_path)
   local ok_out, err_out = pcall(net.dostring_in, 'mission', wrapper)
   if not ok_out then
     log.write("dcs-sms", log.ERROR, "wrapper exec failed for " .. req_id .. ": " .. tostring(err_out))
@@ -324,11 +335,11 @@ function handler.onMissionLoadEnd()
 end
 
 function handler.onSimulationFrame()
-  DCS_SMS.frame = DCS_SMS.frame + 1
+  DCS_SMS.tick = DCS_SMS.tick + 1
   if DCS_SMS.mission_loaded then
     pcall(process_inbox)
   end
-  if DCS_SMS.frame - DCS_SMS.last_heartbeat_frame >= DCS_SMS.heartbeat_every_frames then
+  if DCS_SMS.tick - DCS_SMS.last_heartbeat_tick >= DCS_SMS.heartbeat_every_frames then
     pcall(write_heartbeat)
   end
 end
