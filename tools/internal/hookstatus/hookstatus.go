@@ -47,3 +47,39 @@ func IsFresh(st proto.HookState, maxAge time.Duration, now time.Time) bool {
 	}
 	return diff <= maxAge
 }
+
+// RouteForTarget resolves the user's --target flag against the current hook
+// state. Returns the concrete target the request should carry ("mission" or
+// "gui"), or an error describing why the requested route isn't usable right
+// now.
+//
+// requested values: "mission", "gui", "auto", or "" (treated as "auto").
+func RouteForTarget(requested string, st proto.HookState) (string, error) {
+	switch requested {
+	case "mission":
+		return "mission", nil
+	case "gui":
+		if !st.GuiBridgeEnabled {
+			return "", fmt.Errorf("gui bridge is disabled — open the DCS-SMS menu in the Mission Editor and toggle 'External execution' on")
+		}
+		return "gui", nil
+	case "", "auto":
+		// Auto-routing decision tree. Order matters: prefer "mission" when
+		// a sim is running (exec speed via onSimulationFrame), fall through
+		// to "gui" when the user is in the ME or main menu.
+		if st.State == "in_mission" || (st.State == "" && st.MissionLoaded) {
+			return "mission", nil
+		}
+		if st.State == "in_mission_editor" || st.State == "at_main_menu" {
+			if !st.GuiBridgeEnabled {
+				return "", fmt.Errorf("DCS is in the %s but the gui bridge is disabled — toggle 'External execution' on in the DCS-SMS menu", st.State)
+			}
+			return "gui", nil
+		}
+		// State "loading_mission", "starting", "stopping" or unknown.
+		// Legacy hook with mission unloaded and no state info also lands here.
+		return "", fmt.Errorf("hook reports state=%q (mission_loaded=%v) — no target available right now; pass --target mission or --target gui explicitly", st.State, st.MissionLoaded)
+	default:
+		return "", fmt.Errorf("unknown --target %q (allowed: mission, gui, auto)", requested)
+	}
+}

@@ -112,3 +112,126 @@ func TestReadMalformedJSON(t *testing.T) {
 		t.Fatal("expected parse error for malformed JSON")
 	}
 }
+
+func TestRouteForTargetExplicitMissionInRunningMission(t *testing.T) {
+	st := proto.HookState{
+		State:            "in_mission",
+		MissionLoaded:    true,
+		GuiBridgeEnabled: false,
+		TickSource:       "simulation_frame",
+	}
+	got, err := RouteForTarget("mission", st)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "mission" {
+		t.Errorf("got %q, want %q", got, "mission")
+	}
+}
+
+func TestRouteForTargetExplicitGuiWhenEnabled(t *testing.T) {
+	st := proto.HookState{
+		State:            "in_mission_editor",
+		MissionLoaded:    false,
+		GuiBridgeEnabled: true,
+		TickSource:       "update_manager",
+	}
+	got, err := RouteForTarget("gui", st)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "gui" {
+		t.Errorf("got %q, want %q", got, "gui")
+	}
+}
+
+func TestRouteForTargetExplicitGuiWhenDisabledErrors(t *testing.T) {
+	st := proto.HookState{
+		State:            "in_mission_editor",
+		GuiBridgeEnabled: false,
+		TickSource:       "update_manager",
+	}
+	_, err := RouteForTarget("gui", st)
+	if err == nil {
+		t.Fatal("expected error when gui requested but bridge disabled")
+	}
+}
+
+func TestRouteForTargetAutoInMission(t *testing.T) {
+	st := proto.HookState{
+		State:            "in_mission",
+		MissionLoaded:    true,
+		GuiBridgeEnabled: false,
+	}
+	got, err := RouteForTarget("auto", st)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "mission" {
+		t.Errorf("got %q, want %q", got, "mission")
+	}
+}
+
+func TestRouteForTargetAutoInMissionEditor(t *testing.T) {
+	st := proto.HookState{
+		State:            "in_mission_editor",
+		MissionLoaded:    false,
+		GuiBridgeEnabled: true,
+	}
+	got, err := RouteForTarget("auto", st)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "gui" {
+		t.Errorf("got %q, want %q", got, "gui")
+	}
+}
+
+func TestRouteForTargetAutoInMissionEditorBridgeOffErrors(t *testing.T) {
+	st := proto.HookState{
+		State:            "in_mission_editor",
+		GuiBridgeEnabled: false,
+	}
+	_, err := RouteForTarget("auto", st)
+	if err == nil {
+		t.Fatal("expected error: ME state but gui bridge is off")
+	}
+}
+
+func TestRouteForTargetAutoAtMainMenu(t *testing.T) {
+	// Main menu with the bridge enabled is a valid gui target.
+	st := proto.HookState{
+		State:            "at_main_menu",
+		GuiBridgeEnabled: true,
+	}
+	got, err := RouteForTarget("auto", st)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "gui" {
+		t.Errorf("got %q, want %q", got, "gui")
+	}
+}
+
+func TestRouteForTargetAutoLegacyHeartbeatFallsBackToMission(t *testing.T) {
+	// Old hook (0.1.0) sent no `state` field. Treat as "mission" if
+	// MissionLoaded, otherwise error.
+	stLoaded := proto.HookState{State: "", MissionLoaded: true}
+	got, err := RouteForTarget("auto", stLoaded)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "mission" {
+		t.Errorf("legacy + mission_loaded should route to mission, got %q", got)
+	}
+	stUnloaded := proto.HookState{State: "", MissionLoaded: false}
+	if _, err := RouteForTarget("auto", stUnloaded); err == nil {
+		t.Fatal("expected error: legacy hook + no mission can't auto-route")
+	}
+}
+
+func TestRouteForTargetUnknown(t *testing.T) {
+	if _, err := RouteForTarget("typo", proto.HookState{}); err == nil {
+		t.Fatal("expected error for unknown target")
+	}
+}
