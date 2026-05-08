@@ -14,7 +14,11 @@ import (
 
 // Read parses state/hook.json from the state directory.
 func Read(stateDir string) (proto.HookState, error) {
-	path := filepath.Join(stateDir, "hook.json")
+	return readOne(filepath.Join(stateDir, "hook.json"))
+}
+
+// readOne is the workhorse: parses one heartbeat file or returns an error.
+func readOne(path string) (proto.HookState, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return proto.HookState{}, fmt.Errorf("read %s: %w", path, err)
@@ -24,6 +28,89 @@ func Read(stateDir string) (proto.HookState, error) {
 		return proto.HookState{}, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return st, nil
+}
+
+// ReadMerged reads both state/hook.json (written by the dcs-sms hook in the
+// Hooks/ env, in-mission only) and state/me.json (written by the ME-mod's
+// bridge.lua, always-on while DCS is up). Merges them into a single HookState
+// that callers can use as a unified view of the bridge.
+//
+// Merge rules:
+//   - mission_loaded / mission_name: from hook.json (only the hook knows).
+//   - gui_bridge_enabled: from me.json (only the ME-mod knows the toggle).
+//   - state: prefer "in_mission" if hook says so, otherwise me.json's value.
+//   - tick fields: whichever heartbeat is most recent.
+//   - hook_version: me.json's takes precedence (it's the active ticker), with
+//     hook.json's as fallback.
+//
+// Returns the most informative state available. If neither file is present,
+// returns an error. If only one is present, returns that one as-is.
+func ReadMerged(stateDir string) (proto.HookState, error) {
+	hook, hookErr := readOne(filepath.Join(stateDir, "hook.json"))
+	me, meErr := readOne(filepath.Join(stateDir, "me.json"))
+
+	if hookErr != nil && meErr != nil {
+		return proto.HookState{}, fmt.Errorf("no heartbeat found (hook: %v; me: %v)", hookErr, meErr)
+	}
+	if hookErr != nil {
+		return me, nil
+	}
+	if meErr != nil {
+		return hook, nil
+	}
+
+	merged := proto.HookState{
+		MissionLoaded:    hook.MissionLoaded,
+		MissionName:      hook.MissionName,
+		GuiBridgeEnabled: me.GuiBridgeEnabled,
+	}
+
+	// State: prefer "in_mission" if the hook says so (or implies it via the
+	// legacy mission_loaded flag). Otherwise defer to ME-mod's view.
+	if hook.State == "in_mission" || (hook.State == "" && hook.MissionLoaded) {
+		merged.State = "in_mission"
+	} else {
+		merged.State = me.State
+	}
+
+	// hook_version: ME-mod is the active ticker, surface its version first.
+	if me.HookVersion != "" {
+		merged.HookVersion = me.HookVersion
+	} else {
+		merged.HookVersion = hook.HookVersion
+	}
+
+	// tick_source: ME-mod ticks via UpdateManager almost always, hook only
+	// during sim. Prefer ME-mod's reported tick_source.
+	if me.TickSource != "" {
+		merged.TickSource = me.TickSource
+	} else {
+		merged.TickSource = hook.TickSource
+	}
+
+	// Pick the most recent heartbeat for tick fields. ISO 8601 string compare
+	// is correct for fixed-format timestamps.
+	hookAt := hook.LastTickAt
+	if hookAt == "" {
+		hookAt = hook.LastFrameAt
+	}
+	meAt := me.LastTickAt
+	if meAt == "" {
+		meAt = me.LastFrameAt
+	}
+	if meAt > hookAt {
+		merged.LastTick = me.LastTick
+		merged.LastTickAt = me.LastTickAt
+		merged.LastFrame = me.LastFrame
+		merged.LastFrameAt = me.LastFrameAt
+	} else {
+		merged.LastTick = hook.LastTick
+		merged.LastTickAt = hook.LastTickAt
+		merged.LastFrame = hook.LastFrame
+		merged.LastFrameAt = hook.LastFrameAt
+	}
+
+	return merged, nil
 }
 
 // IsFresh returns true when st.LastFrameAt is within maxAge of now,

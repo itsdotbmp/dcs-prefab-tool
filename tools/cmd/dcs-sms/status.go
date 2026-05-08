@@ -36,7 +36,7 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 		return 3
 	}
 	stateDir := filepath.Join(root, "dcs-sms", "state")
-	st, err := hookstatus.Read(stateDir)
+	st, err := hookstatus.ReadMerged(stateDir)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms status: hook not found —", err)
 		return 3

@@ -86,14 +86,16 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 ### [hook 0.2.0] — 2026-05-08
 
 **Added**
-- Hook now runs in the main menu and Mission Editor, not only during a running mission. Tick source is `UpdateManager.add` outside sim and `onSimulationFrame` during sim, swapped on `onSimulationStart` / `onSimulationStop`.
-- `target` field on requests: `"mission"` (default, in-mission scripting env) or `"gui"` (shared GUI/ME Lua state — reaches the editable mission table while in the ME).
+- `target` field on requests: `"mission"` (default — runs in the in-mission scripting env via `net.dostring_in`) or `"gui"` (handed off to the ME-mod's bridge — runs in the shared GUI/ME Lua state and reaches the editable mission table).
 - `dcs-sms exec --target gui|mission|auto`. Default is `auto` — picks `mission` if a sim is running, `gui` if the user is in the ME / main menu (and the ME-mod toggle is on).
-- New heartbeat fields: `state` (`at_main_menu` | `in_mission_editor` | `in_mission` | …), `gui_bridge_enabled`, `tick_source`, plus `last_tick`/`last_tick_at` aliasing `last_frame`/`last_frame_at`.
-- New CLI exit code 4 (`exec`): `target=gui` requested but the ME-mod toggle is off.
+- New heartbeat fields: `state`, `gui_bridge_enabled`, `tick_source`, plus `last_tick`/`last_tick_at` aliasing `last_frame`/`last_frame_at`.
+- ME-mod writes its own heartbeat to `state/me.json`. CLI's `hookstatus.ReadMerged` fuses both heartbeats so the routing layer sees a unified view (mission state from the hook, gui state from the ME-mod).
+- New CLI exit code 4 (`exec`): `target=gui` requested but the ME-mod's "External execution" toggle is off.
 
 **Changed**
 - `dcs-sms exec` no longer rejects `mission_loaded=false` outright — `--target gui` works in the ME without a running mission. Routing decisions live in `RouteForTarget`.
+- The hook itself stays single-tick (`onSimulationFrame` only — Hooks/ env has no per-frame tick outside sim, runtime-tested). The `target=gui` poller lives in the ME-mod's `bridge.lua`, driven by `UpdateManager.add` in the ME env where it's actually wired.
+- The hook now skips `target=gui` requests in the inbox (leaves them for the ME-mod's poller to pick up) instead of trying to handle them itself.
 
 **Compatibility**
 - Heartbeat keeps `last_frame` / `last_frame_at` populated alongside `last_tick` / `last_tick_at` for one release.
@@ -106,7 +108,8 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 ### [0.5.0] — 2026-05-08
 
 **Added**
-- "External execution: ON/OFF" item under the DCS-SMS top menu. Flipping it on enables the hook's `target=gui` path so external tools (the `dcs-sms exec --target gui` CLI, Claude, etc.) can run Lua against the editable mission table from outside DCS. Default off at every DCS launch (session-only; no persistence).
+- `bridge.lua` — an inbox poller running in the ME's Lua state, driven by `UpdateManager.add`. Handles `target=gui` execution requests from the `dcs-sms.exe` CLI: runs the user's Lua snippet directly via `loadstring + xpcall`, captures `print` output, returns results through the standard file-mailbox protocol. Writes its own heartbeat to `<SavedGames>/DCS/dcs-sms/state/me.json`.
+- "External execution: ON/OFF" item under the DCS-SMS top menu. Flipping it on enables the bridge's `target=gui` path so external tools (the `dcs-sms exec --target gui` CLI, Claude, etc.) can run Lua against the editable mission table from outside DCS. Default off at every DCS launch (session-only; no persistence).
 
 ### [0.4.2] — 2026-05-07
 

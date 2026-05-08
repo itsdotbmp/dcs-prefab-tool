@@ -25,6 +25,13 @@ local ok, err = pcall(function()
     -- from window.lua on its first show.
     local new_mission_hook = require('dcs_sms_me.new_mission_hook')
     new_mission_hook.install()
+
+    -- Install the ME-side execution bridge: registers an UpdateManager poll
+    -- of <SavedGames>/DCS/dcs-sms/inbox for target=gui requests. Gated by
+    -- the External-execution toggle in menu.lua. Independent of the Prefab
+    -- Manager window — runs from the moment the ME starts.
+    local bridge = require('dcs_sms_me.bridge')
+    bridge.install()
 end)
 if not ok then
     log.write('sms.me', log.ERROR, 'init failed: ' .. tostring(err))

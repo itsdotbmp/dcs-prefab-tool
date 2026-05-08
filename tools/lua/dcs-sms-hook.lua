@@ -19,8 +19,15 @@ DCS_SMS.tick                  = 0
 DCS_SMS.last_heartbeat_tick   = -1e9  -- force first heartbeat immediately
 DCS_SMS.mission_loaded        = false
 DCS_SMS.mission_name          = ""
-DCS_SMS.state_label           = "starting"  -- mirror of HookState.state
-DCS_SMS.tick_source           = "update_manager" -- swaps to "simulation_frame" on sim start
+-- The Hooks/ env has no per-frame tick outside a running mission. UpdateManager
+-- exists as a require()-able module here, but `Gui.AddUpdateCallback(UpdateManager.update)`
+-- is wired up in UserHooks.lua's GUI env / MissionEditor.lua's ME env, NOT this
+-- hook env — so add()-ing here does nothing. The hook only ticks during sim,
+-- via onSimulationFrame. Outside-of-sim work (target=gui) lives in the ME-mod's
+-- bridge.lua, which runs in the ME env where UpdateManager is actually wired.
+DCS_SMS.state_label           = ""               -- ME-mod's heartbeat is the source of truth for state
+DCS_SMS.tick_source           = "simulation_frame_only"
+DCS_SMS.gui_bridge_enabled    = false            -- hook can't see the ME-env flag; ME-mod's heartbeat is authoritative
 
 -- ----------------------------------------------------------------------------
 -- helpers
@@ -92,7 +99,7 @@ local function write_heartbeat()
     DCS_SMS.state_label,
     tostring(DCS_SMS.mission_loaded),
     escape_json_string(DCS_SMS.mission_name),
-    tostring(_G.DCS_SMS_GUI_BRIDGE_ENABLED == true),
+    tostring(DCS_SMS.gui_bridge_enabled == true),
     DCS_SMS.tick_source,
     DCS_SMS.tick, iso_now(),
     DCS_SMS.tick, iso_now()
@@ -376,52 +383,6 @@ local function execute_mission(req_id, code)
   end
 end
 
--- execute_gui runs the user's snippet directly in the shared GUI/ME Lua state
--- via loadstring + xpcall. No a_do_script indirection — the hook is in the
--- right state. Gated by _G.DCS_SMS_GUI_BRIDGE_ENABLED (flipped from the
--- ME-mod menu).
-local function execute_gui(req_id, code)
-  if _G.DCS_SMS_GUI_BRIDGE_ENABLED ~= true then
-    write_response_file(req_id, false, nil, "", {
-      message   = "gui bridge is disabled — open the DCS-SMS menu in the Mission Editor and toggle 'External execution' on",
-      traceback = "",
-    }, 0)
-    return
-  end
-
-  local out = {}
-  local orig_print = print
-  print = function(...)
-    local parts = {}
-    for i = 1, select('#', ...) do parts[i] = tostring(select(i, ...)) end
-    out[#out+1] = table.concat(parts, "\t")
-  end
-
-  local chunk, load_err = loadstring(code, "dcs-sms-gui:" .. req_id)
-  if not chunk then
-    print = orig_print
-    write_response_file(req_id, false, nil, "", {
-      message   = "loadstring: " .. tostring(load_err),
-      traceback = "",
-    }, 0)
-    return
-  end
-
-  local start = os.clock()
-  local ok_run, ret = xpcall(chunk, debug.traceback)
-  print = orig_print
-  local dur = (os.clock() - start) * 1000
-
-  if ok_run then
-    write_response_file(req_id, true, ret, table.concat(out, "\n"), nil, dur)
-  else
-    write_response_file(req_id, false, nil, table.concat(out, "\n"), {
-      message   = tostring(ret),
-      traceback = "",
-    }, dur)
-  end
-end
-
 local function execute_request(filename)
   local req_path = DCS_SMS.inbox .. filename
   local raw = read_file(req_path)
@@ -446,16 +407,20 @@ local function execute_request(filename)
 
   if target == "mission" then
     execute_mission(req_id, code)
+    os.remove(req_path)
   elseif target == "gui" then
-    execute_gui(req_id, code)
+    -- The Hooks/ env can't tick outside a sim and can't reach the editable
+    -- mission table. The ME-mod's bridge.lua handles target=gui from the ME
+    -- env. Leave the request file in the inbox so bridge.lua can pick it up.
+    -- (sweep_stale removes orphans if no ME-mod is running.)
+    return
   else
     write_response_file(req_id, false, nil, "", {
       message   = "unknown target: " .. tostring(target),
       traceback = "",
     }, 0)
+    os.remove(req_path)
   end
-
-  os.remove(req_path)
 end
 
 local function process_inbox()
@@ -470,104 +435,43 @@ local function process_inbox()
 end
 
 -- ----------------------------------------------------------------------------
--- tick body (shared between UpdateManager and onSimulationFrame)
+-- userCallbacks
 
--- Shared polling body. Increments tick, polls inbox, writes heartbeat if due.
--- The mission_loaded gate that used to live here moved into execute_request,
--- which dispatches per-request target. The polling layer always pumps so
--- target=gui requests work outside a running mission.
-local function tick_body()
+local handler = {}
+
+function handler.onMissionLoadEnd()
+  DCS_SMS.mission_loaded = true
+  DCS_SMS.state_label = "in_mission"
+  DCS_SMS.mission_name = (DCS and DCS.getMissionName and DCS.getMissionName()) or ""
+  pcall(sweep_stale, DCS_SMS.inbox, ".req.json")
+  pcall(sweep_stale, DCS_SMS.outbox, ".res.json")
+  write_heartbeat()
+  log.write("dcs-sms", log.INFO, "mission loaded: " .. DCS_SMS.mission_name)
+end
+
+function handler.onSimulationFrame()
   DCS_SMS.tick = DCS_SMS.tick + 1
-  pcall(process_inbox)
+  if DCS_SMS.mission_loaded then
+    pcall(process_inbox)
+  end
   if DCS_SMS.tick - DCS_SMS.last_heartbeat_tick >= DCS_SMS.heartbeat_every_frames then
     pcall(write_heartbeat)
   end
 end
 
-local function update_manager_tick()
-  if DCS_SMS.tick_source ~= "update_manager" then
-    return false  -- inactive: skip work, but stay registered for the next swap-back
-  end
-  tick_body()
-  return false  -- keep registered with UpdateManager
-end
-
--- ----------------------------------------------------------------------------
--- userCallbacks
-
-local handler = {}
-
-function handler.onShowMainInterface()
-  DCS_SMS.state_label = "at_main_menu"
-  pcall(write_heartbeat)
-end
-
-function handler.onMissionLoadBegin()
-  DCS_SMS.state_label = "loading_mission"
-  pcall(write_heartbeat)
-end
-
-function handler.onMissionLoadEnd()
-  -- Distinguish "mission running" from "mission loaded into the ME for editing".
-  -- Heuristic: default to in_mission_editor here; onSimulationStart upgrades to
-  -- in_mission shortly after when a sim is actually starting.
-  DCS_SMS.state_label = "in_mission_editor"
-  DCS_SMS.mission_loaded = false  -- set true only by onSimulationStart
-  DCS_SMS.mission_name = (DCS and DCS.getMissionName and DCS.getMissionName()) or ""
-  pcall(sweep_stale, DCS_SMS.inbox, ".req.json")
-  pcall(sweep_stale, DCS_SMS.outbox, ".res.json")
-  pcall(write_heartbeat)
-  log.write("dcs-sms", log.INFO, "mission loaded: " .. DCS_SMS.mission_name)
-end
-
-function handler.onSimulationStart()
-  DCS_SMS.state_label = "in_mission"
-  DCS_SMS.mission_loaded = true
-  DCS_SMS.tick_source = "simulation_frame"
-  pcall(write_heartbeat)
-  log.write("dcs-sms", log.INFO, "simulation start — tick_source=simulation_frame")
-end
-
-function handler.onSimulationFrame()
-  if DCS_SMS.tick_source ~= "simulation_frame" and DCS_SMS.tick_source ~= "simulation_frame_only" then
-    return
-  end
-  tick_body()
-end
-
 function handler.onSimulationStop()
-  DCS_SMS.state_label = "in_mission_editor"  -- best-effort; back to ME or main menu
   DCS_SMS.mission_loaded = false
-  DCS_SMS.tick_source = "update_manager"
+  DCS_SMS.state_label = ""
   pcall(write_heartbeat)
-  log.write("dcs-sms", log.INFO, "simulation stop — tick_source=update_manager")
+  log.write("dcs-sms", log.INFO, "simulation stopped")
 end
 
 local function init()
   ensure_dirs()
-  DCS_SMS.state_label = "starting"
   write_heartbeat()
   DCS.setUserCallbacks(handler)
-
-  -- Register UpdateManager.add for ME / main-menu / pre-mission ticking.
-  -- On older DCS versions where UpdateManager isn't available, fall back to
-  -- "simulation_frame_only" mode (today's behavior — polling only fires
-  -- inside a sim). The CLI sees this via heartbeat.tick_source and warns
-  -- the user that --target gui won't work outside a sim on this DCS.
-  local ok_um, UpdateManager = pcall(require, 'UpdateManager')
-  if ok_um and UpdateManager and type(UpdateManager.add) == "function" then
-    UpdateManager.add(update_manager_tick)
-    log.write("dcs-sms", log.INFO, "hook loaded v" .. DCS_SMS.version
-      .. " (tick_source=update_manager)")
-  else
-    DCS_SMS.tick_source = "simulation_frame_only"
-    log.write("dcs-sms", log.WARNING,
-      "UpdateManager unavailable; falling back to simulation_frame_only — "
-      .. "target=gui will not work outside a running mission. ("
-      .. tostring(UpdateManager) .. ")")
-  end
-
-  pcall(write_heartbeat)
+  log.write("dcs-sms", log.INFO, "hook loaded v" .. DCS_SMS.version
+    .. " (tick_source=simulation_frame_only — ME-side bridge handles target=gui)")
 end
 
 local ok, err = pcall(init)

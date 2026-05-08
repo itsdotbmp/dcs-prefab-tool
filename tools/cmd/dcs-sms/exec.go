@@ -69,7 +69,7 @@ func execCmd(args []string, stdout, stderr io.Writer) int {
 	// Resolve --target against the current hook state. RouteForTarget returns
 	// "mission" or "gui" on success, or an error describing why the requested
 	// target isn't usable right now (e.g. gui bridge disabled).
-	hookState, _ := hookstatus.Read(mb.State())
+	hookState, _ := hookstatus.ReadMerged(mb.State())
 	target, err := hookstatus.RouteForTarget(*flagTarget, hookState)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms exec:", err)
@@ -199,7 +199,7 @@ func pollResponse(mb *mailbox.Mailbox, id string, timeout time.Duration) (proto.
 func waitForHook(stateDir string, wait bool, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
-		st, err := hookstatus.Read(stateDir)
+		st, err := hookstatus.ReadMerged(stateDir)
 		if err == nil && hookstatus.IsFresh(st, 2*time.Second, time.Now()) {
 			return nil
 		}
