@@ -9,9 +9,9 @@
 -- The test runner walks tools/me-mod/test/test_*.lua. Failures abort
 -- the run via assert(); successful tests print PASS lines.
 
-package.path = '../lua/dcs_sms_me/?.lua;' .. package.path
+package.path = '../lua/dcs_sms_me/?.lua;../lua/?.lua;' .. package.path
 
-local sw = require('sms_window')
+local sw = require('dcs_sms_me.sms_window')
 
 -- ---------- _validate_severity ----------
 
