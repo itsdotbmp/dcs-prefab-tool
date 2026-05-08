@@ -252,7 +252,121 @@ function SMSWindow.new(opts)
 
     pcall(function() if win.setVisible then win:setVisible(true) end end)
 
+    -- Initial layout pass + resize callback. _install_resize_callback uses
+    -- get_content_bounds and relayout, both defined later — Lua resolves
+    -- method lookups at call time, so the forward reference is fine.
+    self:_initial_layout()
+    self:_install_resize_callback()
+
     return self
+end
+
+-- ---------- Lifecycle ----------
+
+-- show / hide / toggle are idempotent — multiple calls are no-ops past
+-- the first. setEnabled(true) on show is defensive: some dxgui builds
+-- leave a hidden Window in a disabled state.
+function SMSWindow:show()
+    pcall(function()
+        if self.window and self.window.setVisible then self.window:setVisible(true) end
+        if self.window and self.window.setEnabled then self.window:setEnabled(true) end
+    end)
+end
+
+function SMSWindow:hide()
+    pcall(function()
+        if self.window and self.window.setVisible then self.window:setVisible(false) end
+    end)
+    if self._opts and type(self._opts.on_close) == 'function' then
+        pcall(self._opts.on_close, self)
+    end
+end
+
+function SMSWindow:toggle()
+    if not self.window then return end
+    local visible = false
+    pcall(function()
+        if self.window.getVisible then visible = self.window:getVisible() end
+    end)
+    if visible then self:hide() else self:show() end
+end
+
+-- Escape hatch: returns the underlying dxgui Window. Used by retrofits
+-- that need to attach extra hotkeys (Escape, Ctrl+Shift+R) or callbacks
+-- the base doesn't anticipate.
+function SMSWindow:raw() return self.window end
+
+-- ---------- Layout ----------
+
+-- Returns the content rect (x, y, w, h) inside the chrome — the area
+-- between the title bar (handled by dxgui Window) and the footer
+-- (separator + status, owned by this class). Subclasses position their
+-- own widgets within this rect.
+function SMSWindow:get_content_bounds()
+    local sw, sh = self._size.w, self._size.h
+    pcall(function()
+        if self.window and self.window.getSize then
+            local cw, ch = self.window:getSize()
+            if cw and ch then sw, sh = cw, ch end
+        end
+    end)
+    return EDGE_PAD, TOP_PAD, sw - 2 * EDGE_PAD, sh - TOP_PAD - FOOTER_H
+end
+
+-- Reposition footer widgets to the bottom of the window. Called from
+-- the size callback on every resize.
+function SMSWindow:_relayout_footer(w, h)
+    local sep_y    = h - FOOTER_H
+    local status_y = h - FOOTER_H + 1
+    pcall(function() if self._sep    and self._sep.setBounds    then self._sep:setBounds(0, sep_y, w, 1) end end)
+    pcall(function() if self._status and self._status.setBounds then self._status:setBounds(EDGE_PAD, status_y, w - 2 * EDGE_PAD, 20) end end)
+end
+
+-- Default override hooks. Subclasses (or composition consumers via opts)
+-- replace these.
+function SMSWindow:build_body() end
+function SMSWindow:relayout(x, y, w, h) end
+
+-- Wire the dxgui resize callback. Clamps via setBounds when the user
+-- shrinks past min_size (re-fires the callback at the clamped size,
+-- which is fine), repositions the footer, then dispatches to the
+-- subclass's relayout method or the opts.on_resize callback.
+function SMSWindow:_install_resize_callback()
+    if not (self.window and self.window.addSizeCallback) then return end
+    local me = self
+    pcall(function()
+        self.window:addSizeCallback(function()
+            pcall(function()
+                local cw, ch = me.window:getSize()
+                if cw < me._min_size.w or ch < me._min_size.h then
+                    local px, py = me.window:getBounds()
+                    me.window:setBounds(px, py, math.max(cw, me._min_size.w), math.max(ch, me._min_size.h))
+                    return
+                end
+                me._size.w, me._size.h = cw, ch
+                me:_relayout_footer(cw, ch)
+                local x, y, w, h = me:get_content_bounds()
+                if me._opts and type(me._opts.on_resize) == 'function' then
+                    pcall(me._opts.on_resize, me, x, y, w, h)
+                else
+                    pcall(SMSWindow.relayout, me, x, y, w, h)
+                end
+            end)
+        end)
+    end)
+end
+
+-- Initial geometry pass — call once after construction + body build.
+-- Replays exactly what the size callback does, so the first paint
+-- matches subsequent resizes.
+function SMSWindow:_initial_layout()
+    self:_relayout_footer(self._size.w, self._size.h)
+    local x, y, w, h = self:get_content_bounds()
+    if self._opts and type(self._opts.on_resize) == 'function' then
+        pcall(self._opts.on_resize, self, x, y, w, h)
+    else
+        pcall(SMSWindow.relayout, self, x, y, w, h)
+    end
 end
 
 -- Expose the live class table for inheritance + access to the helpers.
