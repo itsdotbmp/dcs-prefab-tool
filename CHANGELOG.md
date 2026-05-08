@@ -81,7 +81,32 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ---
 
+## Tools / Hook
+
+### [hook 0.2.0] — 2026-05-08
+
+**Added**
+- Hook now runs in the main menu and Mission Editor, not only during a running mission. Tick source is `UpdateManager.add` outside sim and `onSimulationFrame` during sim, swapped on `onSimulationStart` / `onSimulationStop`.
+- `target` field on requests: `"mission"` (default, in-mission scripting env) or `"gui"` (shared GUI/ME Lua state — reaches the editable mission table while in the ME).
+- `dcs-sms exec --target gui|mission|auto`. Default is `auto` — picks `mission` if a sim is running, `gui` if the user is in the ME / main menu (and the ME-mod toggle is on).
+- New heartbeat fields: `state` (`at_main_menu` | `in_mission_editor` | `in_mission` | …), `gui_bridge_enabled`, `tick_source`, plus `last_tick`/`last_tick_at` aliasing `last_frame`/`last_frame_at`.
+- New CLI exit code 4 (`exec`): `target=gui` requested but the ME-mod toggle is off.
+
+**Changed**
+- `dcs-sms exec` no longer rejects `mission_loaded=false` outright — `--target gui` works in the ME without a running mission. Routing decisions live in `RouteForTarget`.
+
+**Compatibility**
+- Heartbeat keeps `last_frame` / `last_frame_at` populated alongside `last_tick` / `last_tick_at` for one release.
+- Requests without a `target` field are treated as `target=mission` (today's behavior).
+
+---
+
 ## ME-mod
+
+### [0.5.0] — 2026-05-08
+
+**Added**
+- "External execution: ON/OFF" item under the DCS-SMS top menu. Flipping it on enables the hook's `target=gui` path so external tools (the `dcs-sms exec --target gui` CLI, Claude, etc.) can run Lua against the editable mission table from outside DCS. Default off at every DCS launch (session-only; no persistence).
 
 ### [0.4.2] — 2026-05-07
 
