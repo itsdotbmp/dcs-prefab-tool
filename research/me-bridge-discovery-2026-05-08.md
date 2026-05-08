@@ -65,3 +65,111 @@ pcall(me_mission.create_group_objects, g)
 pcall(me_mission.create_group_map_objects, g)
 ```
 **Notes:** Group appears on map but the waypoint UI is partially blank when selected. The minimum required fields beyond what we set above are unclear. **This is the case that motivates the reference-mission strategy** — instead of synthesizing the group, copy a known-good example. Re-attempt by extracting a CAP F-16 from the reference mission and using its full structure as the template.
+
+## load a .miz programmatically (File > Open)
+**Tag:** command-worthy
+**Touches:** `me_toolbar.loadMission`, `module_mission.load`, `module_mission.removeMission`, `progressBar.setUpdateFunction`
+**Snippet:**
+```lua
+local me_toolbar = require('me_toolbar')
+me_toolbar.loadMission('D:/git/honu/empty_miz_to_load.miz')  -- forward slashes!
+```
+**Notes:** Use forward slashes in the path to avoid the shell-to-JSON-to-Lua escape stack mangling backslashes. The call is **asynchronous**: `loadMission` schedules the actual `module_mission.load(filename)` via `progressBar.setUpdateFunction`, which fires on a later UpdateManager tick. A snippet that calls `loadMission` and then immediately reads `module_mission.mission` will see the post-teardown / pre-reload state (often just `{bullseye=...}`). To verify the load succeeded, either (a) re-probe the mission table on a follow-up tick, or (b) wait for `module_mission.getMissionPathIsSaved()` / `MeSettings.getMissionPath()` to reflect the new file. Implementation source: `me_toolbar.lua:595–629`.
+
+## "make a new mission on Syria" — partial finding
+**Tag:** needs-more
+**Touches:** `Mission.CoalitionController`, `me_toolbar.createMission`, `module_mission.create_new_mission`
+**Snippet:**
+```lua
+-- Calling these from an isEmptyME=true state opens the New Mission Settings UI dialog
+-- but does NOT create the mission programmatically.
+local CC = require('Mission.CoalitionController')
+CC.setDefaultCoalitions()
+CC.showPanel(nil, 'Syria')  -- shows the picker UI; user must click OK
+```
+**Notes:** `me_toolbar.createMission(returnScreen, terrain)` is the user-flow entry point but (a) shows a confirmation dialog when there's unsaved work, (b) calls `showPanel` which opens UI rather than creating. `module_mission.create_new_mission(true)` resets the mission table but errors deep in `me_weather.lua:2162` (`SW_bound nil`) when called from an `isEmptyME=true` state — `me_weather.initModule` expects MapWindow data that doesn't exist yet. Workaround for now: load a known-empty .miz via `me_toolbar.loadMission(path)` instead of trying to create a fresh empty mission programmatically. Full programmatic "new mission" needs more probing — likely the `CoalitionController` panel's OK-button handler is the function we want, or a dedicated `applyAndCreate` somewhere we haven't traced.
+
+## DCS ME coordinate axes (critical correction)
+**Tag:** command-worthy
+**Touches:** every spawn / move / position command
+**Notes:** In the ME `mission` table, **`x` = North–South (north positive)** and **`y` = East–West (east positive)**. This contradicts the assumption baked into the proposal v1 (which described coords as "meters in DCS map space" without axis specifics). To go *north* of an anchor, increase `x`. To go *east*, increase `y`. Altitude is `alt` (a separate field) — there is no `z` at the mission-table level. Confirmed by visually observing a spawn that was supposed to be 9km north of Akrotiri and instead landed 9km east — the mistake was offsetting `y` thinking it was N-S. After swapping to offset `x`, the spawn appeared correctly north of the runway.
+
+## inject a single group "ME-perfect" (template extraction works!)
+**Tag:** command-worthy
+**Touches:** `module_mission.{create_group_objects, create_group_map_objects, fixAddPropAircraft, getNewGroupId, getNewUnitId, check_group_name, getUnitName, group_by_name, group_by_id, unit_by_name, unit_by_id, countryCoalition}`, `prefab_ops.inject_group` as guide
+**Snippet:**
+```lua
+-- Canonical sequence (mirrors prefab_ops.inject_group). Required because
+-- create_group + insert_unit alone produces a malformed group with blank
+-- waypoint UI (the "broken F-16" problem we started with).
+--
+-- All-or-nothing: skip any of these and the icon may render but the group
+-- won't be selectable / Unit List window won't open / payload UI won't
+-- populate / etc.
+
+local Mission = module_mission
+
+-- 1. Build the group table verbatim from a known-good source (e.g. extracted
+--    from a reference miz on disk). Synthesizing from scratch will miss
+--    fields the ME UI requires.
+local g = { ...full group structure... }
+
+-- 2. **REQUIRED:** group.type = "plane" | "helicopter" | "vehicle" | "ship" | "static"
+--    me_units_list.applyFilter (line 91) does filters[group.type]; nil crashes
+--    Unit List window setup. Mission table doesn't have this on disk-loaded
+--    groups (the category is the container key) — this is a runtime field
+--    set by the load path. Set it ourselves.
+g.type = "plane"
+
+-- 3. Translate to target position. ME uses x=N-S, y=E-W. Translate group.x/y,
+--    units[*].x/y, route.points[*].x/y. Set alt on units + route points.
+
+-- 4. Allocate fresh IDs.
+g.groupId = Mission.getNewGroupId()
+for _, u in ipairs(g.units) do u.unitId = Mission.getNewUnitId() end
+
+-- 5. Reserve collision-safe names (only if not unique already).
+g.name = Mission.check_group_name(g.name)
+for _, u in ipairs(g.units) do u.name = Mission.getUnitName(g.name) end
+
+-- 6. **Lookup table registration BEFORE create_group_objects.** Selection,
+--    Unit List, and panel updates all read these.
+Mission.group_by_name[g.name] = g
+Mission.group_by_id[g.groupId] = g
+for _, u in ipairs(g.units) do
+  Mission.unit_by_name[u.name] = u
+  Mission.unit_by_id[u.unitId] = u
+end
+
+-- 7. Boss back-references and color.
+g.boss = target_country  -- the country table from m.coalition.<side>.country[N]
+g.mapObjects = { units = {}, zones = {}, route = {} }  -- create_group_map_objects overwrites; harmless to pre-init
+if Mission.countryCoalition[target_country.name] then
+  g.color = Mission.countryCoalition[target_country.name].color
+end
+for _, u in ipairs(g.units) do u.boss = g end
+for _, wpt in ipairs(g.route.points) do wpt.boss = g end
+
+-- 8. **Defensive:** ensure country.boss = coalition. me_units_list.applyFilter
+--    (line 88) does group.boss.boss.name; nil crashes the Unit List. Usually
+--    set by mission load, but set defensively.
+if not target_country.boss then target_country.boss = m.coalition.<side> end
+
+-- 9. **Canonical insertion order** (do not deviate):
+local ok = Mission.create_group_objects(g)              -- wires unit.boss/index, route.boss, wpt.boss/index
+table.insert(target_country.plane.group, g)             -- THEN insert into mission table
+local ok = Mission.create_group_map_objects(g)          -- THEN create map symbols
+Mission.fixAddPropAircraft()                            -- fills F-16-style AddPropAircraft defaults
+```
+**Notes:**
+- `create_group_objects` does NOT set `group.boss` — only `route.boss`, `wpt.boss`, `unit.boss`. We must set `group.boss = country` ourselves.
+- `create_group_map_objects` **overwrites** `group.mapObjects` with `{units={}, zones={}}` (then adds `route` if `group.route` exists). Pre-init is decorative but harmless.
+- `unit_symbol` insertion uses `unit.index` — `create_group_objects` sets this, so call create_group_objects first.
+- The `mapObjects[<symbol_id>] = symbol_obj` table at module scope is the master rendering registry. `group.mapObjects.units[1]` etc. are per-group references back into that registry. Both get populated by `create_group_map_objects → insert_unit_symbol`.
+- **Cross-airframe template swaps work:** taking the A-4E-C CAP shape verbatim and just changing `units[1].type = "F-16C_50"` (with `livery_id = ""` and `AddPropAircraft = nil`) produces a working F-16 CAP after `fixAddPropAircraft` runs. The F-16-specific `AddPropAircraft` keys (HMD, etc.) are populated by the fix.
+- **Validation:** spawned F-16 CAP from A-4E-C template, ~9km north of Akrotiri at 3000m. Map icon visible, group selectable, Unit List window opens, payload panel populated, **mission ran successfully with the plane in-game**. Strategy proven end-to-end.
+
+## bridge response timeout — 15s sometimes not enough
+**Tag:** needs-more
+**Touches:** CLI `--timeout` default
+**Notes:** Spawning a complex group (full task array + options + payload) with `--timeout 15s` timed out client-side, but `dcs-sms.exe status` immediately after showed the request had been processed (inbox empty, group present). Default `--timeout 5s` and even `15s` is sometimes too short; bumping to `30s` for non-trivial spawns is reasonable. Suspected cause: bridge polls inbox every ~30 UpdateManager ticks and the ME may stutter during heavy operations. Worth investigating whether to (a) raise the CLI default timeout, (b) tighten the bridge poll interval, or (c) leave as-is and document.
