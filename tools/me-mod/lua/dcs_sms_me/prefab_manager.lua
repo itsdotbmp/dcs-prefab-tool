@@ -904,7 +904,7 @@ exit_place_pending = function()
     W.place_pending_name = nil
     pcall(function()
         if W.window and W.window.setText then
-            W.window:setText(sms_window._compose_title('Prefab Manager', version))
+            W.window:setText(sms_window.compose_title('Prefab Manager', version))
         end
     end)
     pcall(function()
@@ -1460,7 +1460,7 @@ function M.show()
     local ok, err = pcall(function()
         local w, h = 720, 460
 
-        W.sms_window = sms_window.SMSWindow.new({
+        W.sms_window = sms_window.new({
             title    = 'Prefab Manager',
             size     = { w = w, h = h },
             min_size = { w = MIN_W, h = MIN_H },

@@ -2,7 +2,7 @@
 --
 -- Pure helpers (testable without a real dxgui environment):
 --   * _validate_severity(s) → skin name (with 'info' fallback)
---   * _compose_title(title, version) → branded title string
+--   * compose_title(title, version) → branded title string
 --   * _new_flash_state() / _on_set_status / _on_flash_status / _on_tick
 --     (the flash state machine — takes a fake clock)
 --
@@ -34,14 +34,14 @@ print('PASS validate_severity(bogus) = staticSkin_ME (info fallback)')
 assert(sw._validate_severity(nil)     == 'staticSkin_ME', "nil -> info fallback")
 print('PASS validate_severity(nil) = staticSkin_ME (info fallback)')
 
--- ---------- _compose_title ----------
+-- ---------- compose_title ----------
 
-local got = sw._compose_title('Foo', '1.2.3')
+local got = sw.compose_title('Foo', '1.2.3')
 assert(got == 'Coconut Cockpit · DCS-SMS — Foo v1.2.3',
        "compose_title basic: got " .. tostring(got))
 print('PASS compose_title basic')
 
-got = sw._compose_title('Prefab Manager', '0.5.0')
+got = sw.compose_title('Prefab Manager', '0.5.0')
 assert(got == 'Coconut Cockpit · DCS-SMS — Prefab Manager v0.5.0',
        "compose_title prefab manager: got " .. tostring(got))
 print('PASS compose_title prefab manager')

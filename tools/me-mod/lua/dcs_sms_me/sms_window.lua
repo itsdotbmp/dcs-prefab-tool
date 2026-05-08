@@ -1,34 +1,39 @@
--- sms_window.lua — Base class for ME-mod tool windows.
+-- sms_window.lua — Reusable window factory for ME-mod tool windows.
 --
--- Owns the shared chrome that every ME-mod window needs:
+-- Owns the shared chrome that every ME-mod tool window needs:
 --   * Branded title bar     ('Coconut Cockpit · DCS-SMS — <title> v<version>')
 --   * Footer separator + colored status Static, with set_status (sticky)
 --     and flash_status (auto-revert) semantics.
 --   * Close button → :hide() (idempotent).
 --   * File > New / File > Open closes the window (additive subscriber).
---   * Ctrl+Z hotkey → :on_undo() (default impl calls undo.undo() + flashes).
---   * Resize clamp + footer reposition + delegate to subclass relayout.
+--   * Ctrl+Z hotkey → opts.on_undo callback (or default undo.undo + flash).
+--   * Resize clamp + footer reposition + dispatch to opts.on_resize.
 --
--- New windows extend SMSWindow via Lua metatable inheritance and override
--- :build_body() / :relayout() / :on_undo(). Existing windows that already
--- have a procedural module-with-W-table structure (prefab_manager.lua) can
--- alternatively pass opts.on_undo / opts.on_resize callbacks for a
--- minimal-diff retrofit — see "Composition path" in the spec.
+-- This is a lightweight handle/factory — call sms_window.new(opts) and you
+-- get back a handle with methods. No inheritance, no class-extension; tool
+-- windows hold the handle on their own state (e.g. W.sms_window) and pass
+-- opts callbacks to override behaviors. Same idiom prefab_manager.lua uses.
 --
--- Public:
---   SMSWindow.new(opts) → self | nil
---   self:show() / :hide() / :toggle()
---   self:get_content_bounds() → x, y, w, h
---   self:set_status(text, severity)
---   self:flash_status(text, severity, [timeout_sec])
---   self:raw() → underlying dxgui Window
+-- Public module API:
+--   sms_window.new(opts) → handle | nil
+--   sms_window.compose_title(title, version) → string
+--   sms_window.default_on_undo(handle)  -- compose with this from your opts.on_undo
 --
--- Hooks for subclasses to override (default impls live in this file):
---   self:build_body()     — build widgets after construction
---   self:relayout(x,y,w,h) — reposition widgets on resize
---   self:on_undo()        — Ctrl+Z handler
+-- Handle methods:
+--   handle:show() / :hide() / :toggle()           — idempotent lifecycle
+--   handle:get_content_bounds() → x, y, w, h      — usable area inside chrome
+--   handle:set_status(text, severity)              — sticky footer status
+--   handle:flash_status(text, severity, [timeout]) — flash, auto-revert in N sec
+--   handle:raw() → underlying dxgui Window         — escape hatch
+--
+-- Opt callbacks (all optional):
+--   opts.on_undo(handle)               — Ctrl+Z handler; falls back to default_on_undo
+--   opts.on_resize(handle, x, y, w, h) — called on every resize with the content rect
+--   opts.on_close(handle)              — called when handle:hide() runs
 
--- Pure helpers exposed for testing — leading underscore signals "internal".
+-- Pure helpers exposed for testing. Underscore-prefixed names (_validate_severity,
+-- _new_flash_state, _on_set_status, _on_flash_status, _on_tick) are test-internal;
+-- compose_title and default_on_undo are public module API.
 local M = {}
 
 -- Severity → skin name. Centralised; replaces the SEVERITY_SKIN tables
@@ -49,7 +54,7 @@ end
 
 -- Compose the branded title string. Single source of truth so every
 -- window's title bar reads the same.
-function M._compose_title(title, version)
+function M.compose_title(title, version)
     return 'Coconut Cockpit · DCS-SMS — ' .. tostring(title) .. ' v' .. tostring(version)
 end
 
@@ -213,7 +218,7 @@ function SMSWindow.new(opts)
         x, y = default_position(self._size.w)
     end
 
-    local title_string = M._compose_title(opts.title, version)
+    local title_string = M.compose_title(opts.title, version)
     local win
     local ok, err = pcall(function()
         win = Window.new(x, y, self._size.w, self._size.h, title_string)
@@ -324,11 +329,6 @@ function SMSWindow:_relayout_footer(w, h)
     pcall(function() if self._status and self._status.setBounds then self._status:setBounds(EDGE_PAD, status_y, w - 2 * EDGE_PAD, 20) end end)
 end
 
--- Default override hooks. Subclasses (or composition consumers via opts)
--- replace these.
-function SMSWindow:build_body() end
-function SMSWindow:relayout(x, y, w, h) end
-
 -- Wire the dxgui resize callback. Clamps via setBounds when the user
 -- shrinks past min_size (re-fires the callback at the clamped size,
 -- which is fine), repositions the footer, then dispatches to the
@@ -347,11 +347,9 @@ function SMSWindow:_install_resize_callback()
                 end
                 me._size.w, me._size.h = cw, ch
                 me:_relayout_footer(cw, ch)
-                local x, y, w, h = me:get_content_bounds()
                 if me._opts and type(me._opts.on_resize) == 'function' then
+                    local x, y, w, h = me:get_content_bounds()
                     pcall(me._opts.on_resize, me, x, y, w, h)
-                else
-                    pcall(SMSWindow.relayout, me, x, y, w, h)
                 end
             end)
         end)
@@ -363,11 +361,9 @@ end
 -- matches subsequent resizes.
 function SMSWindow:_initial_layout()
     self:_relayout_footer(self._size.w, self._size.h)
-    local x, y, w, h = self:get_content_bounds()
     if self._opts and type(self._opts.on_resize) == 'function' then
+        local x, y, w, h = self:get_content_bounds()
         pcall(self._opts.on_resize, self, x, y, w, h)
-    else
-        pcall(SMSWindow.relayout, self, x, y, w, h)
     end
 end
 
@@ -421,11 +417,11 @@ end
 
 -- ---------- Lifecycle hooks ----------
 
--- Default Ctrl+Z handler. Calls undo.undo() and flashes a status with
--- the appropriate severity. Subclasses override to add post-undo
--- refresh; either call SMSWindow.on_undo(self) for the base behaviour
--- first, or replace it entirely.
-function SMSWindow:on_undo()
+-- Default Ctrl+Z handler. Used as the fallback when opts.on_undo is not
+-- provided. Consumers that want "default behavior + custom post-undo
+-- refresh" can call sms_window.default_on_undo(self) from inside their
+-- own opts.on_undo closure.
+local function default_on_undo(self)
     if not undo.has_record() then
         self:flash_status('Nothing to undo.', 'warning')
         return
@@ -438,20 +434,16 @@ function SMSWindow:on_undo()
     end
 end
 
--- Wire Ctrl+Z to dispatch through opts.on_undo (composition) or
--- self:on_undo (inheritance). Skipped entirely if disable_undo_hotkey
--- is set on opts.
+-- Wire Ctrl+Z to dispatch through opts.on_undo or default_on_undo.
+-- Skipped entirely if disable_undo_hotkey is set on opts.
 function SMSWindow:_install_undo_hotkey()
     if self._opts and self._opts.disable_undo_hotkey then return end
     if not (self.window and self.window.addHotKeyCallback) then return end
     local me = self
     pcall(function()
         me.window:addHotKeyCallback('Ctrl+Z', function()
-            if me._opts and type(me._opts.on_undo) == 'function' then
-                pcall(me._opts.on_undo, me)
-            else
-                pcall(SMSWindow.on_undo, me)
-            end
+            local handler = (me._opts and me._opts.on_undo) or default_on_undo
+            pcall(handler, me)
         end)
     end)
 end
@@ -469,12 +461,7 @@ function SMSWindow:_install_new_mission_subscription()
     self._new_mission_subscribed = true
 end
 
--- Expose the live class table for inheritance + access to the helpers.
-M.SMSWindow = SMSWindow
-
--- Expose try_skin for reuse by subclasses if they want to reuse the
--- severity-skin resolver. Most won't need it (they go through
--- :set_status / :flash_status).
-M._try_skin = try_skin
+M.new             = SMSWindow.new     -- primary entry point: sms_window.new(opts)
+M.default_on_undo = default_on_undo  -- composition consumers may compose with this
 
 return M
