@@ -254,6 +254,10 @@ The status bar (on the handle, not the module):
   next call.
 - `handle:flash_status(text, severity, [timeout])` — overlays for N
   seconds (default 5), then reverts to the last sticky baseline.
+- `handle:clear_sticky_status()` — clears the sticky baseline without
+  affecting any active flash. Use this when leaving a "mode" whose entry
+  set a sticky banner; the success/cancel flash that follows then reverts
+  to an empty footer rather than back to the stale mode banner.
 
 Severities: `'info'` (gray), `'success'` (green), `'warning'` (yellow),
 `'error'` (red).

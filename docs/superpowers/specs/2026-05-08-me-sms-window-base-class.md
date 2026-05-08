@@ -133,17 +133,21 @@ Constants in `sms_window.lua`:
 | Constant | Value | Source |
 |---|---|---|
 | `TOP_PAD` | 8 | top breathing room inside the content area; dxgui's Window already excludes the title bar from child coords |
-| `FOOTER_H` | 22 | 1px separator + 20px status static + 1px breathing room |
+| `STATUS_H` | 22 | height of the status Static |
+| `STATUS_OFFSET_BOTTOM` | 73 | status top y = `h - STATUS_OFFSET_BOTTOM` (clears dxgui's implicit ~50px bottom chrome) |
+| `SEP_OFFSET_BOTTOM` | 76 | separator y = `h - SEP_OFFSET_BOTTOM` (3px above the status) |
 | `EDGE_PAD` | 8 | gap between window edge and content rect (left/right) |
 
-`get_content_bounds()` returns `(EDGE_PAD, TOP_PAD, win_w - 2*EDGE_PAD, win_h - TOP_PAD - FOOTER_H)`.
+`get_content_bounds()` returns `(EDGE_PAD, TOP_PAD, win_w - 2*EDGE_PAD, win_h - TOP_PAD - SEP_OFFSET_BOTTOM)` — the consumer-usable area between the top breathing-room band and the footer separator.
+
+The status / separator y-offsets aren't arbitrary: dxgui Window has implicit ~50px of bottom chrome (window border / shadow) that isn't queryable, and children rendered past `h - 50` are clipped. The pre-refactor Prefab Manager used the same `h - 73` / `h - 77` numbers. Documented in the constants block at the top of `sms_window.lua`.
 
 ### Resize plumbing
 
 `SMSWindow.new` wires `addSizeCallback`. On every fire:
 
 1. **Clamp.** If user shrunk past `opts.min_size`, call `setBounds(x, y, max(w, min_w), max(h, min_h))` — re-fires the callback at the clamped size.
-2. **Reposition footer.** Move separator to `(0, win_h - FOOTER_H)` and status Static to `(EDGE_PAD, win_h - FOOTER_H + 1)`. Subclass never touches these.
+2. **Reposition footer.** Move separator to `(EDGE_PAD, h - SEP_OFFSET_BOTTOM)` and status Static to `(EDGE_PAD, h - STATUS_OFFSET_BOTTOM)`. The base owns these widgets exclusively; consumers never touch them.
 3. **Delegate.** If `opts.on_resize` is set, call it with `(handle, content_x, content_y, content_w, content_h)` so the consumer repositions its own widgets within the content rect. If not set, no-op (body widgets stay where they are).
 
 A defensive `win:setBounds(x, y, w, h)` runs once after `Window.new` returns, before `setVisible(true)`. This overrides any dxgui-restored persisted size from a prior session — same fix the bulk-rename branch had to bake into Group Tools, now centralized.
@@ -213,6 +217,13 @@ handle:flash_status(text, severity, [timeout_sec])
     -- to whatever was last set via set_status.
     -- Calling set_status during a flash cancels the flash.
     -- Calling flash_status during a flash replaces it (latest wins).
+
+handle:clear_sticky_status()
+    -- Clears the sticky baseline that flash_status reverts to, WITHOUT
+    -- affecting any active flash. Use this when leaving a "mode" whose
+    -- entry set a sticky banner: call clear_sticky_status() in the exit
+    -- path so the success/cancel flash that follows reverts to an empty
+    -- footer rather than back to the now-stale mode banner.
 
 handle:raw() -> dxgui Window
     -- Returns the underlying dxgui Window for cases the API doesn't cover

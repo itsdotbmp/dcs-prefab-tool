@@ -85,12 +85,13 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ### 0.5.0 — 2026-05-08
 
-- **`SMSWindow` base class** introduced for ME-mod tool windows
+- **`sms_window` factory** introduced for ME-mod tool windows
   (`tools/me-mod/lua/dcs_sms_me/sms_window.lua`). Owns the title-bar
   branding, footer separator + colored status Static, close-on-File>New
   hook, Ctrl+Z hotkey, and the resize-clamp + footer-reposition
-  plumbing that every tool window needs. Supports both inheritance
-  (subclass + setmetatable) and composition (opts callbacks).
+  plumbing that every tool window needs. Lightweight handle / factory
+  pattern (composition only, no inheritance) — see the spec's
+  Decisions section for the rationale.
 - **Prefab Manager refactored** onto `SMSWindow` via composition. File
   renamed `window.lua` → `prefab_manager.lua` (blame preserved via
   `git mv`). Net diff in the file: ~80 lines removed (duplicated
