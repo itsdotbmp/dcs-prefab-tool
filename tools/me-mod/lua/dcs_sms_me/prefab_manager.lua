@@ -1820,16 +1820,23 @@ function M.show()
 end
 
 function M.hide()
-    pcall(function()
-        if W.window and W.window.setVisible then W.window:setVisible(false) end
-    end)
+    -- Route through W.sms_window:hide() so opts.on_close fires (no consumer
+    -- uses it today, but the menu.lua hideME patch calls M.hide() externally
+    -- and any future cleanup hook should run from that path too). Falls back
+    -- to a direct dxgui call if the handle is missing — defensive only; in
+    -- practice if W.sms_window is nil we never opened the window.
+    if W.sms_window then
+        W.sms_window:hide()
+    else
+        pcall(function()
+            if W.window and W.window.setVisible then W.window:setVisible(false) end
+        end)
+    end
 end
 
 function M.toggle()
-    if W.window then
-        local visible = false
-        pcall(function() if W.window.isVisible then visible = W.window:isVisible() end end)
-        if visible then M.hide() else pcall(function() W.window:setVisible(true) end) end
+    if W.sms_window then
+        W.sms_window:toggle()
     else
         M.show()
     end

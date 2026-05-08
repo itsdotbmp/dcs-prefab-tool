@@ -435,7 +435,7 @@ function SMSWindow:flash_status(text, severity, timeout)
             end)
         end)
         if ok then self._tick_registered = true
-        else log.write('sms.me', log.WARN, 'SMSWindow: flash tick registration failed; flash will behave like set_status')
+        else log.write('sms.me', log.WARNING, 'SMSWindow: flash tick registration failed; flash will behave like set_status')
         end
     end
 end
