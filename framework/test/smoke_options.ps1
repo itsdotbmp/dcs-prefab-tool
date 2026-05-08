@@ -128,8 +128,7 @@ return sms.group.create({
     Write-Host "==> [apply] manually-built table rejected"
     Expect-False -Label 'raw option rejected' -Code "return sms.group('_smoke_opt_air'):set_option({id=AI.Option.Air.id.ROE, params=4})"
 
-    Write-Host ""
-    Write-Host "ALL smoke_options checks passed."
+    Write-SmokeSummary
 }
 finally {
     Clear-SmokeFixtures -Names $fixtures

@@ -115,8 +115,7 @@ return sms.group.create({
     Write-Host "==> [apply] manually-built table rejected (missing _sms_verb)"
     Expect-False -Label 'raw table rejected' -Code "return sms.group('_smoke_cmd_air'):set_command({id='NoAction', params={}})"
 
-    Write-Host ""
-    Write-Host "ALL smoke_commands checks passed."
+    Write-SmokeSummary
 }
 finally {
     Clear-SmokeFixtures -Names $fixtures

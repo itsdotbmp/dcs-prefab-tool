@@ -665,8 +665,7 @@ local g = sms.group('_smoke_spawn_cap_ground')
 if g then g:destroy() end
 '@ | Out-Null
 
-    Write-Host ""
-    Write-Host "ALL smoke_spawn checks passed."
+    Write-SmokeSummary
 }
 finally {
     Clear-SmokeFixtures -Names $fixtures

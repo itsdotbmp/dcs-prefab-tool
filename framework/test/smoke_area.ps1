@@ -349,8 +349,7 @@ if g2 then g2:destroy() end
         -Pattern "couldn't find area '_definitely_not_a_zone'" `
         -Grep '\[sms.area\]'
 
-    Write-Host ""
-    Write-Host "ALL smoke_area checks passed."
+    Write-SmokeSummary
 } finally {
     Clear-SmokeFixtures -Names $fixtures
 }

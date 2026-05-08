@@ -17,7 +17,10 @@
 #   9. Idempotent destroy.
 #  10. destroy_all by template name.
 
-Import-Module "$PSScriptRoot/_smoke.psm1" -Force
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Import-Module "$PSScriptRoot/_smoke.psm1" -Force -DisableNameChecking
 Initialize-Smoke
 Invoke-Smoke -File 'load_all.lua' | Out-Null
 
@@ -120,4 +123,4 @@ try {
     Clear-SmokeFixtures -Names $fixtures
 }
 
-Write-Host "ALL sms.prefab smoke checks passed."
+Write-SmokeSummary

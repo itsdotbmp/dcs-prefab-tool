@@ -93,8 +93,7 @@ return p ~= nil and type(p.x) == "number" and type(p.y) == "number" and type(p.z
         -Pattern "couldn't find group '_definitely_does_not_exist'" `
         -Grep '\[sms.group\]'
 
-    Write-Host ""
-    Write-Host "ALL smoke_group checks passed."
+    Write-SmokeSummary
 } finally {
     Clear-SmokeFixtures -Names $fixtures
 }

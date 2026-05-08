@@ -95,5 +95,4 @@ Expect-LogContains -Label 'log: every seconds=0' -Pattern 'every: seconds must b
 Expect-LogContains -Label 'log: every max<0'     -Pattern 'every: max must be a positive'         -Grep '\[sms.timer\]'
 Expect-LogContains -Label 'log: user error'      -Pattern 'boom from smoke test'                  -Grep '\[sms.timer\]'
 
-Write-Host ""
-Write-Host "ALL smoke_timer checks passed."
+Write-SmokeSummary

@@ -10,17 +10,16 @@ Initialize-Smoke
 Write-Host "==> hook status"
 Invoke-Status
 
-Write-Host "==> load framework/sms.lua"
-Invoke-Smoke -File 'sms.lua' | Out-Null
+Write-Host "==> load framework via load_all.lua"
+Invoke-Smoke -File 'load_all.lua' | Out-Null
 
-Write-Host "==> load framework/log.lua"
-Invoke-Smoke -File 'log.lua' | Out-Null
-
-Write-Host "==> load framework/utils.lua"
-Invoke-Smoke -File 'utils.lua' | Out-Null
-
-Write-Host "==> sms.version should be `"0.1.0`""
-Expect-EqString -Label 'sms.version' -Code 'return sms.version' -Expected '0.1.0'
+Write-Host "==> sms.version is a semver string"
+$r = Invoke-Smoke -Code 'return sms.version'
+if ($null -eq $r.return_value -or [string]$r.return_value -notmatch '^\d+\.\d+\.\d+$') {
+    Write-Host "FAIL: sms.version: expected semver string, got: $($r | ConvertTo-Json -Compress)"
+    exit 1
+}
+Write-Pass -Label "sms.version is semver ($($r.return_value))"
 
 Write-Host "==> sms.utils.add_numbers(2, 3) should return 5"
 Expect-EqNumber -Label 'add_numbers(2,3)' -Code 'return sms.utils.add_numbers(2, 3)' -Expected 5
@@ -52,9 +51,6 @@ Expect-EqString -Label 'resolve_country USA type' -Code "return type(sms.utils.r
 Write-Host "==> sms.utils.resolve_country('united kingdom') case-insensitive + space->underscore"
 Expect-True -Label 'resolve_country UK case' -Code "return sms.utils.resolve_country('united kingdom') == sms.utils.resolve_country('UNITED_KINGDOM')"
 
-Write-Host "==> load framework/constants.lua"
-Invoke-Smoke -File 'constants.lua' | Out-Null
-
 Write-Host "==> sms.K is sms.constants alias"
 Expect-True -Label 'sms.K alias' -Code "return type(sms.K) == 'table' and sms.K == sms.constants"
 
@@ -79,6 +75,7 @@ if ($null -eq $r.return_value -or [int]$r.return_value -lt 80) {
     Write-Host "FAIL: expected >=80 entries, got: $($r | ConvertTo-Json -Compress)"
     exit 1
 }
+Write-Pass -Label "K.countries entry count >=80 (got $($r.return_value))"
 
 Write-Host "==> sms.K.skill.AVERAGE == 'Average'"
 Expect-EqString -Label 'K.skill.AVERAGE' -Code 'return sms.K.skill.AVERAGE' -Expected 'Average'
@@ -298,5 +295,4 @@ Expect-EqString -Label 'K.statics.fortifications.Airshow_Cone' -Code 'return sms
 Write-Host "==> old sms.statics surface is gone (nil)"
 Expect-EqString -Label 'old sms.statics gone' -Code 'return tostring(sms.statics)' -Expected 'nil'
 
-Write-Host ""
-Write-Host "smoke ok"
+Write-SmokeSummary

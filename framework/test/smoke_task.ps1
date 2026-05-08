@@ -632,8 +632,7 @@ if g then g:destroy() end
 return sms.group.set_task(sms._make_handle(sms.group, '_smoke_task_air'), sms.task.hold()) == false
 '@
 
-    Write-Host ""
-    Write-Host "ALL smoke_task checks passed."
+    Write-SmokeSummary
 } finally {
     Clear-SmokeFixtures -Names $fixtures
 }
