@@ -106,6 +106,29 @@ return M
 
 A new tool window is the same shape with different overrides. The module-level `M.show / M.hide / M.toggle` wrapper is the same idiom both `window.lua` and `group_tools.lua` use today — so `menu.lua` and `init.lua` don't have to change beyond the require path. No `BASE`-style root class, no deeper hierarchy than one level.
 
+### Composition path (for retrofits)
+
+The existing `window.lua` is ~1958 lines of procedural code with a module-level `W` table holding all widget refs and a swarm of local closures (`on_save_click`, `refresh_list`, etc.) that close over `W`. Forcing it into the strict-subclass shape above would require renaming every `W.field` to `self.field` and converting every closure to a method — a 200-300 line rewrite touching every function.
+
+To minimize the migration diff, `SMSWindow.new` also accepts callback opts that mirror the override hooks. New windows use inheritance; the prefab_manager.lua retrofit uses composition:
+
+```lua
+opts.on_undo     (optional)  function(self) ... end  -- if set, called instead of self:on_undo()
+opts.on_resize   (optional)  function(self, x, y, w, h) ... end  -- if set, called instead of self:relayout(...)
+opts.on_close    (optional)  function(self) ... end  -- called when window hides via close button or new_mission
+```
+
+`prefab_manager.lua` keeps its module-level `W` table and existing local closures; `M.show()` constructs an `SMSWindow` instance, stores it in `W.sms_window`, and passes the existing `on_undo_click` and `relayout` closures via `opts.on_undo` / `opts.on_resize`. The class machinery is bypassed for this one window. The diff stays small (~50-80 lines changed in prefab_manager.lua instead of 200+).
+
+This is a deliberate tradeoff documented as a Decision (see "Decisions" section below). Group Tools migration (deferred) can use either pattern — composition is recommended if its current procedural shape stays.
+
+## Decisions
+
+1. **Migration uses composition, not inheritance.** For the prefab_manager.lua retrofit, we use the `SMSWindow` opts-callback path rather than subclassing. The motivation is diff size, not architecture: the existing W-table + module-closures structure doesn't naturally translate to instance methods. Future net-new windows should default to inheritance per the inheritance-model section above.
+2. **`min_size` defaults to `size`.** If the consumer passes `size = {w=720, h=460}` and omits `min_size`, the base treats the window as fixed-size in practice — the user can still drag the resize grip but won't be able to shrink past the initial size. This matches the existing Prefab Manager behavior (which uses one constant for both).
+3. **`flash_status` timeout=0.** Means "expires on the next UpdateManager tick" — degenerate but harmless. Spec previously implied special behavior; pragmatically there's none.
+4. **No `TITLEBAR_H` reservation.** dxgui Window children's y-coords are relative to the top of the content area (below the title bar already). The base uses `TOP_PAD = 8` as breathing room, not as title-bar reservation. The spec's earlier `TITLEBAR_H = 26` was a misunderstanding of dxgui's coordinate space.
+
 ### Layout model — the three-band window
 
 ```
@@ -124,11 +147,11 @@ Constants in `sms_window.lua`:
 
 | Constant | Value | Source |
 |---|---|---|
-| `TITLEBAR_H` | 26 | empirical; dxgui doesn't expose a getter |
+| `TOP_PAD` | 8 | top breathing room inside the content area; dxgui's Window already excludes the title bar from child coords |
 | `FOOTER_H` | 22 | 1px separator + 20px status static + 1px breathing room |
-| `EDGE_PAD` | 8 | gap between window edge and content rect |
+| `EDGE_PAD` | 8 | gap between window edge and content rect (left/right) |
 
-`get_content_bounds()` returns `(EDGE_PAD, TITLEBAR_H, win_w - 2*EDGE_PAD, win_h - TITLEBAR_H - FOOTER_H)`.
+`get_content_bounds()` returns `(EDGE_PAD, TOP_PAD, win_w - 2*EDGE_PAD, win_h - TOP_PAD - FOOTER_H)`.
 
 ### Resize plumbing
 
