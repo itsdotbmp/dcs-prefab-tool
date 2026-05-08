@@ -1948,7 +1948,7 @@ function M.reload()
     -- reset package.loaded['dcs_sms_me.window'], so a fresh require picks
     -- up the new code.
     pcall(function()
-        local fresh = require('dcs_sms_me.window')
+        local fresh = require('dcs_sms_me.prefab_manager')
         if fresh and fresh.show then fresh.show() end
     end)
     return true
