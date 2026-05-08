@@ -180,6 +180,63 @@ The path is cached to `%AppData%\dcs-sms\config.toml` for next time, so you only
 
 Check `<Saved Games>\DCS\Logs\dcs.log` for any `[sms.me]` lines around the time of the issue, then [open a bug report](https://github.com/nielsvaes/dcs-sms/issues/new?template=bug_report.yml) — paste the relevant log lines and the version number from the Prefab Manager title bar.
 
+## SMSWindow (base class)
+
+`SMSWindow` is the base class for every ME-mod tool window — the Prefab
+Manager and Group Tools both ride on it. It owns:
+
+- A branded title bar reading `Coconut Cockpit · DCS-SMS — <name> v<version>`.
+- A footer band: 1px separator + a colored status Static at the bottom.
+- A close button (`[X]`) that hides (doesn't destroy) the window.
+- Auto-hide when the user starts a new mission (`File > New` / `File > Open`).
+- A `Ctrl+Z` hotkey wired to the project-wide `undo` bus.
+- Resize support with min-size clamp and footer reposition.
+
+A new tool window is a small file:
+
+```lua
+local SMSWindow = require('dcs_sms_me.sms_window')
+
+local MyTool = setmetatable({}, { __index = SMSWindow.SMSWindow })
+MyTool.__index = MyTool
+
+function MyTool.new()
+    local self = SMSWindow.SMSWindow.new({
+        title    = 'My Tool',
+        size     = { w = 400, h = 300 },
+        min_size = { w = 320, h = 200 },
+    })
+    if not self then return nil end
+    setmetatable(self, MyTool)
+    self:build_body()
+    return self
+end
+
+function MyTool:build_body()
+    -- insert widgets via self.window:insertWidget(...)
+    -- position them using self:get_content_bounds()
+end
+
+function MyTool:relayout(x, y, w, h)
+    -- reposition widgets within the content rect
+end
+```
+
+Show / hide / toggle, the footer status bar, the resize-clamp, and the
+File-New auto-close all come for free.
+
+The status bar exposes two methods:
+
+- `:set_status(text, severity)` — sticky; replaces footer until the next
+  call.
+- `:flash_status(text, severity, [timeout])` — overlays for N seconds
+  (default 5), then reverts to the last sticky baseline.
+
+Severities: `'info'` (gray), `'success'` (green), `'warning'` (yellow),
+`'error'` (red).
+
+Design: `docs/superpowers/specs/2026-05-08-me-sms-window-base-class.md`.
+
 ## Prefab Manager
 
 The mod is one floating window — the **Prefab Manager** — opened from **DCS-SMS → Prefab Manager** in the editor's top menu bar.

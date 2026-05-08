@@ -83,6 +83,30 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### 0.5.0 — 2026-05-08
+
+- **`SMSWindow` base class** introduced for ME-mod tool windows
+  (`tools/me-mod/lua/dcs_sms_me/sms_window.lua`). Owns the title-bar
+  branding, footer separator + colored status Static, close-on-File>New
+  hook, Ctrl+Z hotkey, and the resize-clamp + footer-reposition
+  plumbing that every tool window needs. Supports both inheritance
+  (subclass + setmetatable) and composition (opts callbacks).
+- **Prefab Manager refactored** onto `SMSWindow` via composition. File
+  renamed `window.lua` → `prefab_manager.lua` (blame preserved via
+  `git mv`). Net diff in the file: ~80 lines removed (duplicated
+  chrome plumbing), ~30 lines added (SMSWindow.new opts + status shim).
+- **Status bar gains `flash_status`** semantics. `set_status` is now
+  sticky; `flash_status(text, severity, [timeout])` overlays for N
+  seconds (default 5) then auto-reverts to the sticky baseline.
+- **Severity vocabulary unified.** Standard set: `info` (gray),
+  `success` (green), `warning` (yellow), `error` (red). The Prefab
+  Manager's previous `'placement'` severity is mapped to `success`.
+- Group Tools migration onto `SMSWindow` is **deferred** until the
+  Group Tools branch (`worktree-me-mod-group-tools-bulk-rename`)
+  ships or is reconciled.
+
+Spec: `docs/superpowers/specs/2026-05-08-me-sms-window-base-class.md`.
+
 ### [0.4.2] — 2026-05-07
 
 **Changed**
