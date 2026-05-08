@@ -1,4 +1,4 @@
--- window.lua — Prefab Manager.
+-- prefab_manager.lua — Prefab Manager.
 --
 -- Single window, all panels visible. Constructed lazily on first show().
 -- All callbacks are pcall-guarded so dxgui or DCS-API failures degrade to
@@ -1914,7 +1914,7 @@ end
 -- Dev-loop helper: dispose, clear package.loaded for our modules, then
 -- re-require the bootstrap. Lets you iterate on Lua without restarting
 -- DCS. Works cleanly because the Customize-menu item's click callback
--- (set in menu.lua) does `require('dcs_sms_me.window')` AT CLICK TIME,
+-- (set in menu.lua) does `require('dcs_sms_me.prefab_manager')` AT CLICK TIME,
 -- not at registration — so once package.loaded is cleared, the menu
 -- entry naturally picks up the new code on the next click. The menu
 -- widget itself is in the dxgui scene and outlives the require, and
@@ -1945,7 +1945,7 @@ function M.reload()
 
     -- Show the freshly reloaded window. We have to go through the new
     -- module — our M is the OLD one; the just-required init.lua already
-    -- reset package.loaded['dcs_sms_me.window'], so a fresh require picks
+    -- reset package.loaded['dcs_sms_me.prefab_manager'], so a fresh require picks
     -- up the new code.
     pcall(function()
         local fresh = require('dcs_sms_me.prefab_manager')
