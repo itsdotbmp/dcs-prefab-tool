@@ -321,40 +321,104 @@ local function process_inbox()
 end
 
 -- ----------------------------------------------------------------------------
--- userCallbacks
+-- tick body (shared between UpdateManager and onSimulationFrame)
 
-local handler = {}
-
-function handler.onMissionLoadEnd()
-  DCS_SMS.mission_loaded = true
-  DCS_SMS.mission_name = (DCS and DCS.getMissionName and DCS.getMissionName()) or ""
-  pcall(sweep_stale, DCS_SMS.inbox, ".req.json")
-  pcall(sweep_stale, DCS_SMS.outbox, ".res.json")
-  write_heartbeat()
-  log.write("dcs-sms", log.INFO, "mission loaded: " .. DCS_SMS.mission_name)
-end
-
-function handler.onSimulationFrame()
+-- Shared polling body. Increments tick, polls inbox, writes heartbeat if due.
+-- The mission_loaded gate that used to live here moved into execute_request,
+-- which dispatches per-request target. The polling layer always pumps so
+-- target=gui requests work outside a running mission.
+local function tick_body()
   DCS_SMS.tick = DCS_SMS.tick + 1
-  if DCS_SMS.mission_loaded then
-    pcall(process_inbox)
-  end
+  pcall(process_inbox)
   if DCS_SMS.tick - DCS_SMS.last_heartbeat_tick >= DCS_SMS.heartbeat_every_frames then
     pcall(write_heartbeat)
   end
 end
 
-function handler.onSimulationStop()
-  DCS_SMS.mission_loaded = false
+local function update_manager_tick()
+  if DCS_SMS.tick_source ~= "update_manager" then
+    return false  -- inactive: skip work, but stay registered for the next swap-back
+  end
+  tick_body()
+  return false  -- keep registered with UpdateManager
+end
+
+-- ----------------------------------------------------------------------------
+-- userCallbacks
+
+local handler = {}
+
+function handler.onShowMainInterface()
+  DCS_SMS.state_label = "at_main_menu"
   pcall(write_heartbeat)
-  log.write("dcs-sms", log.INFO, "simulation stopped")
+end
+
+function handler.onMissionLoadBegin()
+  DCS_SMS.state_label = "loading_mission"
+  pcall(write_heartbeat)
+end
+
+function handler.onMissionLoadEnd()
+  -- Distinguish "mission running" from "mission loaded into the ME for editing".
+  -- Heuristic: default to in_mission_editor here; onSimulationStart upgrades to
+  -- in_mission shortly after when a sim is actually starting.
+  DCS_SMS.state_label = "in_mission_editor"
+  DCS_SMS.mission_loaded = false  -- set true only by onSimulationStart
+  DCS_SMS.mission_name = (DCS and DCS.getMissionName and DCS.getMissionName()) or ""
+  pcall(sweep_stale, DCS_SMS.inbox, ".req.json")
+  pcall(sweep_stale, DCS_SMS.outbox, ".res.json")
+  pcall(write_heartbeat)
+  log.write("dcs-sms", log.INFO, "mission loaded: " .. DCS_SMS.mission_name)
+end
+
+function handler.onSimulationStart()
+  DCS_SMS.state_label = "in_mission"
+  DCS_SMS.mission_loaded = true
+  DCS_SMS.tick_source = "simulation_frame"
+  pcall(write_heartbeat)
+  log.write("dcs-sms", log.INFO, "simulation start — tick_source=simulation_frame")
+end
+
+function handler.onSimulationFrame()
+  if DCS_SMS.tick_source ~= "simulation_frame" and DCS_SMS.tick_source ~= "simulation_frame_only" then
+    return
+  end
+  tick_body()
+end
+
+function handler.onSimulationStop()
+  DCS_SMS.state_label = "in_mission_editor"  -- best-effort; back to ME or main menu
+  DCS_SMS.mission_loaded = false
+  DCS_SMS.tick_source = "update_manager"
+  pcall(write_heartbeat)
+  log.write("dcs-sms", log.INFO, "simulation stop — tick_source=update_manager")
 end
 
 local function init()
   ensure_dirs()
+  DCS_SMS.state_label = "starting"
   write_heartbeat()
   DCS.setUserCallbacks(handler)
-  log.write("dcs-sms", log.INFO, "hook loaded v" .. DCS_SMS.version)
+
+  -- Register UpdateManager.add for ME / main-menu / pre-mission ticking.
+  -- On older DCS versions where UpdateManager isn't available, fall back to
+  -- "simulation_frame_only" mode (today's behavior — polling only fires
+  -- inside a sim). The CLI sees this via heartbeat.tick_source and warns
+  -- the user that --target gui won't work outside a sim on this DCS.
+  local ok_um, UpdateManager = pcall(require, 'UpdateManager')
+  if ok_um and UpdateManager and type(UpdateManager.add) == "function" then
+    UpdateManager.add(update_manager_tick)
+    log.write("dcs-sms", log.INFO, "hook loaded v" .. DCS_SMS.version
+      .. " (tick_source=update_manager)")
+  else
+    DCS_SMS.tick_source = "simulation_frame_only"
+    log.write("dcs-sms", log.WARNING,
+      "UpdateManager unavailable; falling back to simulation_frame_only — "
+      .. "target=gui will not work outside a running mission. ("
+      .. tostring(UpdateManager) .. ")")
+  end
+
+  pcall(write_heartbeat)
 end
 
 local ok, err = pcall(init)
