@@ -101,4 +101,166 @@ function M._on_tick(state, now)
     return text, sev
 end
 
+-- ---------- Live class (dxgui-bound) ----------
+--
+-- Below this point the module talks to the dxgui module-table widgets
+-- (Window, Static, Skin, UpdateManager) and the project's hooks
+-- (new_mission_hook, undo). These are pcall-guarded so the module still
+-- loads in environments missing them (test VMs, older dxgui builds).
+
+local Window;        do local ok, mod = pcall(require, 'Window');        if ok then Window        = mod end end
+local Static;        do local ok, mod = pcall(require, 'Static');        if ok then Static        = mod end end
+local Skin;          do local ok, mod = pcall(require, 'Skin');          if ok then Skin          = mod end end
+local Gui;           do local ok, mod = pcall(require, 'dxgui');         if ok then Gui           = mod end end
+local UpdateManager; do local ok, mod = pcall(require, 'UpdateManager'); if ok then UpdateManager = mod end end
+
+local dtc_skins;        do local ok, mod = pcall(require, 'dcs_sms_me.dtc_skins');        if ok then dtc_skins        = mod end end
+local version          = require('dcs_sms_me.version')
+local undo;             do local ok, mod = pcall(require, 'dcs_sms_me.undo');             if ok then undo             = mod end end
+local new_mission_hook; do local ok, mod = pcall(require, 'dcs_sms_me.new_mission_hook'); if ok then new_mission_hook = mod end end
+
+-- Layout constants (see spec — Layout model section).
+local TOP_PAD   = 8    -- breathing room at the top of the content area
+local FOOTER_H  = 22   -- separator (1px) + status static (20px) + 1px breathing room
+local EDGE_PAD  = 8    -- left/right gap between window edge and content rect
+
+-- Resolve a skin by short name. Handles only the four severity skins +
+-- the footer separator — every other skin name is delegated to the Skin
+-- module's auto-generated factories (Skin.staticSkin_ME, etc).
+local function try_skin(widget, skin_name)
+    pcall(function()
+        if not (widget and widget.setSkin) then return end
+        local s
+        if     skin_name == 'dtc_status_green'  then s = dtc_skins.static_green()
+        elseif skin_name == 'dtc_status_yellow' then s = dtc_skins.static_yellow()
+        elseif skin_name == 'dtc_status_red'    then s = dtc_skins.static_red()
+        elseif skin_name == 'dtc_separator'     then s = dtc_skins.separator()
+        else
+            local fn = Skin and Skin[skin_name]
+            if not fn then return end
+            s = fn()
+        end
+        if s then widget:setSkin(s) end
+    end)
+end
+
+local SMSWindow = {}
+SMSWindow.__index = SMSWindow
+
+-- Default position: top-right of the screen, 20px in from the right edge,
+-- 80px down from the top. Falls back to 1920px screen width if dxgui
+-- doesn't expose Gui.GetWindowSize.
+local function default_position(w)
+    local screen_w = 1920
+    pcall(function()
+        if Gui and Gui.GetWindowSize then
+            local sw = Gui.GetWindowSize()
+            if type(sw) == 'number' and sw > 0 then screen_w = sw end
+        end
+    end)
+    return math.max(20, screen_w - w - 20), 80
+end
+
+-- Construct an SMSWindow. Returns nil (logged) if the dxgui Window can't
+-- be created. Builds the title bar, footer separator + status Static.
+-- The body (content area) is left empty — subclass populates via
+-- :build_body() or the consumer inserts widgets imperatively after .new
+-- returns.
+--
+-- opts (see spec for the full table):
+--   title      string  required — branded with version
+--   size       {w,h}   required — initial size in pixels
+--   min_size   {w,h}   optional — defaults to opts.size
+--   position   {x,y}   optional — defaults to top-right
+--   persist_across_new_mission  boolean (default false)
+--   disable_undo_hotkey         boolean (default false)
+--   on_undo    function(self)                  optional override
+--   on_resize  function(self, x, y, w, h)      optional override
+--   on_close   function(self)                  optional cleanup hook
+function SMSWindow.new(opts)
+    if type(opts) ~= 'table' then
+        log.write('sms.me', log.ERROR, 'SMSWindow.new: opts must be a table')
+        return nil
+    end
+    if type(opts.title) ~= 'string' or opts.title == '' then
+        log.write('sms.me', log.ERROR, 'SMSWindow.new: opts.title is required')
+        return nil
+    end
+    if type(opts.size) ~= 'table' or type(opts.size.w) ~= 'number' or type(opts.size.h) ~= 'number' then
+        log.write('sms.me', log.ERROR, 'SMSWindow.new: opts.size = {w, h} is required')
+        return nil
+    end
+
+    local self = setmetatable({}, SMSWindow)
+    self._opts        = opts
+    self._size        = { w = opts.size.w, h = opts.size.h }
+    self._min_size    = { w = (opts.min_size and opts.min_size.w) or opts.size.w,
+                          h = (opts.min_size and opts.min_size.h) or opts.size.h }
+    self._flash_state = M._new_flash_state()
+    self._tick_registered          = false
+    self._new_mission_subscribed   = false
+
+    -- Construct the dxgui Window.
+    if not Window or not Static then
+        log.write('sms.me', log.ERROR, 'SMSWindow.new: Window/Static module unavailable')
+        return nil
+    end
+
+    local x, y
+    if opts.position and type(opts.position.x) == 'number' and type(opts.position.y) == 'number' then
+        x, y = opts.position.x, opts.position.y
+    else
+        x, y = default_position(self._size.w)
+    end
+
+    local title_string = M._compose_title(opts.title, version)
+    local win
+    local ok, err = pcall(function()
+        win = Window.new(x, y, self._size.w, self._size.h, title_string)
+    end)
+    if not ok or not win then
+        log.write('sms.me', log.ERROR, 'SMSWindow.new: Window.new failed: ' .. tostring(err))
+        return nil
+    end
+    self.window = win
+
+    -- Apply the native ME chrome.
+    pcall(function()
+        win:setSkin((Skin and Skin.windowSkinME and Skin.windowSkinME()) or (Skin and Skin.windowSkin and Skin.windowSkin()) or nil)
+    end)
+    -- Force-set bounds AFTER setSkin to override any dxgui-restored
+    -- persisted size from a prior session — the bulk-rename branch
+    -- needed this fix; centralising it here means every window gets it.
+    pcall(function() if win.setBounds then win:setBounds(x, y, self._size.w, self._size.h) end end)
+    pcall(function() if win.setDraggable then win:setDraggable(true) end end)
+    pcall(function() if win.setResizable then win:setResizable(true) end end)
+    pcall(function() if win.setZOrder    then win:setZOrder(190)   end end)
+
+    -- Footer band: separator + status Static. Geometry is set by relayout
+    -- in Task 4. Both inserted into the window before the body so the
+    -- subclass's widgets render on top in case of overlap (defensive;
+    -- the layout doesn't actually overlap).
+    local sep = Static.new()
+    pcall(function() if win.insertWidget then win:insertWidget(sep) end end)
+    try_skin(sep, 'dtc_separator')
+    self._sep = sep
+
+    local status = Static.new('')
+    pcall(function() if win.insertWidget then win:insertWidget(status) end end)
+    try_skin(status, 'staticSkin_ME')
+    self._status = status
+
+    pcall(function() if win.setVisible then win:setVisible(true) end end)
+
+    return self
+end
+
+-- Expose the live class table for inheritance + access to the helpers.
+M.SMSWindow = SMSWindow
+
+-- Expose try_skin for reuse by subclasses if they want to reuse the
+-- severity-skin resolver. Most won't need it (they go through
+-- :set_status / :flash_status).
+M._try_skin = try_skin
+
 return M
