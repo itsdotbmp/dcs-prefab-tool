@@ -110,6 +110,41 @@ local function add_top_level_menu()
         log.write('sms.me', log.ERROR, 'About menu:newItem failed: ' .. tostring(about_err))
     end
 
+    -- "External execution: ON/OFF" toggle — controls _G.DCS_SMS_GUI_BRIDGE_ENABLED
+    -- which the dcs-sms hook checks before honoring target=gui requests.
+    -- Default off at every DCS launch (session-only; no persistence).
+    local exec_item
+    local ok_exec, exec_err = pcall(function()
+        exec_item = menu:newItem('External execution: OFF')
+    end)
+    if ok_exec and exec_item then
+        pcall(function()
+            local sibling_item = sibling_menu
+                and (sibling_menu.missionOptions or sibling_menu.mapOptions
+                     or sibling_menu.setPosition  or sibling_menu.logbook)
+            if sibling_item and sibling_item.getSkin and exec_item.setSkin then
+                exec_item:setSkin(sibling_item:getSkin())
+            end
+        end)
+        exec_item.func = function()
+            _G.DCS_SMS_GUI_BRIDGE_ENABLED = not (_G.DCS_SMS_GUI_BRIDGE_ENABLED == true)
+            local on = _G.DCS_SMS_GUI_BRIDGE_ENABLED == true
+            local label = on and 'External execution: ON' or 'External execution: OFF'
+            -- Menu items expose either :setText or a `text` field across DCS
+            -- versions — try both for forward-compat.
+            pcall(function()
+                if type(exec_item.setText) == 'function' then
+                    exec_item:setText(label)
+                else
+                    exec_item.text = label
+                end
+            end)
+            log.write('sms.me', log.INFO, 'gui bridge ' .. (on and 'enabled' or 'disabled'))
+        end
+    else
+        log.write('sms.me', log.ERROR, 'External-execution menu:newItem failed: ' .. tostring(exec_err))
+    end
+
     -- Wrap the menu in a MenuBarItem and insert at the end of the bar.
     local bar_item
     local ok_bar, bar_err = pcall(function() bar_item = MenuBarItem.new('DCS-SMS', menu) end)
