@@ -78,6 +78,26 @@ dcs-sms.exe exec --file framework/load_all.lua
 
 `--timeout 2s` caps wait time. **Note:** if the snippet hangs DCS (e.g. infinite loop), the timeout will return but DCS itself needs to be killed via Task Manager. This is a documented limitation.
 
+##### `--target mission|gui|auto`
+
+`exec` defaults to `--target auto`, which routes based on the hook's heartbeat:
+
+- If a mission is running → `target=mission` (snippet runs in the mission scripting env, sandboxed).
+- If the user is in the Mission Editor or main menu → `target=gui` (snippet runs in the shared GUI/ME Lua state and can read/write the editable mission). Requires the ME-mod's "External execution" toggle to be on.
+
+Pass `--target mission` or `--target gui` explicitly to override. Exit code `4` means the requested target isn't usable right now (e.g. `--target gui` while the ME-mod toggle is off).
+
+```sh
+# Auto-routed (recommended for most uses)
+dcs-sms.exe exec --code "return _VERSION"
+
+# Force the mission scripting env (will fail outside a running mission)
+dcs-sms.exe exec --target mission --code "return Unit.getByName('Tanker-1'):getName()"
+
+# Force the GUI/ME state (read the editable mission's theatre)
+dcs-sms.exe exec --target gui --code "return mission.theatre"
+```
+
 #### `tail-log`
 
 Prints the last N lines of `dcs.log` (default 50).

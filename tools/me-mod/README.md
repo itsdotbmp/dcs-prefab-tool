@@ -253,6 +253,15 @@ Apply is refused across theatres (a Caucasus airbase prefab can't be applied on 
 - **Undo** — `Ctrl-Z` with the Manager window focused undoes the most recent placement (groups, zones, drawings, and airbase splices all restored together).
 - **Library** — Reload (rescan disk), Rename, Delete, live name+theatre search, click-to-sort columns.
 
+## External execution toggle
+
+Under the **DCS-SMS** top menu in the Mission Editor, a third item "External execution: ON/OFF" controls whether the dcs-sms hook honors `--target gui` requests from the `dcs-sms.exe` CLI (or any other external tool writing to the mailbox).
+
+- **Default is OFF** at every DCS launch — session-only, no persistence.
+- Toggle ON when you want Claude (or any external tool) to run Lua directly against the editable mission. Click the menu item again to toggle back OFF.
+- The hook's heartbeat exposes `gui_bridge_enabled` so the CLI can fail fast (`dcs-sms exec` exit code 4) instead of timing out.
+- The toggle only affects requests with `target=gui`; `target=mission` requests run in the sandboxed mission env regardless and are always allowed.
+
 ## License
 
 The ME-mod is licensed under the [GNU General Public License, version 3](../LICENSE) (covering everything under `tools/`). You may use, modify, and distribute it, but derivative works must also be GPL v3 and ship with source.
