@@ -274,14 +274,159 @@ local function parse_request_id_from_filename(name)
   return name:match("^(.+)%.req%.json$")
 end
 
+-- write_response_file writes <id>.res.json atomically. Used by the gui-target
+-- path which builds the response in Lua-land directly (the mission-target
+-- path's wrapper writes its own response from inside the mission env).
+local function write_response_file(req_id, ok, return_value, output, error_table, duration_ms)
+  -- Pure-Lua JSON encoder shared with the mission-env wrapper. Keep in sync
+  -- with build_wrapper's __jstr / __jval.
+  local function jstr(s)
+    s = tostring(s)
+    s = s:gsub("\\", "\\\\")
+    s = s:gsub('"', '\\"')
+    s = s:gsub("\n", "\\n")
+    s = s:gsub("\r", "\\r")
+    s = s:gsub("\t", "\\t")
+    s = s:gsub("[%z\1-\31]", function(c) return string.format("\\u%04x", string.byte(c)) end)
+    return '"' .. s .. '"'
+  end
+  local function jval(v)
+    if v == nil then return "null" end
+    local t = type(v)
+    if t == "boolean" then return tostring(v) end
+    if t == "number" then
+      if v ~= v or v == math.huge or v == -math.huge then return "null" end
+      if v == math.floor(v) and math.abs(v) < 1e15 then
+        return string.format("%d", v)
+      end
+      return string.format("%.6g", v)
+    end
+    if t == "string" then return jstr(v) end
+    if t == "table" then
+      local n, is_array = 0, true
+      for k in pairs(v) do
+        n = n + 1
+        if type(k) ~= "number" or k ~= math.floor(k) or k < 1 then is_array = false end
+      end
+      if is_array and n == #v then
+        local parts = {}
+        for i = 1, n do parts[i] = jval(v[i]) end
+        return "[" .. table.concat(parts, ",") .. "]"
+      end
+      local parts = {}
+      for k, val in pairs(v) do
+        parts[#parts+1] = jstr(k) .. ":" .. jval(val)
+      end
+      return "{" .. table.concat(parts, ",") .. "}"
+    end
+    return "null"
+  end
+
+  local resp = {
+    id             = req_id,
+    ok             = ok,
+    output         = output or "",
+    return_value   = return_value,
+    error          = error_table,
+    frame_executed = DCS_SMS.tick,
+    duration_ms    = duration_ms or 0,
+  }
+  local outbox_path = DCS_SMS.outbox .. req_id .. ".res.json"
+  local ok_enc, json_or_err = pcall(jval, resp)
+  if not ok_enc then
+    log.write("dcs-sms", log.ERROR, "json encode failed for " .. tostring(req_id) .. ": " .. tostring(json_or_err))
+    return
+  end
+  local tmp = outbox_path .. ".tmp"
+  local f, ferr = io.open(tmp, "wb")
+  if not f then
+    log.write("dcs-sms", log.ERROR, "open " .. tmp .. ": " .. tostring(ferr))
+    return
+  end
+  f:write(json_or_err)
+  f:close()
+  local ok_rn = os.rename(tmp, outbox_path)
+  if not ok_rn then
+    os.remove(outbox_path)
+    os.rename(tmp, outbox_path)
+  end
+end
+
+-- execute_mission runs the user's snippet in the sandboxed mission scripting
+-- env via net.dostring_in('mission', wrapper) + a_do_script(...). This is the
+-- original 0.1.0 path. Now also writes an error response if the mission isn't
+-- running, so callers don't time out waiting for a response that never comes.
+local function execute_mission(req_id, code)
+  if not DCS_SMS.mission_loaded then
+    write_response_file(req_id, false, nil, "", {
+      message   = "target=mission requested but no mission is running — load a mission or use --target gui",
+      traceback = "",
+    }, 0)
+    return
+  end
+  local outbox_path = DCS_SMS.outbox .. req_id .. ".res.json"
+  local wrapper = build_wrapper(req_id, DCS_SMS.tick, code, outbox_path)
+  local ok_out, err_out = pcall(net.dostring_in, 'mission', wrapper)
+  if not ok_out then
+    log.write("dcs-sms", log.ERROR, "wrapper exec failed for " .. req_id .. ": " .. tostring(err_out))
+    write_response_file(req_id, false, nil, "", {
+      message   = "wrapper exec failed: " .. tostring(err_out),
+      traceback = "",
+    }, 0)
+  end
+end
+
+-- execute_gui runs the user's snippet directly in the shared GUI/ME Lua state
+-- via loadstring + xpcall. No a_do_script indirection — the hook is in the
+-- right state. Gated by _G.DCS_SMS_GUI_BRIDGE_ENABLED (flipped from the
+-- ME-mod menu).
+local function execute_gui(req_id, code)
+  if _G.DCS_SMS_GUI_BRIDGE_ENABLED ~= true then
+    write_response_file(req_id, false, nil, "", {
+      message   = "gui bridge is disabled — open the DCS-SMS menu in the Mission Editor and toggle 'External execution' on",
+      traceback = "",
+    }, 0)
+    return
+  end
+
+  local out = {}
+  local orig_print = print
+  print = function(...)
+    local parts = {}
+    for i = 1, select('#', ...) do parts[i] = tostring(select(i, ...)) end
+    out[#out+1] = table.concat(parts, "\t")
+  end
+
+  local chunk, load_err = loadstring(code, "dcs-sms-gui:" .. req_id)
+  if not chunk then
+    print = orig_print
+    write_response_file(req_id, false, nil, "", {
+      message   = "loadstring: " .. tostring(load_err),
+      traceback = "",
+    }, 0)
+    return
+  end
+
+  local start = os.clock()
+  local ok_run, ret = xpcall(chunk, debug.traceback)
+  print = orig_print
+  local dur = (os.clock() - start) * 1000
+
+  if ok_run then
+    write_response_file(req_id, true, ret, table.concat(out, "\n"), nil, dur)
+  else
+    write_response_file(req_id, false, nil, table.concat(out, "\n"), {
+      message   = tostring(ret),
+      traceback = "",
+    }, dur)
+  end
+end
+
 local function execute_request(filename)
   local req_path = DCS_SMS.inbox .. filename
   local raw = read_file(req_path)
   if not raw then return end
 
-  -- DCS provides net.json2lua in the hook env (mirror of net.lua2json),
-  -- so we parse the request properly instead of regex-matching it. Fall
-  -- back to the request-id from the filename if the JSON is malformed.
   local req_id = parse_request_id_from_filename(filename)
   local ok, parsed = pcall(net.json2lua, raw)
   if not ok or type(parsed) ~= "table" or type(parsed.code) ~= "string" or not req_id then
@@ -290,22 +435,26 @@ local function execute_request(filename)
     os.remove(req_path)
     return
   end
-  -- Prefer the request-id parsed from JSON when present; fall back to the
-  -- filename-derived one (which we use anyway to delete the request file).
   if type(parsed.id) == "string" and parsed.id ~= "" then
     req_id = parsed.id
   end
   local code = parsed.code
-  local outbox_path = DCS_SMS.outbox .. req_id .. ".res.json"
-
-  local wrapper = build_wrapper(req_id, DCS_SMS.tick, code, outbox_path)
-  local ok_out, err_out = pcall(net.dostring_in, 'mission', wrapper)
-  if not ok_out then
-    log.write("dcs-sms", log.ERROR, "wrapper exec failed for " .. req_id .. ": " .. tostring(err_out))
+  local target = parsed.target
+  if type(target) ~= "string" or target == "" then
+    target = "mission"  -- back-compat: legacy requests have no target field
   end
-  -- The wrapper writes the response file directly. We always remove the
-  -- request — if the wrapper crashed before writing the response, the CLI
-  -- will time out (and the dcs.log entry above is the diagnostic).
+
+  if target == "mission" then
+    execute_mission(req_id, code)
+  elseif target == "gui" then
+    execute_gui(req_id, code)
+  else
+    write_response_file(req_id, false, nil, "", {
+      message   = "unknown target: " .. tostring(target),
+      traceback = "",
+    }, 0)
+  end
+
   os.remove(req_path)
 end
 
