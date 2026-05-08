@@ -85,6 +85,12 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ### 0.5.0 — 2026-05-08
 
+> **Note:** This release is an internal refactor. No user-facing behavior
+> changes — the Prefab Manager looks and works the same as 0.4.2. The
+> changes below are scaffolding for future tool windows (Group Tools,
+> etc.) so they can share consistent chrome instead of each re-implementing
+> the title bar / footer / hotkeys / resize handling.
+
 - **`sms_window` factory** introduced for ME-mod tool windows
   (`tools/me-mod/lua/dcs_sms_me/sms_window.lua`). Owns the title-bar
   branding, footer separator + colored status Static, close-on-File>New
