@@ -180,10 +180,11 @@ The path is cached to `%AppData%\dcs-sms\config.toml` for next time, so you only
 
 Check `<Saved Games>\DCS\Logs\dcs.log` for any `[sms.me]` lines around the time of the issue, then [open a bug report](https://github.com/nielsvaes/dcs-sms/issues/new?template=bug_report.yml) — paste the relevant log lines and the version number from the Prefab Manager title bar.
 
-## SMSWindow (base class)
+## sms_window — shared chrome for tool windows
 
-`SMSWindow` is the base class for every ME-mod tool window — the Prefab
-Manager and Group Tools both ride on it. It owns:
+`sms_window` is a lightweight handle/factory used by every ME-mod tool
+window — the Prefab Manager rides on it; future tool windows will too. It
+owns:
 
 - A branded title bar reading `Coconut Cockpit · DCS-SMS — <name> v<version>`.
 - A footer band: 1px separator + a colored status Static at the bottom.
@@ -192,48 +193,79 @@ Manager and Group Tools both ride on it. It owns:
 - A `Ctrl+Z` hotkey wired to the project-wide `undo` bus.
 - Resize support with min-size clamp and footer reposition.
 
-A new tool window is a small file:
+A new tool window holds the handle on its own state and passes opts
+callbacks for behaviors it wants to customize:
 
 ```lua
-local SMSWindow = require('dcs_sms_me.sms_window')
+local sms_window = require('dcs_sms_me.sms_window')
 
-local MyTool = setmetatable({}, { __index = SMSWindow.SMSWindow })
-MyTool.__index = MyTool
+local W = {
+    sms_window = nil,  -- the handle
+    -- ... my widget refs (W.btn, W.list, ...)
+}
 
-function MyTool.new()
-    local self = SMSWindow.SMSWindow.new({
-        title    = 'My Tool',
-        size     = { w = 400, h = 300 },
-        min_size = { w = 320, h = 200 },
-    })
-    if not self then return nil end
-    setmetatable(self, MyTool)
-    self:build_body()
-    return self
+local function on_undo_click()
+    -- custom undo behavior, or compose with the default:
+    sms_window.default_on_undo(W.sms_window)
+    -- ...post-undo refresh...
 end
 
-function MyTool:build_body()
-    -- insert widgets via self.window:insertWidget(...)
-    -- position them using self:get_content_bounds()
-end
-
-function MyTool:relayout(x, y, w, h)
+local function relayout(_, x, y, w, h)
     -- reposition widgets within the content rect
 end
+
+local function build_body()
+    local raw = W.sms_window:raw()
+    -- insert widgets via raw:insertWidget(...)
+    -- query the initial content rect via W.sms_window:get_content_bounds()
+end
+
+local M = {}
+
+function M.show()
+    if W.sms_window then W.sms_window:show(); return end
+    W.sms_window = sms_window.new({
+        title     = 'My Tool',
+        size      = { w = 400, h = 300 },
+        min_size  = { w = 320, h = 200 },
+        on_undo   = on_undo_click,                      -- optional
+        on_resize = function(swin, x, y, w, h)          -- optional
+            relayout(swin, x, y, w, h)
+        end,
+        -- on_close = function(swin) ... end             -- optional cleanup hook
+    })
+    if not W.sms_window then return end
+    build_body()
+    W.sms_window:show()
+end
+
+function M.hide()    if W.sms_window then W.sms_window:hide() end end
+function M.toggle()  if W.sms_window then W.sms_window:toggle() else M.show() end end
+
+return M
 ```
 
 Show / hide / toggle, the footer status bar, the resize-clamp, and the
 File-New auto-close all come for free.
 
-The status bar exposes two methods:
+The status bar (on the handle, not the module):
 
-- `:set_status(text, severity)` — sticky; replaces footer until the next
-  call.
-- `:flash_status(text, severity, [timeout])` — overlays for N seconds
-  (default 5), then reverts to the last sticky baseline.
+- `handle:set_status(text, severity)` — sticky; replaces footer until the
+  next call.
+- `handle:flash_status(text, severity, [timeout])` — overlays for N
+  seconds (default 5), then reverts to the last sticky baseline.
 
 Severities: `'info'` (gray), `'success'` (green), `'warning'` (yellow),
 `'error'` (red).
+
+Module helpers (call on the module, not the handle):
+
+- `sms_window.compose_title(title, version) -> string` — build the
+  branded title string. Useful if you need to temporarily change the
+  title (e.g. during a placement mode) and then restore it.
+- `sms_window.default_on_undo(handle)` — the default Ctrl+Z handler.
+  Compose with this from your own `opts.on_undo` if you want "default
+  behavior + custom refresh".
 
 Design: `docs/superpowers/specs/2026-05-08-me-sms-window-base-class.md`.
 
