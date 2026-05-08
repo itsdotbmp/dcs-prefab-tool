@@ -125,9 +125,18 @@ local undo;             do local ok, mod = pcall(require, 'dcs_sms_me.undo');   
 local new_mission_hook; do local ok, mod = pcall(require, 'dcs_sms_me.new_mission_hook'); if ok then new_mission_hook = mod end end
 
 -- Layout constants (see spec — Layout model section).
-local TOP_PAD   = 8    -- breathing room at the top of the content area
-local FOOTER_H  = 22   -- separator (1px) + status static (20px) + 1px breathing room
-local EDGE_PAD  = 8    -- left/right gap between window edge and content rect
+--
+-- dxgui Window has implicit ~50px of bottom chrome (window border / shadow)
+-- that isn't queryable. Children rendered past `h - ~50` are clipped. The
+-- original Prefab Manager (pre-refactor) placed its status static at
+-- y = h - 73 (which clears the chrome with a 1px breathing margin) — these
+-- constants match those numbers so the footer renders in the same place
+-- it always has.
+local TOP_PAD              = 8    -- breathing room at the top of the content area
+local STATUS_H             = 22   -- height of the status Static
+local STATUS_OFFSET_BOTTOM = 73   -- status Static top y = h - STATUS_OFFSET_BOTTOM
+local SEP_OFFSET_BOTTOM    = 76   -- separator y     = h - SEP_OFFSET_BOTTOM (3px above status)
+local EDGE_PAD             = 8    -- left/right gap between window edge and content rect
 
 -- Resolve a skin by short name. Handles only the four severity skins +
 -- the footer separator — every other skin name is delegated to the Skin
@@ -317,16 +326,18 @@ function SMSWindow:get_content_bounds()
             if cw and ch then sw, sh = cw, ch end
         end
     end)
-    return EDGE_PAD, TOP_PAD, sw - 2 * EDGE_PAD, sh - TOP_PAD - FOOTER_H
+    return EDGE_PAD, TOP_PAD, sw - 2 * EDGE_PAD, sh - TOP_PAD - SEP_OFFSET_BOTTOM
 end
 
 -- Reposition footer widgets to the bottom of the window. Called from
--- the size callback on every resize.
+-- the size callback on every resize. The y-offsets clear dxgui's implicit
+-- bottom chrome (see the constants block above); the original Prefab
+-- Manager used the same numbers pre-refactor.
 function SMSWindow:_relayout_footer(w, h)
-    local sep_y    = h - FOOTER_H
-    local status_y = h - FOOTER_H + 1
-    pcall(function() if self._sep    and self._sep.setBounds    then self._sep:setBounds(0, sep_y, w, 1) end end)
-    pcall(function() if self._status and self._status.setBounds then self._status:setBounds(EDGE_PAD, status_y, w - 2 * EDGE_PAD, 20) end end)
+    local sep_y    = h - SEP_OFFSET_BOTTOM
+    local status_y = h - STATUS_OFFSET_BOTTOM
+    pcall(function() if self._sep    and self._sep.setBounds    then self._sep:setBounds(EDGE_PAD, sep_y, w - 2 * EDGE_PAD, 1) end end)
+    pcall(function() if self._status and self._status.setBounds then self._status:setBounds(EDGE_PAD, status_y, w - 2 * EDGE_PAD, STATUS_H) end end)
 end
 
 -- Wire the dxgui resize callback. Clamps via setBounds when the user
