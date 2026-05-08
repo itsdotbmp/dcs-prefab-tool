@@ -369,6 +369,54 @@ function SMSWindow:_initial_layout()
     end
 end
 
+-- ---------- Status bar ----------
+
+-- Apply a (text, severity) pair to the live Static. pcall-guarded so a
+-- failure (e.g. status Static was nil because Window.new bailed) is a
+-- silent no-op.
+function SMSWindow:_render_status(text, severity)
+    pcall(function()
+        if self._status then
+            try_skin(self._status, M._validate_severity(severity))
+            if self._status.setText then self._status:setText(tostring(text or '')) end
+        end
+    end)
+end
+
+-- Set sticky status. Replaces footer text + skin immediately. Stays
+-- until the next set_status / flash_status call. Severity defaults to
+-- 'info' when nil.
+function SMSWindow:set_status(text, severity)
+    severity = severity or 'info'
+    M._on_set_status(self._flash_state, text, severity)
+    self:_render_status(text, severity)
+end
+
+-- Flash a status message that auto-reverts to the last sticky baseline
+-- after `timeout` seconds (default 5). Calling set_status during a flash
+-- cancels it; calling flash_status during a flash replaces it.
+function SMSWindow:flash_status(text, severity, timeout)
+    severity = severity or 'info'
+    M._on_flash_status(self._flash_state, text, severity, timeout, os.time())
+    self:_render_status(text, severity)
+    -- Lazy-register the revert tick on first flash.
+    if not self._tick_registered and UpdateManager and UpdateManager.add then
+        local me = self
+        local ok = pcall(function()
+            UpdateManager.add(function()
+                pcall(function()
+                    local rt, rs = M._on_tick(me._flash_state, os.time())
+                    if rt ~= nil then me:_render_status(rt, rs) end
+                end)
+                return false  -- keep the tick registered for future flashes
+            end)
+        end)
+        if ok then self._tick_registered = true
+        else log.write('sms.me', log.WARN, 'SMSWindow: flash tick registration failed; flash will behave like set_status')
+        end
+    end
+end
+
 -- Expose the live class table for inheritance + access to the helpers.
 M.SMSWindow = SMSWindow
 
