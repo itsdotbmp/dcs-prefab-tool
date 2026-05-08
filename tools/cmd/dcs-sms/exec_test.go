@@ -266,6 +266,112 @@ func TestExecFailsFastWhenHookStale(t *testing.T) {
 	}
 }
 
+// writeHeartbeatFile writes the given HookState atomically to
+// <root>/dcs-sms/state/hook.json. Used by the --target tests to bypass
+// fakeHook's auto-heartbeat (which doesn't carry the new fields) and dial
+// in a precise state.
+func writeHeartbeatFile(t *testing.T, root string, st proto.HookState) {
+	t.Helper()
+	stateDir := filepath.Join(root, "dcs-sms", "state")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := filepath.Join(stateDir, "hook.json.tmp")
+	final := filepath.Join(stateDir, "hook.json")
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(tmp, final); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestExecExplicitTargetGui(t *testing.T) {
+	root := t.TempDir()
+	writeHeartbeatFile(t, root, proto.HookState{
+		HookVersion:      "0.2.0",
+		State:            "in_mission_editor",
+		GuiBridgeEnabled: true,
+		TickSource:       "update_manager",
+		LastFrameAt:      time.Now().UTC().Format(time.RFC3339Nano),
+	})
+
+	startFakeHook(t, root, func(req proto.ExecRequest) proto.ExecResponse {
+		if req.Target != "gui" {
+			t.Errorf("hook saw target=%q, want %q", req.Target, "gui")
+		}
+		return proto.ExecResponse{ID: req.ID, OK: true, ReturnValue: json.RawMessage(`"Lua 5.1"`)}
+	}, false /*heartbeat*/, true /*processInbox*/)
+
+	exit, _, stderr := runExec(t, root, []string{"--target", "gui", "--code", "return _VERSION", "--timeout", "2s"})
+	if exit != 0 {
+		t.Fatalf("exec exit %d, stderr=%s", exit, stderr)
+	}
+}
+
+func TestExecExplicitGuiBridgeDisabledExitCode4(t *testing.T) {
+	root := t.TempDir()
+	writeHeartbeatFile(t, root, proto.HookState{
+		HookVersion:      "0.2.0",
+		State:            "in_mission_editor",
+		GuiBridgeEnabled: false,
+		LastFrameAt:      time.Now().UTC().Format(time.RFC3339Nano),
+	})
+
+	exit, _, stderr := runExec(t, root, []string{"--target", "gui", "--code", "return 1", "--timeout", "1s"})
+	if exit != 4 {
+		t.Fatalf("exit code: got %d, want 4 (gui bridge disabled). stderr=%s", exit, stderr)
+	}
+}
+
+func TestExecAutoRoutingPicksMissionInSim(t *testing.T) {
+	root := t.TempDir()
+	writeHeartbeatFile(t, root, proto.HookState{
+		HookVersion:   "0.2.0",
+		State:         "in_mission",
+		MissionLoaded: true,
+		LastFrameAt:   time.Now().UTC().Format(time.RFC3339Nano),
+	})
+
+	startFakeHook(t, root, func(req proto.ExecRequest) proto.ExecResponse {
+		if req.Target != "mission" {
+			t.Errorf("auto route in_mission should pick mission, got %q", req.Target)
+		}
+		return proto.ExecResponse{ID: req.ID, OK: true, ReturnValue: json.RawMessage(`1`)}
+	}, false, true)
+
+	exit, _, stderr := runExec(t, root, []string{"--target", "auto", "--code", "return 1", "--timeout", "2s"})
+	if exit != 0 {
+		t.Fatalf("exec exit %d, stderr=%s", exit, stderr)
+	}
+}
+
+func TestExecAutoRoutingPicksGuiInME(t *testing.T) {
+	root := t.TempDir()
+	writeHeartbeatFile(t, root, proto.HookState{
+		HookVersion:      "0.2.0",
+		State:            "in_mission_editor",
+		GuiBridgeEnabled: true,
+		LastFrameAt:      time.Now().UTC().Format(time.RFC3339Nano),
+	})
+
+	startFakeHook(t, root, func(req proto.ExecRequest) proto.ExecResponse {
+		if req.Target != "gui" {
+			t.Errorf("auto route in_mission_editor should pick gui, got %q", req.Target)
+		}
+		return proto.ExecResponse{ID: req.ID, OK: true, ReturnValue: json.RawMessage(`1`)}
+	}, false, true)
+
+	exit, _, stderr := runExec(t, root, []string{"--target", "auto", "--code", "return 1", "--timeout", "2s"})
+	if exit != 0 {
+		t.Fatalf("exec exit %d, stderr=%s", exit, stderr)
+	}
+}
+
 func TestExecWaitWaitsForHook(t *testing.T) {
 	root := t.TempDir()
 	for _, sub := range []string{"inbox", "outbox", "state", "log"} {

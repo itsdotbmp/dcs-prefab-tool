@@ -34,6 +34,7 @@ func execCmd(args []string, stdout, stderr io.Writer) int {
 		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
 		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
 		flagWait       = fs.Bool("wait", false, "if hook isn't ready, poll until it is or --timeout elapses")
+		flagTarget     = fs.String("target", "auto", "execution target: mission | gui | auto")
 	)
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -65,9 +66,20 @@ func execCmd(args []string, stdout, stderr io.Writer) int {
 	// runs. Errors here are non-fatal — we'd rather proceed than refuse.
 	_ = mb.SweepOutboxOlderThan(60 * time.Second)
 
+	// Resolve --target against the current hook state. RouteForTarget returns
+	// "mission" or "gui" on success, or an error describing why the requested
+	// target isn't usable right now (e.g. gui bridge disabled).
+	hookState, _ := hookstatus.Read(mb.State())
+	target, err := hookstatus.RouteForTarget(*flagTarget, hookState)
+	if err != nil {
+		fmt.Fprintln(stderr, "dcs-sms exec:", err)
+		return 4
+	}
+
 	req := proto.ExecRequest{
 		ID:        mailbox.NewID(),
 		Kind:      "exec",
+		Target:    target,
 		Code:      code,
 		TimeoutMs: int(flagTimeout.Milliseconds()),
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
@@ -177,23 +189,21 @@ func pollResponse(mb *mailbox.Mailbox, id string, timeout time.Duration) (proto.
 	}
 }
 
-// waitForHook returns nil if the hook heartbeat is fresh. If wait is true,
-// it polls every 50ms until fresh or timeout. If wait is false and the hook
-// isn't fresh, it returns immediately with an error.
+// waitForHook returns nil if the hook heartbeat is fresh. The mission_loaded
+// gate is no longer applied here — RouteForTarget is the source of truth for
+// "is the user's chosen target usable right now". This lets `--target gui`
+// work in the ME / main menu where mission_loaded is false.
+//
+// If wait is true, polls every 50ms until fresh or timeout. If wait is false
+// and the hook isn't fresh, returns immediately with an error.
 func waitForHook(stateDir string, wait bool, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
 		st, err := hookstatus.Read(stateDir)
 		if err == nil && hookstatus.IsFresh(st, 2*time.Second, time.Now()) {
-			if !st.MissionLoaded {
-				if !wait {
-					return errors.New("hook is running but no mission loaded — load a mission or pass --wait")
-				}
-				// fall through to wait
-			} else {
-				return nil
-			}
-		} else if !wait {
+			return nil
+		}
+		if !wait {
 			if err != nil {
 				return fmt.Errorf("hook not ready (%v) — start DCS or pass --wait", err)
 			}
