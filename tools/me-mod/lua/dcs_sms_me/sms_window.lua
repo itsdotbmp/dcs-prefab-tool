@@ -257,6 +257,8 @@ function SMSWindow.new(opts)
     -- method lookups at call time, so the forward reference is fine.
     self:_initial_layout()
     self:_install_resize_callback()
+    self:_install_undo_hotkey()
+    self:_install_new_mission_subscription()
 
     return self
 end
@@ -415,6 +417,56 @@ function SMSWindow:flash_status(text, severity, timeout)
         else log.write('sms.me', log.WARN, 'SMSWindow: flash tick registration failed; flash will behave like set_status')
         end
     end
+end
+
+-- ---------- Lifecycle hooks ----------
+
+-- Default Ctrl+Z handler. Calls undo.undo() and flashes a status with
+-- the appropriate severity. Subclasses override to add post-undo
+-- refresh; either call SMSWindow.on_undo(self) for the base behaviour
+-- first, or replace it entirely.
+function SMSWindow:on_undo()
+    if not undo.has_record() then
+        self:flash_status('Nothing to undo.', 'warning')
+        return
+    end
+    local ok, err = undo.undo()
+    if ok then
+        self:flash_status('Undo successful.' .. (err and (' (' .. err .. ')') or ''), 'success')
+    else
+        self:flash_status('Undo failed: ' .. tostring(err), 'error')
+    end
+end
+
+-- Wire Ctrl+Z to dispatch through opts.on_undo (composition) or
+-- self:on_undo (inheritance). Skipped entirely if disable_undo_hotkey
+-- is set on opts.
+function SMSWindow:_install_undo_hotkey()
+    if self._opts and self._opts.disable_undo_hotkey then return end
+    if not (self.window and self.window.addHotKeyCallback) then return end
+    local me = self
+    pcall(function()
+        me.window:addHotKeyCallback('Ctrl+Z', function()
+            if me._opts and type(me._opts.on_undo) == 'function' then
+                pcall(me._opts.on_undo, me)
+            else
+                pcall(SMSWindow.on_undo, me)
+            end
+        end)
+    end)
+end
+
+-- Subscribe to File > New / File > Open so the window auto-hides when
+-- the mission is torn down. Skipped if persist_across_new_mission is set.
+-- Subscription is additive (matches the bulk-rename branch's fix) — we
+-- never call new_mission_hook.reset_subscribers, so multiple windows
+-- coexist without clobbering each other.
+function SMSWindow:_install_new_mission_subscription()
+    if self._opts and self._opts.persist_across_new_mission then return end
+    if self._new_mission_subscribed then return end
+    local me = self
+    pcall(function() new_mission_hook.subscribe(function() me:hide() end) end)
+    self._new_mission_subscribed = true
 end
 
 -- Expose the live class table for inheritance + access to the helpers.
