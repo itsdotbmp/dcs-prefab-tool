@@ -169,6 +169,37 @@ Mission.fixAddPropAircraft()                            -- fills F-16-style AddP
 - **Cross-airframe template swaps work:** taking the A-4E-C CAP shape verbatim and just changing `units[1].type = "F-16C_50"` (with `livery_id = ""` and `AddPropAircraft = nil`) produces a working F-16 CAP after `fixAddPropAircraft` runs. The F-16-specific `AddPropAircraft` keys (HMD, etc.) are populated by the fix.
 - **Validation:** spawned F-16 CAP from A-4E-C template, ~9km north of Akrotiri at 3000m. Map icon visible, group selectable, Unit List window opens, payload panel populated, **mission ran successfully with the plane in-game**. Strategy proven end-to-end.
 
+## multi-unit ground synthesis works (no template needed)
+**Tag:** command-worthy
+**Touches:** same as the single-unit injection — `Mission.{create_group_objects, create_group_map_objects, getNewGroupId, getNewUnitId, check_group_name, getUnitName, group_by_name, group_by_id, unit_by_name, unit_by_id}`
+**Snippet:**
+```lua
+-- Synthesizing a 5-unit Hawk site from sms.K type names, with the canonical
+-- injection sequence from probe #1, produces an "ME-perfect" multi-unit
+-- ground group — selectable, in Unit List, runs in mission.
+--
+-- KEY LOOP-ORDERING FIX: getUnitName allocates a unique unit name by
+-- inspecting unit_by_name. So each unit must be REGISTERED in unit_by_name
+-- before the next unit's getUnitName call, otherwise all units get the same
+-- name. Translation: the per-unit work — allocate id → name → register →
+-- set boss → append to g.units — must happen in ONE loop body, not in
+-- separate name-all/register-all passes.
+for i, spec in ipairs(layout) do
+  local u = { type = spec.type, name = "placeholder", unitId = Mission.getNewUnitId(), ... }
+  u.name = Mission.getUnitName(g.name)              -- allocates name N
+  Mission.unit_by_name[u.name] = u                  -- register THIS unit before next iteration
+  Mission.unit_by_id[u.unitId] = u
+  u.boss = g
+  g.units[i] = u
+end
+```
+**Notes:**
+- Group shape used: `task = "Ground Nothing"`, single waypoint with `action = "Off Road"`, `speed = 0`, `speed_locked = true`, `task = { id = "ComboTask", params = { tasks = {} } }` (empty enroute tasks). All standard for stationary ground.
+- Layout: 5 Hawk units (pcp, sr, tr, cwar, ln) in a +-shape, 50m spacing. Headings set per unit (radars facing center, etc.). x = N-S, y = E-W axes — same as everywhere.
+- Confirmed end-to-end: 5 selectable units, Unit List shows all 5 distinct entries, mission runs and the SAM site comes alive (radars working, threat detection active).
+- **Implication for the proposal:** `me group create vehicle --units "[type1,type2,...]"` synthesis can be implemented without `--from-template ref:samsite.<x>` for the common case. Templates are only needed when the GROUP SHAPE is rich (the broken-F-16 problem was about waypoint/task structure complexity, not unit-list complexity). For stationary ground sites with no waypoint tasks, synthesis suffices.
+- **What we did NOT yet test:** synthesis of groups with rich waypoint tasks (FAC_AttackGroup, FireAtPoint, EngageTargets), multi-unit *air* groups (CAP flights with 2-4 aircraft), or groups with `formation_template` non-empty. Those may still need template extraction.
+
 ## bridge response timeout — 15s sometimes not enough
 **Tag:** needs-more
 **Touches:** CLI `--timeout` default
