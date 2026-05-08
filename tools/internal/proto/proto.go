@@ -7,9 +7,17 @@ package proto
 import "encoding/json"
 
 // ExecRequest is what the CLI writes into inbox/<id>.req.json.
+//
+// Target picks the Lua state the snippet runs in:
+//   - ""        legacy / unset → hook treats as "mission" (back-compat)
+//   - "mission" mission scripting env (sandboxed). Requires a running mission.
+//   - "gui"     shared GUI/ME Lua state (full io/lfs). Requires the ME-mod
+//               toggle to be enabled. Reaches the editable mission table
+//               while the user is in the Mission Editor.
 type ExecRequest struct {
 	ID        string `json:"id"`
 	Kind      string `json:"kind"`
+	Target    string `json:"target,omitempty"`
 	Code      string `json:"code"`
 	TimeoutMs int    `json:"timeout_ms"`
 	CreatedAt string `json:"created_at"`
@@ -37,10 +45,26 @@ type ExecError struct {
 }
 
 // HookState is what the hook writes into state/hook.json on each heartbeat.
+//
+// Field shape v0.2.0 (additive, backward-compatible):
+//   - State, GuiBridgeEnabled, TickSource are new in 0.2.0.
+//   - LastTick / LastTickAt mirror LastFrame / LastFrameAt; old fields are
+//     kept populated for one release so older CLIs stay compatible.
+//
+// State values: "starting" | "at_main_menu" | "in_mission_editor"
+//             | "loading_mission" | "in_mission" | "stopping" | "" (legacy).
+//
+// TickSource values: "update_manager" | "simulation_frame"
+//                  | "simulation_frame_only" | "" (legacy).
 type HookState struct {
-	HookVersion   string `json:"hook_version"`
-	MissionLoaded bool   `json:"mission_loaded"`
-	MissionName   string `json:"mission_name"`
-	LastFrame     int64  `json:"last_frame"`
-	LastFrameAt   string `json:"last_frame_at"`
+	HookVersion      string `json:"hook_version"`
+	State            string `json:"state,omitempty"`
+	MissionLoaded    bool   `json:"mission_loaded"`
+	MissionName      string `json:"mission_name"`
+	GuiBridgeEnabled bool   `json:"gui_bridge_enabled,omitempty"`
+	TickSource       string `json:"tick_source,omitempty"`
+	LastTick         int64  `json:"last_tick,omitempty"`
+	LastTickAt       string `json:"last_tick_at,omitempty"`
+	LastFrame        int64  `json:"last_frame"`
+	LastFrameAt      string `json:"last_frame_at"`
 }
