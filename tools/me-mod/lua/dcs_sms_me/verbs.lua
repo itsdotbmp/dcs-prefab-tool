@@ -829,6 +829,174 @@ function M.zone_set_color(args)
     return { ok = true, id = zid, name = zname, color = { r, g, b, a } }
 end
 
+-- zone_set_name — rename a zone. ME enforces uniqueness via
+-- makeTriggerZoneNameUnique, so the stored name may include a suffix.
+function M.zone_set_name(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_set_name requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'zone_set_name requires exactly one of args.name or args.id' }
+    end
+    if type(args.new_name) ~= 'string' or args.new_name == '' then
+        return { ok = false, error = 'zone_set_name requires args.new_name (non-empty string)' }
+    end
+    local zid = find_zone(has_name and args.name or nil, has_id and args.id or nil)
+    if not zid then
+        return { ok = false, error = 'zone not found' }
+    end
+    local TZD = require('Mission.TriggerZoneData')
+    local ok_call, err = pcall(TZD.setTriggerZoneName, zid, args.new_name)
+    if not ok_call then
+        return { ok = false, error = 'setTriggerZoneName: ' .. tostring(err) }
+    end
+    -- Read back what TZD actually stored — the ME may have appended a suffix.
+    local final = TZD.getTriggerZoneName(zid)
+    return { ok = true, id = zid, name = final, requested_name = args.new_name }
+end
+
+-- zone_set_pos — move zone center to (north, east).
+-- For circles, this just moves the center. For quads, the relative points
+-- ride along (translation), but the shape doesn't reshape — use
+-- zone_set_vertices for that.
+function M.zone_set_pos(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_set_pos requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'zone_set_pos requires exactly one of args.name or args.id' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'zone_set_pos requires args.north and args.east (numbers, meters)' }
+    end
+    local zid, zname = find_zone(has_name and args.name or nil, has_id and args.id or nil)
+    if not zid then
+        return { ok = false, error = 'zone not found' }
+    end
+    local TZD = require('Mission.TriggerZoneData')
+    -- mission-table fields: x = north, y = east
+    local ok_call, err = pcall(TZD.setTriggerZonePosition, zid, args.north, args.east)
+    if not ok_call then
+        return { ok = false, error = 'setTriggerZonePosition: ' .. tostring(err) }
+    end
+    return { ok = true, id = zid, name = zname, north = args.north, east = args.east }
+end
+
+-- zone_set_radius — set zone radius (circle: trigger radius; quad: icon radius).
+function M.zone_set_radius(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_set_radius requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'zone_set_radius requires exactly one of args.name or args.id' }
+    end
+    if type(args.radius) ~= 'number' or args.radius <= 0 then
+        return { ok = false, error = 'zone_set_radius requires args.radius (positive number, meters)' }
+    end
+    local zid, zname = find_zone(has_name and args.name or nil, has_id and args.id or nil)
+    if not zid then
+        return { ok = false, error = 'zone not found' }
+    end
+    local TZD = require('Mission.TriggerZoneData')
+    local ok_call, err = pcall(TZD.setTriggerZoneRadius, zid, args.radius)
+    if not ok_call then
+        return { ok = false, error = 'setTriggerZoneRadius: ' .. tostring(err) }
+    end
+    return { ok = true, id = zid, name = zname, radius = args.radius }
+end
+
+-- zone_set_hidden — toggle zone visibility in the ME view.
+-- Caller must pass an explicit boolean — the CLI rejects missing --hidden.
+function M.zone_set_hidden(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_set_hidden requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'zone_set_hidden requires exactly one of args.name or args.id' }
+    end
+    if type(args.hidden) ~= 'boolean' then
+        return { ok = false, error = 'zone_set_hidden requires args.hidden (boolean)' }
+    end
+    local zid, zname = find_zone(has_name and args.name or nil, has_id and args.id or nil)
+    if not zid then
+        return { ok = false, error = 'zone not found' }
+    end
+    local TZD = require('Mission.TriggerZoneData')
+    local ok_call, err = pcall(TZD.setTriggerZoneHidden, zid, args.hidden)
+    if not ok_call then
+        return { ok = false, error = 'setTriggerZoneHidden: ' .. tostring(err) }
+    end
+    return { ok = true, id = zid, name = zname, hidden = args.hidden }
+end
+
+-- zone_set_vertices — reshape a quad zone in absolute world coords.
+-- Computes a new center (average of vertices) and stores points relative to
+-- that center — same shape zone_create_quad produces, so save+reload behavior
+-- is identical. Refuses on non-quad zones.
+--
+-- args: { name|id, vertices = { { north=N, east=E }, ... } } (>= 3)
+function M.zone_set_vertices(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_set_vertices requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'zone_set_vertices requires exactly one of args.name or args.id' }
+    end
+    if type(args.vertices) ~= 'table' or #args.vertices < 3 then
+        return { ok = false, error = 'zone_set_vertices requires args.vertices (>= 3 {north,east} pairs)' }
+    end
+    for i, v in ipairs(args.vertices) do
+        if type(v) ~= 'table' or type(v.north) ~= 'number' or type(v.east) ~= 'number' then
+            return { ok = false, error = 'vertex ' .. i .. ' missing/invalid {north,east} numbers' }
+        end
+    end
+
+    local zid, zname = find_zone(has_name and args.name or nil, has_id and args.id or nil)
+    if not zid then
+        return { ok = false, error = 'zone not found' }
+    end
+
+    local TZD = require('Mission.TriggerZoneData')
+    -- Refuse on circle zones — they have no vertices to reshape. The user
+    -- almost certainly wanted set-radius / set-pos.
+    if TZD.getTriggerZoneType(zid) ~= 2 then  -- 2 = polygon/quad
+        return { ok = false, error = 'zone is not a quad; use set-radius/set-pos for circle zones' }
+    end
+
+    -- Average vertices for new center, then compute relative points.
+    local cx, cy = 0, 0
+    for _, v in ipairs(args.vertices) do
+        cx = cx + v.north; cy = cy + v.east
+    end
+    cx = cx / #args.vertices; cy = cy / #args.vertices
+    local rel = {}
+    for _, v in ipairs(args.vertices) do
+        table.insert(rel, { x = v.north - cx, y = v.east - cy })
+    end
+
+    local ok_pos, err_pos = pcall(TZD.setTriggerZonePosition, zid, cx, cy)
+    if not ok_pos then
+        return { ok = false, error = 'setTriggerZonePosition: ' .. tostring(err_pos) }
+    end
+    local ok_pts, err_pts = pcall(TZD.setTriggerZonePoints, zid, rel)
+    if not ok_pts then
+        return { ok = false, error = 'setTriggerZonePoints: ' .. tostring(err_pts) }
+    end
+    return { ok = true, id = zid, name = zname,
+             center = { north = cx, east = cy },
+             vertex_count = #rel }
+end
+
 -- zone_remove — remove a trigger zone by name or id (mutually exclusive).
 function M.zone_remove(args)
     if type(args) ~= 'table' then
