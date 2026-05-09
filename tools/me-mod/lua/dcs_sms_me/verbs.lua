@@ -660,6 +660,404 @@ function M.group_create_plane(args)
     }
 end
 
+-- group_create_helicopter — single-unit rotary-wing group with the same
+-- shape as create_plane but a helo-typical default profile (lower alt,
+-- slower speed). Single waypoint at the spawn point with an empty ComboTask,
+-- save-survives via fixWaypointForGroup.
+--
+-- args (required): country, type, north, east
+-- args (optional): name, alt (default 1000), alt_type (BARO), speed (50),
+--                  heading (radians, 0), skill (Average), livery (''),
+--                  frequency (127.5), onboard_num ('010')
+function M.group_create_helicopter(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_create_helicopter requires args (table)' }
+    end
+    if type(args.country) ~= 'string' or args.country == '' then
+        return { ok = false, error = 'group_create_helicopter requires args.country (string)' }
+    end
+    if type(args.type) ~= 'string' or args.type == '' then
+        return { ok = false, error = 'group_create_helicopter requires args.type (string, airframe id)' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'group_create_helicopter requires args.north and args.east (numbers, meters)' }
+    end
+
+    local country, side_name = find_country_by_name(args.country)
+    if not country then
+        return { ok = false,
+                 error = 'country "' .. args.country .. '" not in mission coalition tree' }
+    end
+
+    local x, y = args.north, args.east
+    local alt = args.alt or 1000
+    local alt_type = args.alt_type or 'BARO'
+    local speed = args.speed or 50
+    local heading = args.heading or 0
+    local skill = args.skill or 'Average'
+    local livery = args.livery or ''
+    local frequency = args.frequency or 127.5
+    local onboard_num = args.onboard_num or '010'
+
+    local group_name = (type(args.name) == 'string' and args.name ~= '') and args.name
+                       or (args.type .. ' #001')
+
+    local g = {
+        name = group_name,
+        x = x, y = y,
+        task = 'Transport',
+        hidden = false,
+        hiddenOnPlanner = false,
+        hiddenOnMFD = {},
+        modulation = 0,
+        frequency = frequency,
+        uncontrolled = false,
+        start_time = 0,
+        units = {
+            {
+                name = group_name .. '-1',
+                type = args.type,
+                x = x, y = y,
+                alt = alt, alt_type = alt_type,
+                speed = speed,
+                heading = heading,
+                psi = 0,
+                skill = skill,
+                livery_id = livery,
+                onboard_num = onboard_num,
+                callsign = { 1, 1, 1, name = 'Enfield11' },
+                payload = {
+                    pylons = {},
+                    fuel = '1100',
+                    flare = 0,
+                    chaff = 0,
+                    gun = 100,
+                },
+                AddPropAircraft = nil,
+            },
+        },
+        route = {
+            points = {
+                {
+                    x = x, y = y,
+                    alt = alt, alt_type = alt_type,
+                    speed = speed,
+                    action = 'Turning Point',
+                    type = 'Turning Point',
+                    ETA = 0, ETA_locked = true,
+                    formation_template = '',
+                    task = { id = 'ComboTask', params = { tasks = {} } },
+                },
+            },
+            routeRelativeTOT = false,
+        },
+    }
+
+    local injected, err = inject_group(g, country, 'helicopter')
+    if not injected then
+        return { ok = false, error = err or 'inject_group failed' }
+    end
+
+    return {
+        ok = true,
+        groupId = injected.groupId,
+        name = injected.name,
+        unitId = injected.units[1].unitId,
+        unitName = injected.units[1].name,
+        country = country.name,
+        side = side_name,
+    }
+end
+
+-- group_create_vehicle — single-unit ground-vehicle group, stationary
+-- (Off Road action, speed=0, speed_locked). No alt / alt_type / payload —
+-- those are aircraft-only fields.
+--
+-- args (required): country, type, north, east
+-- args (optional): name, heading (radians, 0), skill (Average)
+function M.group_create_vehicle(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_create_vehicle requires args (table)' }
+    end
+    if type(args.country) ~= 'string' or args.country == '' then
+        return { ok = false, error = 'group_create_vehicle requires args.country (string)' }
+    end
+    if type(args.type) ~= 'string' or args.type == '' then
+        return { ok = false, error = 'group_create_vehicle requires args.type (string, vehicle id)' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'group_create_vehicle requires args.north and args.east (numbers, meters)' }
+    end
+
+    local country, side_name = find_country_by_name(args.country)
+    if not country then
+        return { ok = false,
+                 error = 'country "' .. args.country .. '" not in mission coalition tree' }
+    end
+
+    local x, y = args.north, args.east
+    local heading = args.heading or 0
+    local skill = args.skill or 'Average'
+
+    local group_name = (type(args.name) == 'string' and args.name ~= '') and args.name
+                       or (args.type .. ' #001')
+
+    local g = {
+        name = group_name,
+        x = x, y = y,
+        task = 'Ground Nothing',
+        hidden = false,
+        hiddenOnPlanner = false,
+        hiddenOnMFD = {},
+        modulation = 0,
+        frequency = 0,
+        uncontrolled = false,
+        start_time = 0,
+        units = {
+            {
+                name = group_name .. '-1',
+                type = args.type,
+                x = x, y = y,
+                heading = heading,
+                playerCanDrive = false,
+                skill = skill,
+            },
+        },
+        route = {
+            points = {
+                {
+                    x = x, y = y,
+                    alt = 0, alt_type = 'BARO',
+                    speed = 0, speed_locked = true,
+                    action = 'Off Road',
+                    type = 'Turning Point',
+                    ETA = 0, ETA_locked = true,
+                    formation_template = '',
+                    task = { id = 'ComboTask', params = { tasks = {} } },
+                },
+            },
+            routeRelativeTOT = false,
+        },
+    }
+
+    local injected, err = inject_group(g, country, 'vehicle')
+    if not injected then
+        return { ok = false, error = err or 'inject_group failed' }
+    end
+
+    return {
+        ok = true,
+        groupId = injected.groupId,
+        name = injected.name,
+        unitId = injected.units[1].unitId,
+        unitName = injected.units[1].name,
+        country = country.name,
+        side = side_name,
+    }
+end
+
+-- group_create_ship — single-unit naval-vessel group. Same shape as vehicle
+-- (stationary, ground-style waypoint), but the position MUST be over water
+-- — we check terrain.GetSurfaceType to fail fast rather than letting the
+-- ship spawn on a beach and look broken.
+--
+-- args (required): country, type, north, east
+-- args (optional): name, heading (radians, 0), skill (Average)
+function M.group_create_ship(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_create_ship requires args (table)' }
+    end
+    if type(args.country) ~= 'string' or args.country == '' then
+        return { ok = false, error = 'group_create_ship requires args.country (string)' }
+    end
+    if type(args.type) ~= 'string' or args.type == '' then
+        return { ok = false, error = 'group_create_ship requires args.type (string, ship id)' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'group_create_ship requires args.north and args.east (numbers, meters)' }
+    end
+
+    local country, side_name = find_country_by_name(args.country)
+    if not country then
+        return { ok = false,
+                 error = 'country "' .. args.country .. '" not in mission coalition tree' }
+    end
+
+    -- Water-surface check. terrain.GetSurfaceType uses mission-table coords
+    -- (x = N–S, y = E–W). Returns lowercase strings; sea-ish responses are
+    -- 'sea' / 'shallow_water'. force=true skips the check (escape hatch).
+    if args.force ~= true then
+        local ok_terr, terrain = pcall(require, 'terrain')
+        if ok_terr and type(terrain) == 'table' and type(terrain.GetSurfaceType) == 'function' then
+            local surf = terrain.GetSurfaceType(args.north, args.east)
+            if surf ~= 'sea' and surf ~= 'shallow_water' then
+                return { ok = false,
+                         error = 'ship spawn at (' .. args.north .. ', ' .. args.east .. ') is over '
+                                 .. tostring(surf) .. ', not water; pass force=true to override' }
+            end
+        end
+    end
+
+    local x, y = args.north, args.east
+    local heading = args.heading or 0
+    local skill = args.skill or 'Average'
+
+    local group_name = (type(args.name) == 'string' and args.name ~= '') and args.name
+                       or (args.type .. ' #001')
+
+    local g = {
+        name = group_name,
+        x = x, y = y,
+        task = 'CAP',
+        hidden = false,
+        hiddenOnPlanner = false,
+        hiddenOnMFD = {},
+        modulation = 0,
+        frequency = 0,
+        uncontrolled = false,
+        start_time = 0,
+        units = {
+            {
+                name = group_name .. '-1',
+                type = args.type,
+                x = x, y = y,
+                heading = heading,
+                skill = skill,
+                modulation = 0,
+                transportable = { randomTransportable = false },
+            },
+        },
+        route = {
+            points = {
+                {
+                    x = x, y = y,
+                    alt = 0, alt_type = 'BARO',
+                    -- Ship waypoints need `depth` (positive metres). Save's
+                    -- unload_ship_groups computes `pt.alt = -s.depth`
+                    -- (me_mission.lua:4239) and crashes on nil here.
+                    depth = 0,
+                    speed = 0, speed_locked = true,
+                    action = 'Turning Point',
+                    type = 'Turning Point',
+                    ETA = 0, ETA_locked = true,
+                    formation_template = '',
+                    task = { id = 'ComboTask', params = { tasks = {} } },
+                },
+            },
+            routeRelativeTOT = false,
+        },
+    }
+
+    local injected, err = inject_group(g, country, 'ship')
+    if not injected then
+        return { ok = false, error = err or 'inject_group failed' }
+    end
+
+    return {
+        ok = true,
+        groupId = injected.groupId,
+        name = injected.name,
+        unitId = injected.units[1].unitId,
+        unitName = injected.units[1].name,
+        country = country.name,
+        side = side_name,
+    }
+end
+
+-- group_create_static — static-object group. Statics are different:
+-- one "unit" representing the object, no waypoints / route, no AI behavior.
+-- They're stored under country.static.group same as vehicles, but shape is
+-- minimal — a single position, heading, dead flag, category, shape_name.
+--
+-- args (required): country, type, north, east
+-- args (optional): name, heading (radians, 0), category (Cargos / Fortifications
+--                  / Warehouses / etc.), shape_name (model id), dead (false),
+--                  can_cargo (false), mass (0)
+function M.group_create_static(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_create_static requires args (table)' }
+    end
+    if type(args.country) ~= 'string' or args.country == '' then
+        return { ok = false, error = 'group_create_static requires args.country (string)' }
+    end
+    if type(args.type) ~= 'string' or args.type == '' then
+        return { ok = false, error = 'group_create_static requires args.type (string, static id)' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'group_create_static requires args.north and args.east (numbers, meters)' }
+    end
+
+    local country, side_name = find_country_by_name(args.country)
+    if not country then
+        return { ok = false,
+                 error = 'country "' .. args.country .. '" not in mission coalition tree' }
+    end
+
+    local x, y = args.north, args.east
+    local heading = args.heading or 0
+    local category = args.category or 'Fortifications'
+    local shape_name = args.shape_name or ''
+    local dead = (args.dead == true)
+    local can_cargo = (args.can_cargo == true)
+    local mass = args.mass or 0
+
+    local group_name = (type(args.name) == 'string' and args.name ~= '') and args.name
+                       or (args.type .. ' #001')
+
+    -- Static groups still have a route (single point) so the canonical
+    -- inject_group sequence's fixWaypointForGroup is happy.
+    local g = {
+        name = group_name,
+        x = x, y = y,
+        hidden = false,
+        dead = dead,
+        heading = heading,
+        units = {
+            {
+                name = group_name,  -- statics use the group name as unit name
+                type = args.type,
+                x = x, y = y,
+                heading = heading,
+                category = category,
+                shape_name = shape_name,
+                rate = 100,
+                canCargo = can_cargo,
+                mass = mass,
+                dead = dead,
+            },
+        },
+        route = {
+            points = {
+                {
+                    x = x, y = y,
+                    action = 'Off Road',
+                    type = 'Turning Point',
+                    ETA = 0, ETA_locked = true,
+                    formation_template = '',
+                    speed = 0, speed_locked = true,
+                    task = { id = 'ComboTask', params = { tasks = {} } },
+                },
+            },
+            routeRelativeTOT = false,
+        },
+    }
+
+    local injected, err = inject_group(g, country, 'static')
+    if not injected then
+        return { ok = false, error = err or 'inject_group failed' }
+    end
+
+    return {
+        ok = true,
+        groupId = injected.groupId,
+        name = injected.name,
+        unitId = injected.units[1].unitId,
+        unitName = injected.units[1].name,
+        country = country.name,
+        side = side_name,
+    }
+end
+
 -- ============================================================
 -- Group setters (per-field)
 -- ============================================================
