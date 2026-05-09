@@ -611,4 +611,210 @@ function M.group_create_plane(args)
     }
 end
 
+-- ============================================================
+-- Trigger zone lifecycle verbs
+-- ============================================================
+
+-- DCS trigger zone types (from Mission.TriggerZone.lua line 9):
+--   TYPE_CIRCLE    = 0
+--   TYPE_RECTANGLE = 1   (unused at the ME UI level — quads use type 2)
+--   TYPE_POLYGON   = 2   (4 vertices = "Quad-Point Zone" in the ME UI)
+local ZONE_TYPE_CIRCLE = 0
+local ZONE_TYPE_POLYGON = 2
+
+-- Default color matches what TriggerZone.construct sets internally:
+-- {r=1, g=1, b=1, a=0.15} — translucent white. RGBA components are floats 0..1.
+local function default_zone_color() return { 1, 1, 1, 0.15 } end
+
+-- find_zone_by_name / find_zone_by_id — TriggerZoneData doesn't expose a
+-- by-name lookup directly; we iterate getTriggerZoneIds() and match.
+local function find_zone(by_name, by_id)
+    local TZD = require('Mission.TriggerZoneData')
+    if type(TZD) ~= 'table' or type(TZD.getTriggerZoneIds) ~= 'function' then
+        return nil, nil
+    end
+    for _, zid in ipairs(TZD.getTriggerZoneIds() or {}) do
+        if by_id and zid == by_id then return zid, TZD.getTriggerZoneName(zid) end
+        if by_name then
+            local n = TZD.getTriggerZoneName(zid)
+            if n == by_name then return zid, n end
+        end
+    end
+    return nil, nil
+end
+
+-- zone_create_circle — circular trigger zone at (north, east) with given radius.
+--
+-- args (required):
+--   name:   string  -- zone name (uniquified by TriggerZoneData if duplicate)
+--   north:  number  -- meters north of theatre origin
+--   east:   number  -- meters east of theatre origin
+--   radius: number  -- meters
+--
+-- args (optional):
+--   color:  { r, g, b, a } floats 0..1; defaults to translucent white
+--   hidden: bool, default false
+--   properties: table, default {}
+--
+-- Returns { ok = true, zoneId, name } on success.
+function M.zone_create_circle(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_create_circle requires args (table)' }
+    end
+    if type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'zone_create_circle requires args.name (string)' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'zone_create_circle requires args.north and args.east (numbers, meters)' }
+    end
+    if type(args.radius) ~= 'number' or args.radius <= 0 then
+        return { ok = false, error = 'zone_create_circle requires args.radius (positive number, meters)' }
+    end
+
+    local ok_tzd, TZD = pcall(require, 'Mission.TriggerZoneData')
+    if not ok_tzd or type(TZD) ~= 'table' or type(TZD.addTriggerZone) ~= 'function' then
+        return { ok = false, error = 'Mission.TriggerZoneData unavailable' }
+    end
+
+    local color = (type(args.color) == 'table') and args.color or default_zone_color()
+    local properties = (type(args.properties) == 'table') and args.properties or {}
+
+    -- mission-table fields: x = north, y = east
+    local x, y = args.north, args.east
+
+    -- addTriggerZone returns the allocated zoneId on success.
+    local ok_call, zid_or_err = pcall(TZD.addTriggerZone, args.name, x, y, args.radius,
+                                       properties, color, ZONE_TYPE_CIRCLE, nil)
+    if not ok_call then
+        return { ok = false, error = 'addTriggerZone: ' .. tostring(zid_or_err) }
+    end
+    if type(zid_or_err) ~= 'number' then
+        return { ok = false, error = 'addTriggerZone returned non-number: ' .. tostring(zid_or_err) }
+    end
+
+    -- Name may have been uniquified by TZD.makeTriggerZoneNameUnique.
+    local final_name = TZD.getTriggerZoneName and TZD.getTriggerZoneName(zid_or_err) or args.name
+
+    if args.hidden == true and type(TZD.setTriggerZoneHidden) == 'function' then
+        pcall(TZD.setTriggerZoneHidden, zid_or_err, true)
+    end
+
+    return { ok = true, zoneId = zid_or_err, name = final_name, type = 'circle' }
+end
+
+-- zone_create_quad — polygon trigger zone with 4 vertices (the ME's
+-- "Quad-Point Zone"). Despite the name we accept any N>=3 vertex count —
+-- the underlying type=2 polygon supports it.
+--
+-- args (required):
+--   name:     string
+--   vertices: list of { north = N, east = E } in absolute world meters
+--             (NOT relative to center — we compute the center for you).
+--
+-- args (optional):
+--   color, hidden, properties — see zone_create_circle
+--   radius:   icon radius in meters; defaults to half the bounding-box diagonal
+--             (matches what the ME would compute for a rectangular quad).
+--
+-- Returns { ok = true, zoneId, name, center = { north, east } } on success.
+function M.zone_create_quad(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_create_quad requires args (table)' }
+    end
+    if type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'zone_create_quad requires args.name (string)' }
+    end
+    if type(args.vertices) ~= 'table' or #args.vertices < 3 then
+        return { ok = false, error = 'zone_create_quad requires args.vertices (>= 3 {north,east} pairs)' }
+    end
+
+    -- Validate each vertex.
+    for i, v in ipairs(args.vertices) do
+        if type(v) ~= 'table' or type(v.north) ~= 'number' or type(v.east) ~= 'number' then
+            return { ok = false,
+                     error = 'vertex ' .. i .. ' missing/invalid {north,east} numbers' }
+        end
+    end
+
+    -- Compute center as average of vertices.
+    local cx, cy = 0, 0
+    for _, v in ipairs(args.vertices) do
+        cx = cx + v.north
+        cy = cy + v.east
+    end
+    cx = cx / #args.vertices
+    cy = cy / #args.vertices
+
+    -- Convert absolute vertices to points relative to center
+    -- (mission-table fields: x = north, y = east).
+    local points = {}
+    local minN, maxN, minE, maxE = math.huge, -math.huge, math.huge, -math.huge
+    for _, v in ipairs(args.vertices) do
+        table.insert(points, { x = v.north - cx, y = v.east - cy })
+        if v.north < minN then minN = v.north end
+        if v.north > maxN then maxN = v.north end
+        if v.east  < minE then minE = v.east  end
+        if v.east  > maxE then maxE = v.east  end
+    end
+
+    -- Default radius = half bounding-box diagonal — sized so the icon
+    -- circumscribes the quad. User can override.
+    local default_radius = 0.5 * math.sqrt((maxN - minN) ^ 2 + (maxE - minE) ^ 2)
+    local radius = (type(args.radius) == 'number' and args.radius > 0) and args.radius
+                   or math.max(default_radius, 1)
+
+    local ok_tzd, TZD = pcall(require, 'Mission.TriggerZoneData')
+    if not ok_tzd or type(TZD) ~= 'table' or type(TZD.addTriggerZone) ~= 'function' then
+        return { ok = false, error = 'Mission.TriggerZoneData unavailable' }
+    end
+
+    local color = (type(args.color) == 'table') and args.color or default_zone_color()
+    local properties = (type(args.properties) == 'table') and args.properties or {}
+
+    local ok_call, zid_or_err = pcall(TZD.addTriggerZone, args.name, cx, cy, radius,
+                                       properties, color, ZONE_TYPE_POLYGON, points)
+    if not ok_call then
+        return { ok = false, error = 'addTriggerZone: ' .. tostring(zid_or_err) }
+    end
+    if type(zid_or_err) ~= 'number' then
+        return { ok = false, error = 'addTriggerZone returned non-number: ' .. tostring(zid_or_err) }
+    end
+
+    local final_name = TZD.getTriggerZoneName and TZD.getTriggerZoneName(zid_or_err) or args.name
+
+    if args.hidden == true and type(TZD.setTriggerZoneHidden) == 'function' then
+        pcall(TZD.setTriggerZoneHidden, zid_or_err, true)
+    end
+
+    return { ok = true, zoneId = zid_or_err, name = final_name, type = 'quad',
+             center = { north = cx, east = cy }, vertex_count = #points }
+end
+
+-- zone_remove — remove a trigger zone by name or id (mutually exclusive).
+function M.zone_remove(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_remove requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'zone_remove requires exactly one of args.name (string) or args.id (number)' }
+    end
+
+    local zid, zname = find_zone(has_name and args.name or nil,
+                                 has_id and args.id or nil)
+    if not zid then
+        return { ok = false, error = 'zone not found' }
+    end
+
+    local TZD = require('Mission.TriggerZoneData')
+    local ok_call, err = pcall(TZD.removeTriggerZone, zid)
+    if not ok_call then
+        return { ok = false, error = 'removeTriggerZone: ' .. tostring(err),
+                 resolved = { id = zid, name = zname } }
+    end
+
+    return { ok = true, id = zid, name = zname }
+end
+
 return M
