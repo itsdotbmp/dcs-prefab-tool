@@ -3594,31 +3594,49 @@ local function _trigger_make_alias(canonical)
     return s:gsub('_', '-'):lower()
 end
 
--- _trigger_build_alias_cache — populate _trigger_alias_cache from ED's
--- predicates.descrs (conditions + actions) and triggersDescr (trigger types).
+-- _trigger_build_alias_cache — populate _trigger_alias_cache by walking ED's
+-- three descriptor arrays: me_predicates.rulesDescr (conditions, c_*),
+-- me_trigrules.actionsDescr (actions, a_*), and me_trigrules.triggersDescr
+-- (trigger types). All three are 1-indexed arrays of {name=..., fields=...}.
 local function _trigger_build_alias_cache()
     local Trigger = require('me_trigrules')
+    local Predicates = require('me_predicates')
     local cache = {}
-    -- predicates.descrs is a flat name → descr map; descr.kind is not stored
-    -- there, so we need to classify by name prefix.
-    local pred_table = Trigger.predicates and Trigger.predicates.descrs or {}
-    for name, descr in pairs(pred_table) do
-        local kind
-        if name:sub(1, 2) == 'c_' then kind = 'condition'
-        elseif name:sub(1, 2) == 'a_' then kind = 'action'
-        else kind = 'unknown' end
-        local entry = { canonical = name, kind = kind, descr = descr }
-        cache[name] = entry
-        cache[_trigger_make_alias(name)] = entry
-    end
-    -- Trigger types live in triggersDescr (an array of {name=..., fields=...}).
-    for _, tdescr in ipairs(Trigger.triggersDescr or {}) do
-        if type(tdescr) == 'table' and type(tdescr.name) == 'string' then
-            local entry = { canonical = tdescr.name, kind = 'trigger', descr = tdescr }
-            cache[tdescr.name] = entry
-            cache[_trigger_make_alias(tdescr.name)] = entry
+
+    -- Conditions: me_predicates.rulesDescr is an indexed array of
+    -- { name = "c_*", fields = {...} } entries.
+    if type(Predicates.rulesDescr) == 'table' then
+        for _, descr in ipairs(Predicates.rulesDescr) do
+            if type(descr) == 'table' and type(descr.name) == 'string' then
+                local entry = { canonical = descr.name, kind = 'condition', descr = descr }
+                cache[descr.name] = entry
+                cache[_trigger_make_alias(descr.name)] = entry
+            end
         end
     end
+
+    -- Actions: me_trigrules.actionsDescr is the same shape with "a_*" names.
+    if type(Trigger.actionsDescr) == 'table' then
+        for _, descr in ipairs(Trigger.actionsDescr) do
+            if type(descr) == 'table' and type(descr.name) == 'string' then
+                local entry = { canonical = descr.name, kind = 'action', descr = descr }
+                cache[descr.name] = entry
+                cache[_trigger_make_alias(descr.name)] = entry
+            end
+        end
+    end
+
+    -- Trigger types: me_trigrules.triggersDescr.
+    if type(Trigger.triggersDescr) == 'table' then
+        for _, descr in ipairs(Trigger.triggersDescr) do
+            if type(descr) == 'table' and type(descr.name) == 'string' then
+                local entry = { canonical = descr.name, kind = 'trigger', descr = descr }
+                cache[descr.name] = entry
+                cache[_trigger_make_alias(descr.name)] = entry
+            end
+        end
+    end
+
     _trigger_alias_cache = cache
 end
 
@@ -3639,34 +3657,19 @@ local function _trigger_resolve_predicate(name_or_alias, expected_kind)
     return entry.canonical, entry.kind, entry.descr, nil
 end
 
--- _trigger_panel_visible — set/cleared by the monkey-patched Trigger.show
--- below. Local to this module; queried only by _trigger_panel_refresh().
-local _trigger_panel_visible = false
-local _trigger_show_patched = false
-
--- _trigger_install_show_hook — wrap Trigger.show once per session so we
--- track panel visibility. Idempotent: subsequent calls are no-ops.
-local function _trigger_install_show_hook()
-    if _trigger_show_patched then return end
-    local Trigger = require('me_trigrules')
-    if type(Trigger) ~= 'table' or type(Trigger.show) ~= 'function' then
-        return  -- ME not fully loaded; try again next call
-    end
-    local orig = Trigger.show
-    Trigger.show = function(b)
-        _trigger_panel_visible = (b == true)
-        return orig(b)
-    end
-    _trigger_show_patched = true
-end
-
--- _trigger_panel_refresh — best-effort kick: if the panel is currently
--- visible, call show(false) + show(true) to re-bind the listbox to current
--- mission.trigrules (matches saveTriggers/setupCallbacks rebind path).
+-- _trigger_panel_refresh — best-effort kick: if the triggers panel is
+-- currently visible, call show(false) + show(true) to re-bind the listbox
+-- to current mission.trigrules (matches saveTriggers/setupCallbacks rebind
+-- path). Visibility is queried directly via Trigger.triggersWindow:isVisible()
+-- — no monkey-patch needed.
 local function _trigger_panel_refresh()
-    _trigger_install_show_hook()
-    if not _trigger_panel_visible then return end
     local Trigger = require('me_trigrules')
+    local visible = false
+    if type(Trigger.triggersWindow) == 'table' and type(Trigger.triggersWindow.isVisible) == 'function' then
+        local ok, vis = pcall(Trigger.triggersWindow.isVisible, Trigger.triggersWindow)
+        visible = ok and vis == true
+    end
+    if not visible then return end
     pcall(Trigger.show, false)
     pcall(Trigger.show, true)
 end
@@ -3705,33 +3708,59 @@ end
 -- _trigger_field_combo_kind — classify a field's reference kind by its
 -- comboFunc slot. Returns "group" / "unit" / "zone" / "coalition" /
 -- "airdrome" / "event" / nil (literal field, no resolution).
+--
+-- Listers are scattered across both me_trigrules (action/trigger fields)
+-- and me_predicates (condition fields), so we check both modules. Multiple
+-- variants (groupsLister, groupsStaticLister, groupsAHLister, ...) all
+-- classify under one umbrella kind.
 local function _trigger_field_combo_kind(field_descr)
     if type(field_descr) ~= 'table' or field_descr.type ~= 'combo' then
         return nil
     end
     local fn = field_descr.comboFunc
-    -- comboFunc is a function reference; we identify it by introspecting
-    -- the function's environment / debug info isn't reliable in DCS Lua.
-    -- Instead, ED stores friendly listers as named globals in me_trigrules
-    -- — match by reference equality against the known set.
+    if type(fn) ~= 'function' then return nil end
+
     local Trigger = require('me_trigrules')
+    local Predicates = require('me_predicates')
+
+    -- Group references — multiple variants (generic, static, air-helicopter,
+    -- vehicle, vehicle-static, etc) all classify as "group".
     if fn == Trigger.groupsLister
             or fn == Trigger.groupsStaticLister
-            or fn == Trigger.groupsAirLister then
+            or fn == Trigger.groupsAHLister
+            or fn == Trigger.groupsListerS
+            or fn == Trigger.groupsVLister
+            or fn == Trigger.groupsVSLister
+            or fn == Predicates.groupsLister then
         return 'group'
     end
-    if fn == Trigger.unitsLister or fn == Trigger.unitsAirLister then
-        return 'unit'
-    end
-    if fn == Trigger.zoneLister or fn == Trigger.triggerZoneLister then
-        return 'zone'
-    end
-    if fn == Trigger.coalitionLister or fn == Trigger.coalition2Lister
-            or fn == Trigger.winnerLister then
+
+    -- Unit references. unitsLister is local in me_predicates (not exported)
+    -- so we can't always compare by reference; expose what we can.
+    if fn == Predicates.unitsLister then return 'unit' end
+
+    -- Zone references.
+    if fn == Predicates.zonesLister then return 'zone' end
+
+    -- Coalition references.
+    if fn == Trigger.coalitionIdToName
+            or fn == Trigger.coalition2IdToName
+            or fn == Trigger.winnerLister
+            or fn == Predicates.coalitionIdToName
+            or fn == Predicates.coalitionIdToName2 then
         return 'coalition'
     end
-    if fn == Trigger.airdromeAndHeliportLister then return 'airdrome' end
+
+    -- Airdrome / helipad references.
+    if fn == Trigger.airdromeAndHeliportLister
+            or fn == Predicates.airdromeLister
+            or fn == Predicates.helipadLister then
+        return 'airdrome'
+    end
+
+    -- Event references.
     if fn == Trigger.eventLister then return 'event' end
+
     return nil
 end
 
@@ -4051,6 +4080,7 @@ function M.trigger_list_predicates(args)
     -- Walk only canonical names (the cache keys both canonical and alias to
     -- the same entry; we deduplicate by the canonical we walk).
     local Trigger = require('me_trigrules')
+    local Predicates = require('me_predicates')
     local seen = {}
     local out = {}
 
@@ -4066,11 +4096,7 @@ function M.trigger_list_predicates(args)
             return
         end
         local display = ''
-        if Trigger.predicates and Trigger.predicates.descrs
-                and type(Trigger.predicates.descrs[name]) == 'table'
-                and type(Trigger.predicates.descrs[name].name) == 'string' then
-            display = Trigger.predicates.descrs[name].name
-        elseif type(entry.descr) == 'table' and type(entry.descr.display) == 'string' then
+        if type(entry.descr) == 'table' and type(entry.descr.display) == 'string' then
             display = entry.descr.display
         end
         table.insert(out, {
@@ -4083,10 +4109,21 @@ function M.trigger_list_predicates(args)
         })
     end
 
-    if Trigger.predicates and Trigger.predicates.descrs then
-        for name, _ in pairs(Trigger.predicates.descrs) do collect(name) end
+    if type(Predicates.rulesDescr) == 'table' then
+        for _, descr in ipairs(Predicates.rulesDescr) do
+            if type(descr) == 'table' and type(descr.name) == 'string' then
+                collect(descr.name)
+            end
+        end
     end
-    if Trigger.triggersDescr then
+    if type(Trigger.actionsDescr) == 'table' then
+        for _, descr in ipairs(Trigger.actionsDescr) do
+            if type(descr) == 'table' and type(descr.name) == 'string' then
+                collect(descr.name)
+            end
+        end
+    end
+    if type(Trigger.triggersDescr) == 'table' then
         for _, td in ipairs(Trigger.triggersDescr) do
             if type(td) == 'table' and type(td.name) == 'string' then collect(td.name) end
         end
@@ -4104,13 +4141,8 @@ function M.trigger_describe_predicate(args)
     end
     local canonical, kind, descr, err = _trigger_resolve_predicate(args.name)
     if err then return { ok = false, error = err } end
-    local Trigger = require('me_trigrules')
     local display = ''
-    if Trigger.predicates and Trigger.predicates.descrs
-            and type(Trigger.predicates.descrs[canonical]) == 'table'
-            and type(Trigger.predicates.descrs[canonical].name) == 'string' then
-        display = Trigger.predicates.descrs[canonical].name
-    elseif type(descr) == 'table' and type(descr.display) == 'string' then
+    if type(descr) == 'table' and type(descr.display) == 'string' then
         display = descr.display
     end
     local alias = _trigger_make_alias(canonical)
@@ -4244,19 +4276,29 @@ local function _trigger_build_rule_or_action(predicate_name, fields, expected_ki
     local canonical, kind, descr, err = _trigger_resolve_predicate(predicate_name, expected_kind)
     if err then return nil, err end
 
-    -- Use ED's predicates.createRule to inherit field defaults if available
-    -- — but if it's not available or returns an unexpected shape, fall back
-    -- to a minimal {predicate=canonical}.
+    -- Use the right ED factory based on kind to inherit field defaults:
+    --   condition → me_predicates.createRule(descr)
+    --   action    → me_trigrules.createAction(descr)
+    -- If the factory is unavailable or returns an unexpected shape, fall
+    -- back to a minimal {predicate=canonical}.
     local Trigger = require('me_trigrules')
     local entry = nil
-    if Trigger.predicates and type(Trigger.predicates.createRule) == 'function' then
-        local ok, built = pcall(Trigger.predicates.createRule, descr)
-        if ok and type(built) == 'table' then entry = built end
+    if kind == 'condition' then
+        local Predicates = require('me_predicates')
+        if type(Predicates.createRule) == 'function' then
+            local ok, built = pcall(Predicates.createRule, descr)
+            if ok and type(built) == 'table' then entry = built end
+        end
+    elseif kind == 'action' then
+        if type(Trigger.createAction) == 'function' then
+            local ok, built = pcall(Trigger.createAction, descr)
+            if ok and type(built) == 'table' then entry = built end
+        end
     end
     if entry == nil then
         entry = { predicate = canonical }
     else
-        -- createRule sets predicate via descr.name; force canonical for safety.
+        -- The factories set predicate via descr.name; force canonical for safety.
         entry.predicate = canonical
     end
 
