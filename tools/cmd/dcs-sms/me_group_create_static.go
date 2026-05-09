@@ -29,7 +29,7 @@ func meGroupCreateStaticCmd(args []string, stdout, stderr io.Writer) int {
 		flagNorth      = fs.Float64("north", 0, "meters north of theatre origin")
 		flagEast       = fs.Float64("east", 0, "meters east of theatre origin")
 		flagName       = fs.String("name", "", "group name (auto-allocated if empty)")
-		flagHeading    = fs.Float64("heading", 0, "heading in radians")
+		flagHeading    = fs.Float64("heading", 0, "heading in degrees (0 = north, CW positive)")
 		flagCategory   = fs.String("category", "Fortifications",
 			"static class: Cargos | Fortifications | Warehouses | Trucks")
 		flagShapeName  = fs.String("shape-name", "", "model id (often required; varies per static type)")
@@ -54,7 +54,7 @@ func meGroupCreateStaticCmd(args []string, stdout, stderr io.Writer) int {
 
 	luaArgs := fmt.Sprintf(
 		"{ country = %q, type = %q, north = %g, east = %g, name = %q, "+
-			"heading = %g, category = %q, shape_name = %q, dead = %t, "+
+			"heading_deg = %g, category = %q, shape_name = %q, dead = %t, "+
 			"can_cargo = %t, mass = %g }",
 		*flagCountry, *flagType, *flagNorth, *flagEast, *flagName,
 		*flagHeading, *flagCategory, *flagShapeName, *flagDead,

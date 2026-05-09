@@ -29,7 +29,7 @@ func meDrawingCreateTextboxCmd(args []string, stdout, stderr io.Writer) int {
 		flagText       = fs.String("text", "", "text content")
 		flagFontSize   = fs.Int("font-size", 0, "font size in pixels (default 24)")
 		flagBorder     = fs.Int("border-thickness", -1, "border thickness in pixels (default 4)")
-		flagAngle      = fs.Float64("angle", 0, "rotation in radians")
+		flagAngle      = fs.Float64("angle", 0, "rotation in degrees (CW, 0 = upright)")
 		flagFont       = fs.String("font", "", "font ttf filename (default DejaVuLGCSansCondensed.ttf)")
 		flagName       = fs.String("name", "", "drawing name (auto-allocated if empty)")
 		flagColor      = fs.String("color", "", "text color (default green, opaque)")
@@ -63,7 +63,7 @@ func meDrawingCreateTextboxCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Sprintf("north = %g", *flagNorth),
 		fmt.Sprintf("east = %g", *flagEast),
 		fmt.Sprintf("text = %q", *flagText),
-		fmt.Sprintf("angle = %g", *flagAngle),
+		fmt.Sprintf("angle_deg = %g", *flagAngle),
 	}
 	if *flagFontSize > 0 {
 		parts = append(parts, fmt.Sprintf("font_size = %d", *flagFontSize))

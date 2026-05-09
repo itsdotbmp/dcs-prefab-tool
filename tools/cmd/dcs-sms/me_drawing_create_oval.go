@@ -27,7 +27,7 @@ func meDrawingCreateOvalCmd(args []string, stdout, stderr io.Writer) int {
 		flagEast       = fs.Float64("east", 0, "meters east of theatre origin (oval center)")
 		flagR1         = fs.Float64("r1", 0, "first semi-axis in meters (along local north pre-rotation)")
 		flagR2         = fs.Float64("r2", 0, "second semi-axis in meters (along local east pre-rotation)")
-		flagAngle      = fs.Float64("angle", 0, "rotation in radians")
+		flagAngle      = fs.Float64("angle", 0, "rotation in degrees (CW around center, 0 = aligned with north/east)")
 		flagName       = fs.String("name", "", "drawing name (auto-allocated if empty)")
 		flagColor      = fs.String("color", "", "outline color (default red, opaque)")
 		flagFillColor  = fs.String("fill-color", "", "fill color (default red, half alpha)")
@@ -63,7 +63,7 @@ func meDrawingCreateOvalCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Sprintf("east = %g", *flagEast),
 		fmt.Sprintf("r1 = %g", *flagR1),
 		fmt.Sprintf("r2 = %g", *flagR2),
-		fmt.Sprintf("angle = %g", *flagAngle),
+		fmt.Sprintf("angle_deg = %g", *flagAngle),
 	}
 	if *flagName != "" {
 		parts = append(parts, fmt.Sprintf("name = %q", *flagName))

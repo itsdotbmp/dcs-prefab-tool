@@ -617,7 +617,7 @@ function M.group_create_plane(args)
     local alt = args.alt or 8000
     local alt_type = args.alt_type or 'BARO'
     local speed = args.speed or 220
-    local heading = args.heading or 0
+    local heading = math.rad(args.heading_deg or 0)
     local skill = args.skill or 'Average'
     local livery = args.livery or ''
     local frequency = args.frequency or 251
@@ -726,7 +726,7 @@ function M.group_create_helicopter(args)
     local alt = args.alt or 1000
     local alt_type = args.alt_type or 'BARO'
     local speed = args.speed or 50
-    local heading = args.heading or 0
+    local heading = math.rad(args.heading_deg or 0)
     local skill = args.skill or 'Average'
     local livery = args.livery or ''
     local frequency = args.frequency or 127.5
@@ -829,7 +829,7 @@ function M.group_create_vehicle(args)
     end
 
     local x, y = args.north, args.east
-    local heading = args.heading or 0
+    local heading = math.rad(args.heading_deg or 0)
     local skill = args.skill or 'Average'
 
     local group_name = (type(args.name) == 'string' and args.name ~= '') and args.name
@@ -932,7 +932,7 @@ function M.group_create_ship(args)
     end
 
     local x, y = args.north, args.east
-    local heading = args.heading or 0
+    local heading = math.rad(args.heading_deg or 0)
     local skill = args.skill or 'Average'
 
     local group_name = (type(args.name) == 'string' and args.name ~= '') and args.name
@@ -1027,7 +1027,7 @@ function M.group_create_static(args)
     end
 
     local x, y = args.north, args.east
-    local heading = args.heading or 0
+    local heading = math.rad(args.heading_deg or 0)
     local category = args.category or 'Fortifications'
     local shape_name = args.shape_name or ''
     local dead = (args.dead == true)
@@ -2511,6 +2511,7 @@ function M.drawing_create_rect(args)
     end
     local name = (type(args.name) == 'string' and args.name ~= '') and args.name
                  or unique_drawing_name('Rect')
+    local angle_rad = math.rad(args.angle_deg or 0)
     local obj = {
         primitiveType = 'Polygon', polygonMode = 'rect', name = name,
         colorString = args.color or '0xff0000ff',
@@ -2520,13 +2521,14 @@ function M.drawing_create_rect(args)
         style = args.style or DEFAULT_LINE_STYLE,
         thickness = args.thickness or DEFAULT_THICKNESS,
         width = args.width, height = args.height,
-        angle = args.angle or 0,
+        angle = angle_rad,
     }
     local _, err = inject_drawing(obj, args.layer or 'Common')
     if err then return { ok = false, error = err } end
     return { ok = true, name = name, type = 'Polygon', mode = 'rect',
              north = args.north, east = args.east,
-             width = args.width, height = args.height, angle = obj.angle,
+             width = args.width, height = args.height,
+             angle_deg = args.angle_deg or 0, angle_rad = angle_rad,
              layer = args.layer or 'Common' }
 end
 
@@ -2547,6 +2549,7 @@ function M.drawing_create_oval(args)
     end
     local name = (type(args.name) == 'string' and args.name ~= '') and args.name
                  or unique_drawing_name('Oval')
+    local angle_rad = math.rad(args.angle_deg or 0)
     local obj = {
         primitiveType = 'Polygon', polygonMode = 'oval', name = name,
         colorString = args.color or '0xff0000ff',
@@ -2556,13 +2559,14 @@ function M.drawing_create_oval(args)
         style = args.style or DEFAULT_LINE_STYLE,
         thickness = args.thickness or DEFAULT_THICKNESS,
         r1 = args.r1, r2 = args.r2,
-        angle = args.angle or 0,
+        angle = angle_rad,
     }
     local _, err = inject_drawing(obj, args.layer or 'Common')
     if err then return { ok = false, error = err } end
     return { ok = true, name = name, type = 'Polygon', mode = 'oval',
              north = args.north, east = args.east,
-             r1 = args.r1, r2 = args.r2, angle = obj.angle,
+             r1 = args.r1, r2 = args.r2,
+             angle_deg = args.angle_deg or 0, angle_rad = angle_rad,
              layer = args.layer or 'Common' }
 end
 
@@ -2587,6 +2591,7 @@ function M.drawing_create_arrow(args)
     end
     local name = (type(args.name) == 'string' and args.name ~= '') and args.name
                  or unique_drawing_name('Arrow')
+    local angle_rad = math.rad(args.angle_deg or 0)
     local obj = {
         primitiveType = 'Polygon', polygonMode = 'arrow', name = name,
         colorString = args.color or '0xff0000ff',
@@ -2596,7 +2601,7 @@ function M.drawing_create_arrow(args)
         style = args.style or DEFAULT_LINE_STYLE,
         thickness = args.thickness or DEFAULT_THICKNESS,
         length = args.length,
-        angle = args.angle or 0,
+        angle = angle_rad,
         -- points field is required by saveToMission but regenerated on
         -- load via polygonArrowMakePoints(length). Empty placeholder.
         points = {},
@@ -2604,8 +2609,8 @@ function M.drawing_create_arrow(args)
     local _, err = inject_drawing(obj, args.layer or 'Common')
     if err then return { ok = false, error = err } end
     return { ok = true, name = name, type = 'Polygon', mode = 'arrow',
-             north = args.north, east = args.east,
-             length = args.length, angle = obj.angle,
+             north = args.north, east = args.east, length = args.length,
+             angle_deg = args.angle_deg or 0, angle_rad = angle_rad,
              layer = args.layer or 'Common' }
 end
 
@@ -2759,6 +2764,7 @@ function M.drawing_create_textbox(args)
     end
     local name = (type(args.name) == 'string' and args.name ~= '') and args.name
                  or unique_drawing_name('Text Box')
+    local angle_rad = math.rad(args.angle_deg or 0)
     local obj = {
         primitiveType = 'TextBox', name = name,
         colorString = args.color or '0x00ff00ff',
@@ -2769,7 +2775,7 @@ function M.drawing_create_textbox(args)
         font = args.font or 'DejaVuLGCSansCondensed.ttf',
         fontSize = args.font_size or 24,
         borderThickness = args.border_thickness or 4,
-        angle = args.angle or 0,
+        angle = angle_rad,
     }
     local _, err = inject_drawing(obj, args.layer or 'Common')
     if err then return { ok = false, error = err } end
@@ -2803,6 +2809,7 @@ function M.drawing_create_icon(args)
     end
     local name = (type(args.name) == 'string' and args.name ~= '') and args.name
                  or unique_drawing_name('Icon')
+    local angle_rad = math.rad(args.angle_deg or 0)
     local obj = {
         primitiveType = 'Icon', name = name,
         colorString = args.color or '0xffffffff',
@@ -2810,7 +2817,7 @@ function M.drawing_create_icon(args)
         visible = true, hiddenOnPlanner = (args.hidden_on_planner == true),
         file = args.file,
         scale = args.scale or 1,
-        angle = args.angle or 0,
+        angle = angle_rad,
     }
     local _, err = inject_drawing(obj, args.layer or 'Common')
     if err then return { ok = false, error = err } end
@@ -2937,6 +2944,57 @@ function M.drawing_set_thickness(args)
     local obj, err = mutate_drawing(args.name, function(o) o.thickness = args.thickness end)
     if err then return { ok = false, error = err } end
     return { ok = true, name = args.name, thickness = obj.thickness }
+end
+
+-- drawing_set_angle — rotate a drawing around its anchor.
+--
+-- Supported shapes (those with an angle field in saveToMission):
+--   * TextBox     — rotates the text label
+--   * Icon        — rotates the icon image
+--   * Polygon oval / rect / arrow — rotates the analytic shape
+--
+-- Refused shapes:
+--   * Line        — no angle field; shape geometry is the points list
+--   * Polygon circle  — rotation is meaningless (rotation-symmetric)
+--   * Polygon free    — rotation would need to transform every point;
+--                       remove + re-create with rotated vertices
+--                       (or wait for a future drawing_rotate-points helper)
+--
+-- Args:
+--   name       drawing name (required)
+--   angle_deg  rotation in degrees (CW positive). Stored internally as
+--              radians via math.rad() — matches saveToMission's format
+--              (object.angle is radians both at runtime and on disk).
+function M.drawing_set_angle(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'drawing_set_angle requires args.name (string)' }
+    end
+    if type(args.angle_deg) ~= 'number' then
+        return { ok = false, error = 'drawing_set_angle requires args.angle_deg (number, degrees)' }
+    end
+    local target = find_drawing_by_name(args.name)
+    if not target then return { ok = false, error = 'drawing not found' } end
+
+    -- Type / mode gate. Only the shapes that have an `angle` field in
+    -- saveToMission's per-shape savers can be rotated this way.
+    local pt = target.primitiveType
+    local mode = target.polygonMode
+    local rotatable =
+        pt == 'TextBox' or pt == 'Icon'
+        or (pt == 'Polygon' and (mode == 'oval' or mode == 'rect' or mode == 'arrow'))
+    if not rotatable then
+        local descriptor = pt
+        if pt == 'Polygon' and mode then descriptor = 'Polygon ' .. mode end
+        return { ok = false,
+                 error = descriptor .. ' has no rotation; supported: TextBox, Icon, '
+                         .. 'Polygon oval/rect/arrow' }
+    end
+
+    local rad = math.rad(args.angle_deg)
+    local obj, err = mutate_drawing(args.name, function(o) o.angle = rad end)
+    if err then return { ok = false, error = err } end
+    return { ok = true, name = args.name,
+             angle_deg = args.angle_deg, angle_rad = obj.angle }
 end
 
 -- ============================================================

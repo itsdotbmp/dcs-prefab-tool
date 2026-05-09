@@ -43,7 +43,7 @@ func meGroupCreatePlaneCmd(args []string, stdout, stderr io.Writer) int {
 		flagAlt        = fs.Float64("alt", 8000, "altitude in meters above sea level")
 		flagAltType    = fs.String("alt-type", "BARO", "altitude reference: BARO or RADIO")
 		flagSpeed      = fs.Float64("speed", 220, "speed in m/s")
-		flagHeading    = fs.Float64("heading", 0, "heading in radians")
+		flagHeading    = fs.Float64("heading", 0, "heading in degrees (0 = north, CW positive)")
 		flagSkill      = fs.String("skill", "Average", "AI skill: Average, Good, High, Excellent, Random, Player")
 		flagLivery     = fs.String("livery", "", "livery id ('' = default)")
 		flagFreq       = fs.Float64("frequency", 251, "radio frequency MHz")
@@ -68,7 +68,7 @@ func meGroupCreatePlaneCmd(args []string, stdout, stderr io.Writer) int {
 
 	luaArgs := fmt.Sprintf(
 		"{ country = %q, type = %q, north = %g, east = %g, name = %q, "+
-			"alt = %g, alt_type = %q, speed = %g, heading = %g, "+
+			"alt = %g, alt_type = %q, speed = %g, heading_deg = %g, "+
 			"skill = %q, livery = %q, frequency = %g, onboard_num = %q }",
 		*flagCountry, *flagType, *flagNorth, *flagEast, *flagName,
 		*flagAlt, *flagAltType, *flagSpeed, *flagHeading,

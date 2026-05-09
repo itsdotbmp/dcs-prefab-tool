@@ -28,7 +28,7 @@ func meDrawingCreateIconCmd(args []string, stdout, stderr io.Writer) int {
 		flagEast       = fs.Float64("east", 0, "meters east of theatre origin (icon anchor)")
 		flagFile       = fs.String("file", "", "icon filename within the icons folder")
 		flagScale      = fs.Float64("scale", 1, "icon scale (default 1)")
-		flagAngle      = fs.Float64("angle", 0, "rotation in radians")
+		flagAngle      = fs.Float64("angle", 0, "rotation in degrees (CW, 0 = unrotated)")
 		flagName       = fs.String("name", "", "drawing name (auto-allocated if empty)")
 		flagColor      = fs.String("color", "", "tint color (default white, opaque)")
 		flagLayer      = fs.String("layer", "", "Red|Blue|Neutral|Common|Author (default Common)")
@@ -56,7 +56,7 @@ func meDrawingCreateIconCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Sprintf("east = %g", *flagEast),
 		fmt.Sprintf("file = %q", *flagFile),
 		fmt.Sprintf("scale = %g", *flagScale),
-		fmt.Sprintf("angle = %g", *flagAngle),
+		fmt.Sprintf("angle_deg = %g", *flagAngle),
 	}
 	if *flagName != "" {
 		parts = append(parts, fmt.Sprintf("name = %q", *flagName))

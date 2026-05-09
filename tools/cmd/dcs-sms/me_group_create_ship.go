@@ -27,7 +27,7 @@ func meGroupCreateShipCmd(args []string, stdout, stderr io.Writer) int {
 		flagNorth      = fs.Float64("north", 0, "meters north of theatre origin")
 		flagEast       = fs.Float64("east", 0, "meters east of theatre origin")
 		flagName       = fs.String("name", "", "group name (auto-allocated if empty)")
-		flagHeading    = fs.Float64("heading", 0, "heading in radians")
+		flagHeading    = fs.Float64("heading", 0, "heading in degrees (0 = north, CW positive)")
 		flagSkill      = fs.String("skill", "Average", "AI skill")
 		flagForce      = fs.Bool("force", false, "skip the water-surface check")
 		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
@@ -48,7 +48,7 @@ func meGroupCreateShipCmd(args []string, stdout, stderr io.Writer) int {
 
 	luaArgs := fmt.Sprintf(
 		"{ country = %q, type = %q, north = %g, east = %g, name = %q, "+
-			"heading = %g, skill = %q, force = %t }",
+			"heading_deg = %g, skill = %q, force = %t }",
 		*flagCountry, *flagType, *flagNorth, *flagEast, *flagName,
 		*flagHeading, *flagSkill, *flagForce,
 	)

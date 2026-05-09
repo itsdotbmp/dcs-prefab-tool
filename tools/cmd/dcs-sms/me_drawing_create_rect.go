@@ -25,7 +25,7 @@ func meDrawingCreateRectCmd(args []string, stdout, stderr io.Writer) int {
 		flagEast       = fs.Float64("east", 0, "meters east of theatre origin (rect center)")
 		flagWidth      = fs.Float64("width", 0, "rect width in meters")
 		flagHeight     = fs.Float64("height", 0, "rect height in meters")
-		flagAngle      = fs.Float64("angle", 0, "rotation in radians (clockwise around center)")
+		flagAngle      = fs.Float64("angle", 0, "rotation in degrees (CW around center, 0 = aligned with north/east)")
 		flagName       = fs.String("name", "", "drawing name (auto-allocated if empty)")
 		flagColor      = fs.String("color", "", "outline color (default red, opaque)")
 		flagFillColor  = fs.String("fill-color", "", "fill color (default red, half alpha)")
@@ -61,7 +61,7 @@ func meDrawingCreateRectCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Sprintf("east = %g", *flagEast),
 		fmt.Sprintf("width = %g", *flagWidth),
 		fmt.Sprintf("height = %g", *flagHeight),
-		fmt.Sprintf("angle = %g", *flagAngle),
+		fmt.Sprintf("angle_deg = %g", *flagAngle),
 	}
 	if *flagName != "" {
 		parts = append(parts, fmt.Sprintf("name = %q", *flagName))

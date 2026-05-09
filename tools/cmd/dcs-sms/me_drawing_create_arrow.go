@@ -27,7 +27,7 @@ func meDrawingCreateArrowCmd(args []string, stdout, stderr io.Writer) int {
 		flagNorth      = fs.Float64("north", 0, "meters north of theatre origin (arrow anchor)")
 		flagEast       = fs.Float64("east", 0, "meters east of theatre origin (arrow anchor)")
 		flagLength     = fs.Float64("length", 0, "arrow length in meters")
-		flagAngle      = fs.Float64("angle", 0, "rotation in radians (0 = north, CW positive)")
+		flagAngle      = fs.Float64("angle", 0, "rotation in degrees (0 = pointing north, CW positive)")
 		flagName       = fs.String("name", "", "drawing name (auto-allocated if empty)")
 		flagColor      = fs.String("color", "", "outline color (default red, opaque)")
 		flagFillColor  = fs.String("fill-color", "", "fill color (default red, half alpha)")
@@ -62,7 +62,7 @@ func meDrawingCreateArrowCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Sprintf("north = %g", *flagNorth),
 		fmt.Sprintf("east = %g", *flagEast),
 		fmt.Sprintf("length = %g", *flagLength),
-		fmt.Sprintf("angle = %g", *flagAngle),
+		fmt.Sprintf("angle_deg = %g", *flagAngle),
 	}
 	if *flagName != "" {
 		parts = append(parts, fmt.Sprintf("name = %q", *flagName))
