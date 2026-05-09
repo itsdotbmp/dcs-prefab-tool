@@ -3889,11 +3889,29 @@ end
 
 -- _trigger_apply_fields — walk the user-supplied fields table, validate
 -- each against descr, coerce types, resolve references, allocate dict
--- keys for text fields (those with a KeyDict_<id> companion). Mutates
--- entry in place. Returns ok, err.
-local function _trigger_apply_fields(entry, descr, fields)
+-- keys for action text/comment/radiotext fields. Mutates entry in place.
+-- Returns ok, err.
+--
+-- kind: "condition" | "action" | "trigger" | nil — needed because action
+--       text/comment/radiotext fields go through dictionary.fixDict to
+--       allocate a DictKey_* reference. Other kinds store literals.
+-- predicate_canonical: the canonical c_*/a_*/trigger* name — needed for
+--       the a_do_script special case (its `text` field is a raw script,
+--       not a dict-keyed message).
+local function _trigger_apply_fields(entry, descr, fields, kind, predicate_canonical)
     if type(fields) ~= 'table' then return true, nil end
     local ok_dict, dictionary = pcall(require, 'dictionary')
+
+    -- Map of action-side fields that go through DictKey allocation.
+    -- Source: me_trigrules.saveTriggers (lines ~3902-3914) and me_predicates.
+    -- actionToString — these are the only action fields ED's serializer
+    -- routes through textToMis at save time.
+    local ACTION_DICT_FIELDS = {
+        text       = 'ActionText',
+        radiotext  = 'ActionRadioText',
+        comment    = 'ActionComment',
+    }
+
     for k, v in pairs(fields) do
         local fd = _trigger_field_descr(descr, k)
         if not fd then
@@ -3904,18 +3922,28 @@ local function _trigger_apply_fields(entry, descr, fields)
         if coerced == nil then
             return false, 'invalid value for field "' .. tostring(k) .. '"'
         end
-        local kind = _trigger_field_combo_kind(fd)
-        local resolved, ref_err = _trigger_resolve_ref(kind, coerced)
+        local refkind = _trigger_field_combo_kind(fd)
+        local resolved, ref_err = _trigger_resolve_ref(refkind, coerced)
         if ref_err then return false, ref_err end
-        -- Dictionary handling: descriptor flags text fields by having a
-        -- companion id "KeyDict_<id>" elsewhere in descr.fields.
-        local keydict_id = 'KeyDict_' .. k
-        if _trigger_field_descr(descr, keydict_id) and type(resolved) == 'string'
+
+        -- Decide: literal write, or DictKey allocation via fixDict?
+        local dict_comment = nil
+        if kind == 'action' and ACTION_DICT_FIELDS[k] then
+            -- a_do_script's `text` is a literal Lua script, not a dict-keyed
+            -- message — ED skips textToMis for it (me_trigrules.lua:3908).
+            if not (k == 'text' and predicate_canonical == 'a_do_script') then
+                dict_comment = ACTION_DICT_FIELDS[k]
+            end
+        end
+
+        if dict_comment and type(resolved) == 'string'
                 and resolved:sub(1, 8) ~= 'DictKey_' and ok_dict
                 and type(dictionary.fixDict) == 'function' then
-            -- fixDict allocates a new key, sets the value, and writes both
-            -- entry[k] and entry[keydict_id] = the new key.
-            pcall(dictionary.fixDict, entry, k, resolved, k)
+            -- fixDict: allocate DictKey_<dict_comment>_<num>, store value in
+            -- dictionary['DEFAULT'][key], then write both entry[k] = literal
+            -- and entry["KeyDict_"..k] = key. ED's saveTriggers will read
+            -- KeyDict_<k> at save time and call textToMis to round-trip.
+            pcall(dictionary.fixDict, entry, k, resolved, dict_comment)
         else
             entry[k] = resolved
         end
@@ -4356,7 +4384,7 @@ local function _trigger_build_rule_or_action(predicate_name, fields, expected_ki
     -- TABLE), which is what ED's saveTriggers reads .name from at save time.
     -- Replacing the table with a canonical string drops the entry on save.
 
-    local ok_apply, apply_err = _trigger_apply_fields(entry, descr, fields)
+    local ok_apply, apply_err = _trigger_apply_fields(entry, descr, fields, kind, canonical)
     if not ok_apply then return nil, apply_err end
     return entry, nil
 end
