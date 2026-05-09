@@ -2086,6 +2086,75 @@ function M.zone_set_vertices(args)
              vertex_count = #rel }
 end
 
+-- zone_set_link — link a trigger zone to a unit (so the zone's center
+-- follows the unit), or clear an existing link.
+--
+-- TZD.linkToUnit computes local coords (the zone's offset from the unit
+-- at link time), sets the heading to the unit's heading, and stores the
+-- unitId on the zone. As the unit moves at runtime, the zone's world
+-- coords are derived from unit pos + local offset. TZD.unlinkToUnit
+-- clears all three.
+--
+-- args (zone selector — required): name | id (mutually exclusive)
+-- args (action — exactly one required):
+--   unit:     string  — link to unit by name
+--   unit_id:  number  — link to unit by id
+--   clear:    true    — remove the link
+function M.zone_set_link(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_set_link requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'zone_set_link requires exactly one of args.name or args.id' }
+    end
+
+    local has_unit = type(args.unit) == 'string' and args.unit ~= ''
+    local has_unit_id = type(args.unit_id) == 'number'
+    local has_clear = (args.clear == true)
+    local action_count = (has_unit and 1 or 0) + (has_unit_id and 1 or 0) + (has_clear and 1 or 0)
+    if action_count ~= 1 then
+        return { ok = false,
+                 error = 'zone_set_link requires exactly one of args.unit, args.unit_id, or args.clear=true' }
+    end
+
+    local zid, zname = find_zone(has_name and args.name or nil, has_id and args.id or nil)
+    if not zid then
+        return { ok = false, error = 'zone not found' }
+    end
+
+    local TZD = require('Mission.TriggerZoneData')
+
+    if has_clear then
+        local ok_call, err = pcall(TZD.unlinkToUnit, zid)
+        if not ok_call then
+            return { ok = false, error = 'unlinkToUnit: ' .. tostring(err) }
+        end
+        return { ok = true, id = zid, name = zname, cleared = true }
+    end
+
+    -- Resolve target unit.
+    local u = find_unit_in_mission(has_unit and args.unit or nil,
+                                   has_unit_id and args.unit_id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+
+    local ok_call, err = pcall(TZD.linkToUnit, zid, u.unitId)
+    if not ok_call then
+        return { ok = false, error = 'linkToUnit: ' .. tostring(err) }
+    end
+
+    return {
+        ok = true,
+        id = zid,
+        name = zname,
+        unit_id = u.unitId,
+        unit_name = u.name,
+    }
+end
+
 -- zone_remove — remove a trigger zone by name or id (mutually exclusive).
 function M.zone_remove(args)
     if type(args) ~= 'table' then
