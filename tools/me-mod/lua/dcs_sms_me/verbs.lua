@@ -116,6 +116,24 @@ local function refresh_group_view(g)
     end
 end
 
+-- find_unit_in_mission — locate a unit by name or id, returning
+-- (unit, group, country, side, category) or nil. Walks the coalition
+-- tree via walk_groups. Shared by every unit_set_* verb plus
+-- group_remove_unit.
+local function find_unit_in_mission(by_name, by_id)
+    local found_unit, found_group, found_country, found_side, found_cat
+    walk_groups(function(g, country, side_name, cat)
+        for _, u in ipairs(g.units or {}) do
+            if (by_name and u.name == by_name) or (by_id and u.unitId == by_id) then
+                found_unit, found_group, found_country = u, g, country
+                found_side, found_cat = side_name, cat
+                return false
+            end
+        end
+    end)
+    return found_unit, found_group, found_country, found_side, found_cat
+end
+
 -- ============================================================
 -- File / mission lifecycle verbs
 -- ============================================================
@@ -1243,6 +1261,79 @@ function M.group_add_unit(args)
     }
 end
 
+-- group_remove_unit — remove a single unit from a group, mirroring the
+-- ME UI's per-unit "x" button. Wraps Mission.remove_unit, which handles
+-- the unlink dance (waypoints, required units, trigger zones), warehouse
+-- cleanup, unit_by_name / unit_by_id deregistration, and panel refresh.
+--
+-- Selection is by --name or --id (mutually exclusive) — the unit's, not
+-- the group's. The verb walks the coalition tree to find the unit.
+--
+-- Refuses to remove the last unit in a group: that would leave an empty
+-- group, which the rest of the ME doesn't expect (the Unit List panel,
+-- selection helpers, etc. all assume #units >= 1). To remove the whole
+-- group use `me group remove`.
+--
+-- Mission.remove_unit reads `unit.index` (its position in g.units).
+-- Units inserted via insert_unit have it set; the seed unit synthesised
+-- by group_create_<cat> doesn't, so we populate it defensively here by
+-- walking g.units before the call.
+function M.group_remove_unit(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_remove_unit requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_remove_unit requires exactly one of args.name or args.id' }
+    end
+
+    local u, g, country, side_name, cat = find_unit_in_mission(
+        has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+    if type(g.units) ~= 'table' or #g.units <= 1 then
+        return { ok = false,
+                 error = 'cannot remove the last unit in a group; use `me group remove` instead' }
+    end
+
+    -- Make sure unit.index is set; remove_unit relies on it for table.remove.
+    if type(u.index) ~= 'number' then
+        for i, gu in ipairs(g.units) do
+            if gu == u then u.index = i; break end
+        end
+    end
+
+    local resolved = {
+        name = u.name, id = u.unitId, type = u.type,
+        group = g.name, group_id = g.groupId,
+        category = cat,
+        country = country and country.name, side = side_name,
+    }
+
+    local Mission = require('me_mission')
+    local ok_call, err = pcall(Mission.remove_unit, u)
+    if not ok_call then
+        return { ok = false, error = 'remove_unit: ' .. tostring(err), resolved = resolved }
+    end
+
+    refresh_group_view(g)
+
+    return {
+        ok = true,
+        name = resolved.name,
+        id = resolved.id,
+        type = resolved.type,
+        group = resolved.group,
+        group_id = resolved.group_id,
+        category = resolved.category,
+        country = resolved.country,
+        side = resolved.side,
+        unit_count = #g.units,
+    }
+end
+
 -- ============================================================
 -- Group setters (per-field)
 -- ============================================================
@@ -1405,23 +1496,6 @@ end
 -- ============================================================
 -- Unit setters (per-field)
 -- ============================================================
-
--- find_unit_in_mission — locate a unit by name or id, returning
--- (unit, group, country, side, category) or nil. Mirrors find_group_in_mission
--- but walks down to unit level. Shared by all unit_set_* verbs.
-local function find_unit_in_mission(by_name, by_id)
-    local found_unit, found_group, found_country, found_side, found_cat
-    walk_groups(function(g, country, side_name, cat)
-        for _, u in ipairs(g.units or {}) do
-            if (by_name and u.name == by_name) or (by_id and u.unitId == by_id) then
-                found_unit, found_group, found_country = u, g, country
-                found_side, found_cat = side_name, cat
-                return false
-            end
-        end
-    end)
-    return found_unit, found_group, found_country, found_side, found_cat
-end
 
 -- unit_set_name — rename via Mission.renameUnit. Refuses on collision.
 function M.unit_set_name(args)
