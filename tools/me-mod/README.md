@@ -148,6 +148,9 @@ Removes the patch block from `MissionEditor.lua` (surgically, by markers; falls 
 `dcs-sms.exe` is unsigned, so Windows treats it as suspicious by default. You'll see this in two places:
 
 - **On download** — Edge / Chrome may warn that the file "might be dangerous" or block it. Click **Keep** (Edge) or the **^** menu → **Keep anyway** (Chrome).
+
+<img width="562" height="337" alt="image" src="https://github.com/user-attachments/assets/5ddc331e-b57f-40df-9477-1a019a2b069e" />
+
 - **On first run** — Windows may show a blue dialog titled **"Windows protected your PC"**. Click **More info** (small text in the dialog) → **Run anyway**.
 
 You only have to do this once per binary. Subsequent runs of the same .exe go through silently.
