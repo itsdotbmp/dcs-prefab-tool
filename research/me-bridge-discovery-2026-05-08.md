@@ -382,6 +382,45 @@ The ME's own placement code (`MapWindow.checkSurface` at me_map_window.lua:3298)
 - `terrain.getCrossParam(x1, y1, x2, y2)` — name suggests "cross-country navigation parameter" but returned `""` for every line tested (over open land, over trees, over urban, over sea, zero-length, 30m, 100m, 1500m). Either takes a different arg shape or is meaningful only on theatres / surfaces we didn't probe. Not useful as a terrain-type discriminator.
 - `terrain.getTerrainShpare(x, y)` — returned `"FLAT"` everywhere, including at sea, in cities, and on 479m mountain slopes. Probably unrelated to terrain category (perhaps render-LOD shape or similar). Not useful.
 
+## why .surface5 / .scn5 / .sd5 don't hold forest data
+**Tag:** confirmed dead-end — investigation closed
+**Touches:** terrain mod binary file inventory (`Mods/terrains/<theatre>/`)
+**Notes:** Direct extraction was investigated as a possible fallback for the trees-blind-spot above. Result: no per-theatre file holds tree positions in any Lua-/Python-readable form. Inventory of Syria's terrain mod (after the script-API negative finding):
+
+| File | Size | Tag string | What it actually is |
+|---|---|---|---|
+| `Scenes/Syria.scn5` | 4.3 GB | `landscape5::Scene5File` | **Buildings/walls/vehicles/props** — the database that backs `terrain.getObjectsAtMapPoint`. Strings include `israel_block_building_05`, `wood_box_01`, `toyota_sedan`, `barrel`, `townwall`, `fence_wall_crash`. No tree models — by design. |
+| `surface/Syria.surface5` | 21 GB | `landscape5::Surface5File` | 3D terrain triangle mesh. `TRITYPE`/`TRI` tagged chunks with IEEE float vertices. |
+| `surfaceDetails/Syria.sd5` | 9 MB | `landscape4::SurfaceDetails5File` | Splat-layer texture index — paints grass/stone variants on the ground. `splatlayer_*` strings reference `grass_01_anabasis_setifera`, `splatlayer_0_big_stone`, etc. No tree splats. |
+| `surface/Syria.tile` | 3.6 MB | `landscape5::SurfaceTile` | Splatmap shader-pipeline manifest. Contains a `"Trees"` layer reference but it's a **shader name** with `colortexture=zero.png` and `shaderDefine=MAPOPACITYONLY\|ASSET_INDEX\|USE_UVW_MANIFOLD` — i.e. a render stage that pulls per-tile opacity + asset-index textures from the GPU-side clipmap pyramid. No coordinate data. |
+| `surface/Syria.ng5` | 2.5 GB | `navGraph5File` | Road / nav graph. |
+| `map/Syria.gn4` | 68 MB | `landscape4::lGeoNamesFile` | City / region names. |
+| `surface/Syria.onlay.sup4` | 491 MB | `landscape4::lSuperficialFile` | Radar reflectivity + buildings overlay (`RadarPointsOnlay5.1`, `Building`). |
+| `Scenes/*.clipmap` (1042 files, 34 GB) | varies | (DXT/clipmap pyramid) | The render-time texture pyramid, presumably including the per-tile opacity rasters that drive tree placement. Compressed binary, format is DCS-internal, not documented. |
+
+The smoking gun on **how** trees are placed lives in `misc/materials.lma.lua`:
+```
+name = "Speedtree4.1";  -- DCS uses SpeedTree (commercial vegetation library)
+name = "Speedtree5.1";
+name = "TreeStatic";
+postexport = "TreeInstancer5.1";
+forestNoiseTexture (defaultvalue = "white.png")
+ForestPalette.png
+shaderDefines: 'FOREST_SUBSTRATE', 'TREES_USE_NOISE', 'USE_FOREST50SHADING'
+```
+
+And `misc/assets.assets` (98 MB) holds the tree MODEL catalog — `palm1`, `pineitalian2`, `italiancypress`, `trees_big`, `trees_left`, `trees_right`, build-time path `D:\DCS\Syria\Source\Assets\Forest\`. These are the 3D models that get instanced; their *positions* come from the GPU-side opacity raster, not from any structured file.
+
+**Implication:** to answer "is point (x, y) in a forest?" by extracting from disk, you'd have to:
+1. Reverse-engineer the `.clipmap` pyramid format
+2. Map mission-coords → tile coords → texture UV
+3. Decompress the per-tile DXT opacity texture
+4. Sample at the right UV
+
+Multi-week reverse-engineering, brittle to DCS updates, theatre-specific tile geometry, and fundamentally reproduces what a human sees by glancing at the ME map. **Not pursued.**
+
+The only practical avenues for a tree-aware placement query remain the four listed in the *trees blind spot* entry above (user-in-the-loop, larger margins, screenshot color-sampling, mission-play probe).
+
 ## Mission table coords for unit lookup
 **Tag:** recipe
 **Touches:** `me_mission.unit_by_name`, `me_mission.group_by_name`
