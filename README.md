@@ -16,6 +16,8 @@ DCS scripting framework, Mission Editor extension, and host-side tooling.
 - **ME-mod** — DCS Mission Editor extension (Prefab Manager and more). [`tools/me-mod/README.md`](tools/me-mod/README.md)
 - **CLI / bridge** — host-side `dcs-sms.exe` for installing the above and live-poking a running mission. [`tools/cmd/dcs-sms/README.md`](tools/cmd/dcs-sms/README.md)
 
+> **Tip:** double-click `dcs-sms.exe` for an interactive menu (Install / Uninstall / Update). The CLI invocations below still work too.
+
 ## More
 
 - [`docs/api/`](docs/api/) — framework API reference.

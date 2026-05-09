@@ -83,6 +83,22 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### 0.6.0 — 2026-05-09
+
+**Added**
+- **Interactive menu** for `dcs-sms.exe`. Double-clicking the binary (or
+  running it with no arguments from a real terminal) now opens a numbered
+  menu with Install / Uninstall / Update options, plus an option to set
+  a custom DCS install path. Pasted paths are sanitized — surrounding
+  ASCII / smart quotes are stripped so `"D:\Program Files\…"` works
+  without manual editing. All existing CLI invocations
+  (`dcs-sms.exe install-me-mod`, etc.) are unchanged; the menu only
+  triggers when `stdin` is a TTY.
+- **`dcspath.SanitizeUserPath`** helper for any future callers that
+  accept paths from user input.
+
+Spec: `docs/superpowers/specs/2026-05-09-dcs-sms-interactive-menu-design.md`.
+
 ### 0.5.0 — 2026-05-08
 
 > **Note:** This release is an internal refactor. No user-facing behavior
