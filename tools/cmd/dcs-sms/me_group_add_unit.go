@@ -29,6 +29,14 @@ func init() {
 // anchor (g.x / g.y). If neither is passed, Mission.insert_unit's
 // default index-cumulative spread (40m south + 40m east per unit) takes
 // over — same behaviour as the ME's + button.
+//
+// IMPORTANT for air groups: per-unit (x, y) is decorative for plane /
+// helicopter groups — DCS overrides it at mission load and pins every
+// unit to the group's formation_template. The offsets survive in the
+// ME view and on disk, but at runtime the flight is laid out by the
+// formation, not by what you set here. Vehicle / ship / static groups
+// respect per-unit positions verbatim. (A future `me group set-formation`
+// would be the right knob for air-group runtime layout.)
 func meGroupAddUnitCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("me group add-unit", flag.ContinueOnError)
 	fs.SetOutput(stderr)

@@ -18,6 +18,13 @@ func init() {
 // `me group set-pos` to move the whole group together. The Lua verb refreshes
 // Mission.update_group_map_objects so the ME view reflects the move
 // immediately.
+//
+// IMPORTANT for air groups: setting a per-unit position on a plane /
+// helicopter unit is decorative — DCS overrides it at mission load and
+// pins the unit to the group's formation_template. The new position
+// shows up in the ME view and survives save, but at runtime the flight
+// is laid out by the formation. For ground / ship / static units the
+// position is honoured verbatim.
 func meUnitSetPosCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("me unit set-pos", flag.ContinueOnError)
 	fs.SetOutput(stderr)

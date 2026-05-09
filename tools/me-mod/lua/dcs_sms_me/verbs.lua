@@ -1084,6 +1084,15 @@ end
 --     cumulative spread (40m south / 40m east per added unit), which is
 --     what the ME does when you click + with nothing selected.
 --
+-- AIR-GROUP CAVEAT: per-unit (x, y) is decorative for plane / helicopter
+-- groups. DCS overrides it at mission load and lays out the flight via
+-- group.units[1].route.points[1] (or wherever the route starts) +
+-- formation_template — every wingman is positioned by the formation, not
+-- by their stored x/y. The offset survives in the ME view and on disk
+-- but doesn't reach runtime. Ground / ship / static groups respect
+-- per-unit positions verbatim. A future formation setter is the right
+-- lever for air-group runtime layout.
+--
 -- Type rule for air groups: plane / helicopter groups can't be
 -- heterogeneous (no F-16 + F-14 in one group — DCS doesn't permit it).
 -- We refuse if --type is given and differs from g.units[1].type, and
@@ -1483,6 +1492,12 @@ end
 
 -- unit_set_pos — move a single unit to (north, east). Refreshes the group's
 -- map objects so the ME view updates immediately.
+--
+-- AIR-GROUP CAVEAT: for plane / helicopter units this only affects the
+-- ME view and the saved .miz — at mission load DCS overrides every
+-- wingman's position from the group's formation_template, so the new
+-- (x, y) doesn't survive into runtime. Ground / ship / static units
+-- honour the position verbatim.
 function M.unit_set_pos(args)
     if type(args) ~= 'table' then
         return { ok = false, error = 'unit_set_pos requires args (table)' }
