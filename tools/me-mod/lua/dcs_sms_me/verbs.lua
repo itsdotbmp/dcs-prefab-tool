@@ -817,4 +817,297 @@ function M.zone_remove(args)
     return { ok = true, id = zid, name = zname }
 end
 
+-- ============================================================
+-- Read-side verbs: list / get
+-- ============================================================
+--
+-- Output convention:
+--   * list verbs return concise summaries with translated north / east
+--     (matching our --north / --east flag convention)
+--   * get verbs return the raw mission-table structure (so callers can see
+--     the underlying field names — useful when designing future setter
+--     verbs or scripting). Cycle-causing back-references (boss, mapObjects)
+--     are stripped to keep JSON serializable.
+
+-- walk_groups — yields every group in the mission with its country and side.
+-- Iterator-friendly via a callback so callers can short-circuit.
+local function walk_groups(callback)
+    local module_mission = require('me_mission')
+    local mission = module_mission.mission
+    if type(mission) ~= 'table' or type(mission.coalition) ~= 'table' then
+        return
+    end
+    local cats = { 'plane', 'helicopter', 'vehicle', 'ship', 'static' }
+    for side_name, side in pairs(mission.coalition) do
+        if type(side) == 'table' and type(side.country) == 'table' then
+            for _, country in ipairs(side.country) do
+                for _, cat in ipairs(cats) do
+                    if country[cat] and type(country[cat].group) == 'table' then
+                        for _, g in ipairs(country[cat].group) do
+                            if callback(g, country, side_name, cat) == false then
+                                return
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- strip_back_refs — deep clone, dropping keys that create cycles when
+-- serialized (boss = group/country, mapObjects = render-side cache).
+local function strip_back_refs(v, depth)
+    depth = depth or 0
+    if depth > 32 or type(v) ~= 'table' then return v end
+    local out = {}
+    for k, vv in pairs(v) do
+        if k ~= 'boss' and k ~= 'mapObjects' then
+            out[k] = strip_back_refs(vv, depth + 1)
+        end
+    end
+    return out
+end
+
+-- group_list — return concise summaries of all groups, with optional filters.
+--
+-- args (all optional):
+--   side:     "red" | "blue" | "neutrals"      (the mission table's key name)
+--   country:  string  -- country name (case-insensitive exact match)
+--   category: "plane"|"helicopter"|"vehicle"|"ship"|"static"
+--   name:     string  -- case-insensitive substring match
+--
+-- Returns { ok = true, groups = [ ... summaries ... ], count = N }.
+function M.group_list(args)
+    args = args or {}
+    local f_side = args.side and string.lower(args.side) or nil
+    local f_country = args.country and string.lower(args.country) or nil
+    local f_category = args.category and string.lower(args.category) or nil
+    local f_name = args.name and string.lower(args.name) or nil
+
+    local out = {}
+    walk_groups(function(g, country, side_name, cat)
+        if f_side and string.lower(side_name) ~= f_side then return end
+        if f_country and string.lower(country.name or '') ~= f_country then return end
+        if f_category and cat ~= f_category then return end
+        if f_name and not string.find(string.lower(g.name or ''), f_name, 1, true) then return end
+        table.insert(out, {
+            id = g.groupId,
+            name = g.name,
+            category = cat,
+            country = country.name,
+            side = side_name,
+            north = g.x,
+            east = g.y,
+            unit_count = g.units and #g.units or 0,
+            hidden = g.hidden or false,
+            task = g.task,
+        })
+    end)
+    return { ok = true, groups = out, count = #out }
+end
+
+-- group_get — full mission-table snapshot of a single group, by name or id.
+-- Strips boss / mapObjects (cycle-causing).
+function M.group_get(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_get requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_get requires exactly one of args.name or args.id' }
+    end
+    local g, country, side_name, cat = find_group_in_mission(has_name and args.name or nil,
+                                                              has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+    local snapshot = strip_back_refs(g)
+    snapshot._side = side_name
+    snapshot._country = country and country.name
+    snapshot._category = cat
+    return { ok = true, group = snapshot }
+end
+
+-- unit_list — return concise per-unit summaries from all groups, with filters.
+--
+-- args (all optional):
+--   country, category, side — same as group_list
+--   group:  group name (exact match)
+--   name:   unit-name substring (case-insensitive)
+--   type:   unit type (e.g. "F-16C_50") exact match
+--
+-- Returns { ok = true, units = [ ... ], count = N }.
+function M.unit_list(args)
+    args = args or {}
+    local f_side = args.side and string.lower(args.side) or nil
+    local f_country = args.country and string.lower(args.country) or nil
+    local f_category = args.category and string.lower(args.category) or nil
+    local f_group = args.group or nil
+    local f_name = args.name and string.lower(args.name) or nil
+    local f_type = args.type or nil
+
+    local out = {}
+    walk_groups(function(g, country, side_name, cat)
+        if f_side and string.lower(side_name) ~= f_side then return end
+        if f_country and string.lower(country.name or '') ~= f_country then return end
+        if f_category and cat ~= f_category then return end
+        if f_group and g.name ~= f_group then return end
+        for _, u in ipairs(g.units or {}) do
+            if not (f_name and not string.find(string.lower(u.name or ''), f_name, 1, true)) then
+                if not (f_type and u.type ~= f_type) then
+                    table.insert(out, {
+                        id = u.unitId,
+                        name = u.name,
+                        type = u.type,
+                        group_name = g.name,
+                        group_id = g.groupId,
+                        category = cat,
+                        country = country.name,
+                        side = side_name,
+                        north = u.x,
+                        east = u.y,
+                        alt = u.alt,
+                        heading = u.heading,
+                        skill = u.skill,
+                    })
+                end
+            end
+        end
+    end)
+    return { ok = true, units = out, count = #out }
+end
+
+-- unit_get — full raw unit table (back-refs stripped), by name or id.
+function M.unit_get(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'unit_get requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'unit_get requires exactly one of args.name or args.id' }
+    end
+
+    local found_unit, found_group, found_country, found_side, found_cat
+    walk_groups(function(g, country, side_name, cat)
+        for _, u in ipairs(g.units or {}) do
+            if (has_name and u.name == args.name)
+                    or (has_id and u.unitId == args.id) then
+                found_unit, found_group, found_country = u, g, country
+                found_side, found_cat = side_name, cat
+                return false
+            end
+        end
+    end)
+
+    if not found_unit then
+        return { ok = false, error = 'unit not found' }
+    end
+    local snapshot = strip_back_refs(found_unit)
+    snapshot._group_name = found_group.name
+    snapshot._group_id = found_group.groupId
+    snapshot._country = found_country.name
+    snapshot._side = found_side
+    snapshot._category = found_cat
+    return { ok = true, unit = snapshot }
+end
+
+-- zone_list — return concise summaries of all trigger zones.
+--
+-- args (optional):
+--   shape: "circle" | "quad"  -- numeric type 0 / 2 in mission-table
+--   name:  string  -- substring (case-insensitive)
+--
+-- Returns { ok = true, zones = [ ... ], count = N }.
+function M.zone_list(args)
+    args = args or {}
+    local f_shape = args.shape and string.lower(args.shape) or nil
+    local f_name = args.name and string.lower(args.name) or nil
+
+    local ok_tzd, TZD = pcall(require, 'Mission.TriggerZoneData')
+    if not ok_tzd or type(TZD) ~= 'table' then
+        return { ok = false, error = 'Mission.TriggerZoneData unavailable' }
+    end
+
+    local out = {}
+    for _, zid in ipairs(TZD.getTriggerZoneIds() or {}) do
+        local nm = TZD.getTriggerZoneName(zid)
+        local tnum = TZD.getTriggerZoneType(zid)
+        local shape = (tnum == 0 and 'circle') or (tnum == 2 and 'quad') or ('type=' .. tostring(tnum))
+        if not (f_shape and shape ~= f_shape)
+                and not (f_name and nm and not string.find(string.lower(nm), f_name, 1, true)) then
+            local x, y = TZD.getTriggerZonePosition(zid)
+            local r, g, b, a = TZD.getTriggerZoneColor(zid)
+            local pts = TZD.getTriggerZonePoints(zid) or {}
+            table.insert(out, {
+                id = zid,
+                name = nm,
+                shape = shape,
+                type = tnum,
+                north = x,
+                east = y,
+                radius = TZD.getTriggerZoneRadius(zid),
+                color = { r, g, b, a },
+                hidden = TZD.getTriggerZoneHidden(zid),
+                vertex_count = (tnum == 2) and #pts or nil,
+            })
+        end
+    end
+    return { ok = true, zones = out, count = #out }
+end
+
+-- zone_get — full zone detail by name or id.
+function M.zone_get(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_get requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'zone_get requires exactly one of args.name or args.id' }
+    end
+
+    local zid, _ = find_zone(has_name and args.name or nil,
+                             has_id and args.id or nil)
+    if not zid then
+        return { ok = false, error = 'zone not found' }
+    end
+
+    local TZD = require('Mission.TriggerZoneData')
+    local x, y = TZD.getTriggerZonePosition(zid)
+    local r, g, b, a = TZD.getTriggerZoneColor(zid)
+    local tnum = TZD.getTriggerZoneType(zid)
+    local shape = (tnum == 0 and 'circle') or (tnum == 2 and 'quad') or ('type=' .. tostring(tnum))
+    local pts_rel = TZD.getTriggerZonePoints(zid) or {}
+
+    -- Convert relative points back to absolute for user clarity (matches the
+    -- shape of --vertices on input). Keep raw relative points too.
+    local pts_abs = {}
+    for _, p in ipairs(pts_rel) do
+        table.insert(pts_abs, { north = p.x + x, east = p.y + y })
+    end
+
+    return {
+        ok = true,
+        zone = {
+            id = zid,
+            name = TZD.getTriggerZoneName(zid),
+            shape = shape,
+            type = tnum,
+            north = x,
+            east = y,
+            radius = TZD.getTriggerZoneRadius(zid),
+            color = { r, g, b, a },
+            hidden = TZD.getTriggerZoneHidden(zid),
+            properties = TZD.getTriggerZoneProperties(zid),
+            link_unit_id = TZD.getLinkUnitId(zid),
+            heading = TZD.getTriggerZone(zid) and TZD.getTriggerZone(zid):getHeading() or 0,
+            points_relative = pts_rel,
+            vertices_absolute = (tnum == 2) and pts_abs or nil,
+        },
+    }
+end
+
 return M
