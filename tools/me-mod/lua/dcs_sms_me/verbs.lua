@@ -53,6 +53,55 @@ local M = {}
 -- for the gotcha that motivated this.
 
 -- ============================================================
+-- Shared helpers (used across multiple verbs)
+-- ============================================================
+--
+-- Defined up here so forward-references work — Lua resolves locals at the
+-- point they're declared, so any helper called by a verb body must be
+-- declared above the verb. Read-side and write-side verbs share these.
+
+-- walk_groups — yields every group in the mission with its country and side.
+-- Iterator-friendly via a callback so callers can short-circuit (return
+-- false from the callback to stop walking).
+local function walk_groups(callback)
+    local module_mission = require('me_mission')
+    local mission = module_mission.mission
+    if type(mission) ~= 'table' or type(mission.coalition) ~= 'table' then
+        return
+    end
+    local cats = { 'plane', 'helicopter', 'vehicle', 'ship', 'static' }
+    for side_name, side in pairs(mission.coalition) do
+        if type(side) == 'table' and type(side.country) == 'table' then
+            for _, country in ipairs(side.country) do
+                for _, cat in ipairs(cats) do
+                    if country[cat] and type(country[cat].group) == 'table' then
+                        for _, g in ipairs(country[cat].group) do
+                            if callback(g, country, side_name, cat) == false then
+                                return
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- strip_back_refs — deep clone, dropping keys that create cycles when
+-- serialized (boss = group/country, mapObjects = render-side cache).
+local function strip_back_refs(v, depth)
+    depth = depth or 0
+    if depth > 32 or type(v) ~= 'table' then return v end
+    local out = {}
+    for k, vv in pairs(v) do
+        if k ~= 'boss' and k ~= 'mapObjects' then
+            out[k] = strip_back_refs(vv, depth + 1)
+        end
+    end
+    return out
+end
+
+-- ============================================================
 -- File / mission lifecycle verbs
 -- ============================================================
 
@@ -771,6 +820,237 @@ function M.group_set_pos(args)
 end
 
 -- ============================================================
+-- Unit setters (per-field)
+-- ============================================================
+
+-- find_unit_in_mission — locate a unit by name or id, returning
+-- (unit, group, country, side, category) or nil. Mirrors find_group_in_mission
+-- but walks down to unit level. Shared by all unit_set_* verbs.
+local function find_unit_in_mission(by_name, by_id)
+    local found_unit, found_group, found_country, found_side, found_cat
+    walk_groups(function(g, country, side_name, cat)
+        for _, u in ipairs(g.units or {}) do
+            if (by_name and u.name == by_name) or (by_id and u.unitId == by_id) then
+                found_unit, found_group, found_country = u, g, country
+                found_side, found_cat = side_name, cat
+                return false
+            end
+        end
+    end)
+    return found_unit, found_group, found_country, found_side, found_cat
+end
+
+-- refresh_group_view — defensive map-objects refresh after a unit-level
+-- mutation. Disk-loaded groups have mapObjects=nil until selected; same
+-- pattern as group_remove and group_set_pos.
+local function refresh_group_view(g)
+    local Mission = require('me_mission')
+    if g.mapObjects == nil and type(Mission.create_group_map_objects) == 'function' then
+        pcall(Mission.create_group_map_objects, g)
+    end
+    if type(Mission.update_group_map_objects) == 'function' then
+        pcall(Mission.update_group_map_objects, g)
+    end
+end
+
+-- unit_set_name — rename via Mission.renameUnit. Refuses on collision.
+function M.unit_set_name(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'unit_set_name requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'unit_set_name requires exactly one of args.name or args.id' }
+    end
+    if type(args.new_name) ~= 'string' or args.new_name == '' then
+        return { ok = false, error = 'unit_set_name requires args.new_name (non-empty string)' }
+    end
+    local u = find_unit_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+    local Mission = require('me_mission')
+    local ok = Mission.renameUnit(u, args.new_name)
+    if not ok then
+        return { ok = false, error = 'name "' .. args.new_name .. '" already in use' }
+    end
+    return { ok = true, id = u.unitId, name = args.new_name }
+end
+
+-- unit_set_skill — set u.skill (Average / Good / High / Excellent / Random / Player / Client).
+function M.unit_set_skill(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'unit_set_skill requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'unit_set_skill requires exactly one of args.name or args.id' }
+    end
+    if type(args.skill) ~= 'string' or args.skill == '' then
+        return { ok = false, error = 'unit_set_skill requires args.skill (non-empty string)' }
+    end
+    local u = find_unit_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+    u.skill = args.skill
+    return { ok = true, id = u.unitId, name = u.name, skill = u.skill }
+end
+
+-- unit_set_livery — set u.livery_id (string, airframe-specific).
+function M.unit_set_livery(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'unit_set_livery requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'unit_set_livery requires exactly one of args.name or args.id' }
+    end
+    if type(args.livery) ~= 'string' then
+        return { ok = false, error = 'unit_set_livery requires args.livery (string; "" for default)' }
+    end
+    local u = find_unit_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+    u.livery_id = args.livery
+    return { ok = true, id = u.unitId, name = u.name, livery = u.livery_id }
+end
+
+-- unit_set_pos — move a single unit to (north, east). Refreshes the group's
+-- map objects so the ME view updates immediately.
+function M.unit_set_pos(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'unit_set_pos requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'unit_set_pos requires exactly one of args.name or args.id' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'unit_set_pos requires args.north and args.east (numbers, meters)' }
+    end
+    local u, g = find_unit_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+    -- mission-table fields: x = north, y = east
+    u.x = args.north
+    u.y = args.east
+    refresh_group_view(g)
+    return { ok = true, id = u.unitId, name = u.name, north = u.x, east = u.y }
+end
+
+-- unit_set_heading — set u.heading and u.psi from a degrees input.
+-- DCS stores radians internally, with 0 = north and clockwise = positive.
+function M.unit_set_heading(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'unit_set_heading requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'unit_set_heading requires exactly one of args.name or args.id' }
+    end
+    if type(args.heading_deg) ~= 'number' then
+        return { ok = false, error = 'unit_set_heading requires args.heading_deg (degrees)' }
+    end
+    local u, g = find_unit_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+    local rad = math.rad(args.heading_deg)
+    u.heading = rad
+    u.psi = rad
+    refresh_group_view(g)
+    return { ok = true, id = u.unitId, name = u.name,
+             heading_deg = args.heading_deg, heading_rad = rad }
+end
+
+-- unit_set_alt — set u.alt and u.alt_type. Doesn't touch waypoint altitudes.
+function M.unit_set_alt(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'unit_set_alt requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'unit_set_alt requires exactly one of args.name or args.id' }
+    end
+    if type(args.alt) ~= 'number' then
+        return { ok = false, error = 'unit_set_alt requires args.alt (number, meters)' }
+    end
+    local alt_type = args.alt_type or 'BARO'
+    if alt_type ~= 'BARO' and alt_type ~= 'RADIO' then
+        return { ok = false, error = 'unit_set_alt: args.alt_type must be "BARO" or "RADIO"' }
+    end
+    local u = find_unit_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+    u.alt = args.alt
+    u.alt_type = alt_type
+    return { ok = true, id = u.unitId, name = u.name, alt = u.alt, alt_type = u.alt_type }
+end
+
+-- unit_set_onboard_num — set u.onboard_num.
+function M.unit_set_onboard_num(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'unit_set_onboard_num requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'unit_set_onboard_num requires exactly one of args.name or args.id' }
+    end
+    if type(args.onboard_num) ~= 'string' or args.onboard_num == '' then
+        return { ok = false, error = 'unit_set_onboard_num requires args.onboard_num (non-empty string)' }
+    end
+    local u = find_unit_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+    u.onboard_num = args.onboard_num
+    return { ok = true, id = u.unitId, name = u.name, onboard_num = u.onboard_num }
+end
+
+-- unit_set_callsign — set u.callsign. Mandatory args.callsign (string, the
+-- radio label); optional args.squadron / flight / plane integers — when 0
+-- (default), preserve the existing numeric prefix value.
+function M.unit_set_callsign(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'unit_set_callsign requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'unit_set_callsign requires exactly one of args.name or args.id' }
+    end
+    if type(args.callsign) ~= 'string' or args.callsign == '' then
+        return { ok = false, error = 'unit_set_callsign requires args.callsign (non-empty string)' }
+    end
+    local u = find_unit_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+    -- Preserve existing numeric prefix by default (CLI passes 0 to mean "no change").
+    local existing = (type(u.callsign) == 'table') and u.callsign or {}
+    local sq = (type(args.squadron) == 'number' and args.squadron > 0) and args.squadron
+               or (type(existing[1]) == 'number' and existing[1]) or 1
+    local fl = (type(args.flight) == 'number' and args.flight > 0) and args.flight
+               or (type(existing[2]) == 'number' and existing[2]) or 1
+    local pl = (type(args.plane) == 'number' and args.plane > 0) and args.plane
+               or (type(existing[3]) == 'number' and existing[3]) or 1
+    u.callsign = { sq, fl, pl, name = args.callsign }
+    return { ok = true, id = u.unitId, name = u.name,
+             callsign = { sq, fl, pl, name = args.callsign } }
+end
+
+-- ============================================================
 -- Trigger zone lifecycle verbs
 -- ============================================================
 
@@ -1194,46 +1474,6 @@ end
 --     the underlying field names — useful when designing future setter
 --     verbs or scripting). Cycle-causing back-references (boss, mapObjects)
 --     are stripped to keep JSON serializable.
-
--- walk_groups — yields every group in the mission with its country and side.
--- Iterator-friendly via a callback so callers can short-circuit.
-local function walk_groups(callback)
-    local module_mission = require('me_mission')
-    local mission = module_mission.mission
-    if type(mission) ~= 'table' or type(mission.coalition) ~= 'table' then
-        return
-    end
-    local cats = { 'plane', 'helicopter', 'vehicle', 'ship', 'static' }
-    for side_name, side in pairs(mission.coalition) do
-        if type(side) == 'table' and type(side.country) == 'table' then
-            for _, country in ipairs(side.country) do
-                for _, cat in ipairs(cats) do
-                    if country[cat] and type(country[cat].group) == 'table' then
-                        for _, g in ipairs(country[cat].group) do
-                            if callback(g, country, side_name, cat) == false then
-                                return
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-end
-
--- strip_back_refs — deep clone, dropping keys that create cycles when
--- serialized (boss = group/country, mapObjects = render-side cache).
-local function strip_back_refs(v, depth)
-    depth = depth or 0
-    if depth > 32 or type(v) ~= 'table' then return v end
-    local out = {}
-    for k, vv in pairs(v) do
-        if k ~= 'boss' and k ~= 'mapObjects' then
-            out[k] = strip_back_refs(vv, depth + 1)
-        end
-    end
-    return out
-end
 
 -- group_list — return concise summaries of all groups, with optional filters.
 --
