@@ -33,6 +33,9 @@ func meZoneCreateCmd(args []string, stdout, stderr io.Writer) int {
 		flagRadius     = fs.Float64("radius", 0, "circle: radius in meters; quad: optional icon radius")
 		flagVertices   = fs.String("vertices", "",
 			"quad: 4 corners as \"n1,e1;n2,e2;n3,e3;n4,e4\" (>= 3 corners actually allowed)")
+		flagColor      = fs.String("color", "",
+			"color: name (red/green/blue/yellow/cyan/magenta/white/black/orange/purple), "+
+				"hex \"#rrggbb\" (alpha 0.15), or \"#rrggbbaa\"; default = translucent white")
 		flagHidden     = fs.Bool("hidden", false, "hide the zone in the ME view")
 		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
 		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
@@ -46,6 +49,16 @@ func meZoneCreateCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
+	colorLua, err := parseColorToLua(*flagColor)
+	if err != nil {
+		fmt.Fprintln(stderr, "dcs-sms me zone create:", err)
+		return 2
+	}
+	colorClause := ""
+	if colorLua != "" {
+		colorClause = ", color = " + colorLua
+	}
+
 	switch strings.ToLower(*flagType) {
 	case "circle":
 		if *flagRadius <= 0 {
@@ -53,8 +66,8 @@ func meZoneCreateCmd(args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		luaArgs := fmt.Sprintf(
-			"{ name = %q, north = %g, east = %g, radius = %g, hidden = %t }",
-			*flagName, *flagNorth, *flagEast, *flagRadius, *flagHidden,
+			"{ name = %q, north = %g, east = %g, radius = %g, hidden = %t%s }",
+			*flagName, *flagNorth, *flagEast, *flagRadius, *flagHidden, colorClause,
 		)
 		resp, exitCode := runMeVerb("zone_create_circle", luaArgs, *flagTimeout, *flagSavedGames, stderr)
 		if exitCode != 0 {
@@ -74,8 +87,8 @@ func meZoneCreateCmd(args []string, stdout, stderr io.Writer) int {
 		}
 		// --radius is optional for quad; pass 0 → verb computes default.
 		luaArgs := fmt.Sprintf(
-			"{ name = %q, vertices = %s, radius = %g, hidden = %t }",
-			*flagName, verticesLua, *flagRadius, *flagHidden,
+			"{ name = %q, vertices = %s, radius = %g, hidden = %t%s }",
+			*flagName, verticesLua, *flagRadius, *flagHidden, colorClause,
 		)
 		resp, exitCode := runMeVerb("zone_create_quad", luaArgs, *flagTimeout, *flagSavedGames, stderr)
 		if exitCode != 0 {
@@ -90,6 +103,76 @@ func meZoneCreateCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "dcs-sms me zone create: unknown --type %q (expected circle or quad)\n", *flagType)
 		return 2
 	}
+}
+
+// namedZoneColors holds the named-color presets we accept for --color.
+// All defaults use alpha = 0.15 (matches DCS's default translucent fill, set
+// by TriggerZone.construct in MissionEditor/modules/Mission/TriggerZone.lua).
+// User can override alpha via #rrggbbaa hex.
+var namedZoneColors = map[string][4]float64{
+	"red":     {1, 0, 0, 0.15},
+	"green":   {0, 1, 0, 0.15},
+	"blue":    {0, 0, 1, 0.15},
+	"yellow":  {1, 1, 0, 0.15},
+	"cyan":    {0, 1, 1, 0.15},
+	"magenta": {1, 0, 1, 0.15},
+	"white":   {1, 1, 1, 0.15},
+	"black":   {0, 0, 0, 0.15},
+	"orange":  {1, 0.5, 0, 0.15},
+	"purple":  {0.5, 0, 1, 0.15},
+}
+
+// parseColorToLua converts the --color flag value to a "{r, g, b, a}" Lua
+// table expression with floats 0..1. Returns "" if the flag is empty (caller
+// should then omit the color clause and let the Lua verb apply the default).
+//
+// Accepts:
+//   - named: red, green, blue, yellow, cyan, magenta, white, black, orange, purple
+//   - "#rrggbb"   — alpha defaults to 0.15
+//   - "#rrggbbaa" — explicit alpha
+//   - hex without "#" prefix is also accepted
+func parseColorToLua(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	if rgba, ok := namedZoneColors[strings.ToLower(s)]; ok {
+		return fmt.Sprintf("{ %g, %g, %g, %g }", rgba[0], rgba[1], rgba[2], rgba[3]), nil
+	}
+	hex := strings.TrimPrefix(s, "#")
+	switch len(hex) {
+	case 6, 8:
+	default:
+		return "", fmt.Errorf("--color %q: expected name or #rrggbb / #rrggbbaa", s)
+	}
+	r, err := strconv.ParseUint(hex[0:2], 16, 8)
+	if err != nil {
+		return "", fmt.Errorf("--color %q: invalid red byte: %w", s, err)
+	}
+	g, err := strconv.ParseUint(hex[2:4], 16, 8)
+	if err != nil {
+		return "", fmt.Errorf("--color %q: invalid green byte: %w", s, err)
+	}
+	b, err := strconv.ParseUint(hex[4:6], 16, 8)
+	if err != nil {
+		return "", fmt.Errorf("--color %q: invalid blue byte: %w", s, err)
+	}
+	a := uint64(38) // 0.15 * 255 ≈ 38; preserves the DCS-default alpha when only RGB is given
+	if len(hex) == 8 {
+		av, err := strconv.ParseUint(hex[6:8], 16, 8)
+		if err != nil {
+			return "", fmt.Errorf("--color %q: invalid alpha byte: %w", s, err)
+		}
+		a = av
+	}
+	rf := float64(r) / 255
+	gf := float64(g) / 255
+	bf := float64(b) / 255
+	af := float64(a) / 255
+	if len(hex) == 6 {
+		af = 0.15 // exact DCS default rather than 38/255
+	}
+	return fmt.Sprintf("{ %g, %g, %g, %g }", rf, gf, bf, af), nil
 }
 
 // parseVerticesToLua converts "n1,e1;n2,e2;n3,e3;n4,e4" into a Lua table
