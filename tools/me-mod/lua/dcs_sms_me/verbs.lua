@@ -2234,6 +2234,35 @@ end
 -- (the injected circle survived). One-shot reset+rebuild is fine for
 -- ME-time editing — drawings are at most a few dozen objects per mission.
 
+-- mutate_drawing — modify an existing drawing in place. Routes through
+-- the same saveToMission → modify → loadFromMission cycle as
+-- inject_drawing because the panel doesn't expose any granular
+-- mutation hook. fn is called with the on-disk shape of the matching
+-- object (saveToMission's flat shape — every field is writable here)
+-- and any mutation it does is persisted on the loadFromMission
+-- rebuild. Returns the mutated object on success, or nil + error on
+-- not-found / fn-error.
+local function mutate_drawing(name, fn)
+    local panel = require('me_draw_panel')
+    local data = panel.saveToMission()
+    local found
+    for _, layer in ipairs(data.layers or {}) do
+        for _, obj_save in ipairs(layer.objects or {}) do
+            if obj_save.name == name then
+                local ok, err = pcall(fn, obj_save)
+                if not ok then return nil, 'mutate fn: ' .. tostring(err) end
+                found = obj_save
+                break
+            end
+        end
+        if found then break end
+    end
+    if not found then return nil, 'drawing not found' end
+    local ok_call, err = pcall(panel.loadFromMission, data)
+    if not ok_call then return nil, 'loadFromMission: ' .. tostring(err) end
+    return found, nil
+end
+
 -- inject_drawing — add a single drawing object to a named layer using
 -- the panel's saveToMission/loadFromMission cycle. The new object must
 -- carry all required fields for its primitiveType (lineLoad /
@@ -2644,9 +2673,17 @@ function M.drawing_create_line(args)
              closed = obj.closed, layer = args.layer or 'Common' }
 end
 
--- drawing_create_polygon — free-shape polygon (closed by default; no
--- closed flag, the polygon is always closed because polygonFreeLoad
--- sets up a fill region).
+-- drawing_create_polygon — free-shape polygon (closed, filled).
+--
+-- DCS's free-polygon renderer auto-connects the last vertex back to the
+-- first to close the shape. Sub-pixel artifacts on the closing edge
+-- have been reported when the agent supplies "exactly the right number
+-- of distinct vertices" — e.g. a 5-point star drawn as 10 alternating
+-- outer/inner vertices, where the close-edge from p10 back to p1
+-- doesn't render cleanly. Defensively: if the last supplied vertex is
+-- not already a copy of the first, we append a duplicate of the first
+-- as the closing vertex. Zero-length edge geometrically; better
+-- rendering in practice.
 --
 -- args (required): vertices (>= 3)
 -- args (optional): name, color, fill_color, thickness, style, layer,
@@ -2662,6 +2699,14 @@ function M.drawing_create_polygon(args)
         if type(v) ~= 'table' or type(v.north) ~= 'number' or type(v.east) ~= 'number' then
             return { ok = false, error = 'vertex ' .. i .. ' missing/invalid {north, east} numbers' }
         end
+    end
+
+    -- Defensive close: append a duplicate of the first vertex if it
+    -- isn't already the last one. See block comment above for why.
+    local first = args.vertices[1]
+    local last = args.vertices[#args.vertices]
+    if first.north ~= last.north or first.east ~= last.east then
+        table.insert(args.vertices, { north = first.north, east = first.east })
     end
 
     local cx, cy, rel = compute_center_and_relative_points(args.vertices)
@@ -2772,6 +2817,126 @@ function M.drawing_create_icon(args)
     return { ok = true, name = name, type = 'Icon',
              north = args.north, east = args.east, file = args.file,
              layer = args.layer or 'Common' }
+end
+
+-- ============================================================
+-- Drawings — setters (per-field)
+-- ============================================================
+
+-- drawing_set_color — change outline / line / text color (the
+-- colorString field). For polygons + textboxes this is the OUTLINE /
+-- BORDER / TEXT color; the fill is set via drawing_set_fill_color.
+-- For lines and icons this is the only color the shape has.
+function M.drawing_set_color(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'drawing_set_color requires args.name (string)' }
+    end
+    if type(args.color) ~= 'string' or args.color == '' then
+        return { ok = false, error = 'drawing_set_color requires args.color (hex string like 0xrrggbbaa)' }
+    end
+    local obj, err = mutate_drawing(args.name, function(o) o.colorString = args.color end)
+    if err then return { ok = false, error = err } end
+    return { ok = true, name = args.name, color = obj.colorString }
+end
+
+-- drawing_set_fill_color — change fill color (polygon shapes + textbox
+-- only). Refuses on Line / Icon — those have no fill concept.
+function M.drawing_set_fill_color(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'drawing_set_fill_color requires args.name (string)' }
+    end
+    if type(args.color) ~= 'string' or args.color == '' then
+        return { ok = false, error = 'drawing_set_fill_color requires args.color (hex string like 0xrrggbbaa)' }
+    end
+    local target = find_drawing_by_name(args.name)
+    if not target then return { ok = false, error = 'drawing not found' } end
+    if target.primitiveType == 'Line' or target.primitiveType == 'Icon' then
+        return { ok = false,
+                 error = target.primitiveType .. ' has no fill — use drawing_set_color instead' }
+    end
+    local obj, err = mutate_drawing(args.name, function(o) o.fillColorString = args.color end)
+    if err then return { ok = false, error = err } end
+    return { ok = true, name = args.name, fill_color = obj.fillColorString }
+end
+
+-- drawing_set_pos — move the drawing's anchor (mapX / mapY). For shapes
+-- with relative-to-anchor points (line, free polygon) the relative
+-- offsets ride along, so the shape moves rigidly. For analytic shapes
+-- (circle, rect, oval, arrow) only the center moves.
+function M.drawing_set_pos(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'drawing_set_pos requires args.name (string)' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'drawing_set_pos requires args.north and args.east (numbers, meters)' }
+    end
+    local obj, err = mutate_drawing(args.name, function(o)
+        o.mapX = args.north
+        o.mapY = args.east
+    end)
+    if err then return { ok = false, error = err } end
+    return { ok = true, name = args.name, north = obj.mapX, east = obj.mapY }
+end
+
+-- drawing_set_name — rename a drawing. Refuses on collision via the
+-- panel's verifyName (drawing names are unique across all layers).
+function M.drawing_set_name(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'drawing_set_name requires args.name (string)' }
+    end
+    if type(args.new_name) ~= 'string' or args.new_name == '' then
+        return { ok = false, error = 'drawing_set_name requires args.new_name (non-empty string)' }
+    end
+    if args.new_name == args.name then
+        return { ok = true, name = args.new_name, unchanged = true }
+    end
+    if find_drawing_by_name(args.new_name) then
+        return { ok = false, error = 'name "' .. args.new_name .. '" already in use' }
+    end
+    local obj, err = mutate_drawing(args.name, function(o) o.name = args.new_name end)
+    if err then return { ok = false, error = err } end
+    return { ok = true, name = obj.name, previous_name = args.name }
+end
+
+-- drawing_set_text — change the text content of a TextBox. Refuses on
+-- non-TextBox drawings.
+function M.drawing_set_text(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'drawing_set_text requires args.name (string)' }
+    end
+    if type(args.text) ~= 'string' or args.text == '' then
+        return { ok = false, error = 'drawing_set_text requires args.text (non-empty string)' }
+    end
+    local target = find_drawing_by_name(args.name)
+    if not target then return { ok = false, error = 'drawing not found' } end
+    if target.primitiveType ~= 'TextBox' then
+        return { ok = false, error = 'drawing is ' .. target.primitiveType
+                                     .. ', not TextBox; use drawing_remove + drawing_create_textbox' }
+    end
+    local obj, err = mutate_drawing(args.name, function(o) o.text = args.text end)
+    if err then return { ok = false, error = err } end
+    return { ok = true, name = args.name, text = obj.text }
+end
+
+-- drawing_set_thickness — change outline / line thickness in pixels.
+-- Applies to Line and Polygon shapes. Refuses on TextBox (which has
+-- borderThickness instead) and Icon (which has scale).
+function M.drawing_set_thickness(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'drawing_set_thickness requires args.name (string)' }
+    end
+    if type(args.thickness) ~= 'number' or args.thickness <= 0 then
+        return { ok = false, error = 'drawing_set_thickness requires args.thickness (positive number)' }
+    end
+    local target = find_drawing_by_name(args.name)
+    if not target then return { ok = false, error = 'drawing not found' } end
+    if target.primitiveType ~= 'Line' and target.primitiveType ~= 'Polygon' then
+        return { ok = false, error = target.primitiveType
+                                     .. ' has no thickness (TextBox has border-thickness; Icon has scale)' }
+    end
+    local obj, err = mutate_drawing(args.name, function(o) o.thickness = args.thickness end)
+    if err then return { ok = false, error = err } end
+    return { ok = true, name = args.name, thickness = obj.thickness }
 end
 
 -- ============================================================
