@@ -3657,21 +3657,50 @@ local function _trigger_resolve_predicate(name_or_alias, expected_kind)
     return entry.canonical, entry.kind, entry.descr, nil
 end
 
--- _trigger_panel_refresh — best-effort kick: if the triggers panel is
--- currently visible, call show(false) + show(true) to re-bind the listbox
--- to current mission.trigrules (matches saveTriggers/setupCallbacks rebind
--- path). Visibility is queried directly via Trigger.triggersWindow:isVisible()
--- — no monkey-patch needed.
+-- _trigger_panel_refresh — best-effort kick: if the trigger panel is
+-- currently visible, rebind its listbox against the current
+-- mission.trigrules.
+--
+-- We do NOT call Trigger.show(true) for this. show(true) calls
+-- ED's fixTriggers() which DELETES any trigger with #actions < 1
+-- (see me_trigrules.lua: function fixTriggers — invalid trigger
+-- removed). Freshly-created triggers from `trigger create` have
+-- empty actions by design (the user fills them in via subsequent
+-- `trigger action ...` verbs), so show(true) silently wipes them
+-- before the listbox is rebound. Same reason show(false) was bad:
+-- it leads back into the same purge path on close-then-reopen.
+--
+-- Instead we go straight to predicates.rulesToList(window.triggersList,
+-- mission.trigrules, cdata) — that's the same listbox-rebind helper
+-- ED itself uses elsewhere (e.g. the trigger-reorder buttons), and
+-- it has no fixTriggers / no data mutation. It just clears the
+-- listbox and re-adds an item per entry in mission.trigrules.
 local function _trigger_panel_refresh()
-    local Trigger = require('me_trigrules')
+    local ok_t, Trigger = pcall(require, 'me_trigrules')
+    if not ok_t or type(Trigger) ~= 'table' then return end
     local visible = false
     if type(Trigger.triggersWindow) == 'table' and type(Trigger.triggersWindow.isVisible) == 'function' then
-        local ok, vis = pcall(Trigger.triggersWindow.isVisible, Trigger.triggersWindow)
-        visible = ok and vis == true
+        local ok_vis, vis = pcall(Trigger.triggersWindow.isVisible, Trigger.triggersWindow)
+        visible = ok_vis and vis == true
     end
     if not visible then return end
-    pcall(Trigger.show, false)
-    pcall(Trigger.show, true)
+
+    local ok_p, predicates = pcall(require, 'me_predicates')
+    if not ok_p or type(predicates) ~= 'table'
+       or type(predicates.rulesToList) ~= 'function' then return end
+
+    local box = Trigger.triggersWindow.Box
+    if type(box) ~= 'table' or type(box.triggersList) ~= 'table' then return end
+
+    local ok_m, Mission = pcall(require, 'me_mission')
+    if not ok_m or type(Mission) ~= 'table'
+       or type(Mission.mission) ~= 'table' then return end
+    local trigrules = Mission.mission.trigrules or {}
+
+    -- cdata is module-local in me_trigrules; fall back to nil — rulesToList
+    -- only uses cdata for predicate-text rendering and tolerates nil.
+    local cdata = Trigger.cdata
+    pcall(predicates.rulesToList, box.triggersList, trigrules, cdata)
 end
 
 -- _trigger_find_by_name — locate a trigger in mission.trigrules by its
