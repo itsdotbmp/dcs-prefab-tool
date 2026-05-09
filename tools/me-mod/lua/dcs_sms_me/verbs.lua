@@ -612,6 +612,165 @@ function M.group_create_plane(args)
 end
 
 -- ============================================================
+-- Group setters (per-field)
+-- ============================================================
+--
+-- Note: set-country isn't here yet. Moving a group between coalition
+-- branches needs custom remove + reinsert + boss/color refresh — there's no
+-- Mission.* helper for it. Workaround until we ship one: capture state with
+-- group_get, group_remove, then group_create_<cat> with the new country.
+
+-- group_set_name — rename a group via Mission.renameGroup. Refuses on name
+-- collision (returns false from renameGroup) — does NOT silently uniquify.
+function M.group_set_name(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_set_name requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_set_name requires exactly one of args.name or args.id' }
+    end
+    if type(args.new_name) ~= 'string' or args.new_name == '' then
+        return { ok = false, error = 'group_set_name requires args.new_name (non-empty string)' }
+    end
+    local g = find_group_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+    local Mission = require('me_mission')
+    local ok = Mission.renameGroup(g, args.new_name)
+    if not ok then
+        return { ok = false, error = 'name "' .. args.new_name .. '" already in use' }
+    end
+    return { ok = true, id = g.groupId, name = args.new_name }
+end
+
+-- group_set_task — set the group-level task field (g.task). Doesn't touch
+-- per-waypoint ComboTasks. Strings the ME accepts include CAP, CAS, Escort,
+-- Nothing, etc. — no validation here, the ME stores the value verbatim.
+function M.group_set_task(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_set_task requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_set_task requires exactly one of args.name or args.id' }
+    end
+    if type(args.task) ~= 'string' or args.task == '' then
+        return { ok = false, error = 'group_set_task requires args.task (non-empty string)' }
+    end
+    local g = find_group_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+    g.task = args.task
+    return { ok = true, id = g.groupId, name = g.name, task = g.task }
+end
+
+-- group_set_hidden — toggle g.hidden. Requires explicit args.hidden bool.
+function M.group_set_hidden(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_set_hidden requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_set_hidden requires exactly one of args.name or args.id' }
+    end
+    if type(args.hidden) ~= 'boolean' then
+        return { ok = false, error = 'group_set_hidden requires args.hidden (boolean)' }
+    end
+    local g = find_group_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+    g.hidden = args.hidden
+    return { ok = true, id = g.groupId, name = g.name, hidden = g.hidden }
+end
+
+-- group_set_frequency — set g.frequency in MHz.
+function M.group_set_frequency(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_set_frequency requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_set_frequency requires exactly one of args.name or args.id' }
+    end
+    if type(args.frequency) ~= 'number' or args.frequency <= 0 then
+        return { ok = false, error = 'group_set_frequency requires args.frequency (positive number, MHz)' }
+    end
+    local g = find_group_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+    g.frequency = args.frequency
+    return { ok = true, id = g.groupId, name = g.name, frequency = g.frequency }
+end
+
+-- group_set_pos — translate the entire group to a new center.
+--
+-- Computes delta = (north - g.x, east - g.y) and applies it to g, every
+-- unit, and every waypoint. Preserves intra-group offsets (formations,
+-- SAM-site geometry).
+--
+-- Refreshes Mission.update_group_map_objects so the ME view reflects the
+-- new positions immediately (without it the sprites would lag the data
+-- until the user clicked the group).
+function M.group_set_pos(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_set_pos requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_set_pos requires exactly one of args.name or args.id' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'group_set_pos requires args.north and args.east (numbers, meters)' }
+    end
+    local g = find_group_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+
+    -- mission-table fields: x = north, y = east
+    local dx = args.north - (g.x or 0)
+    local dy = args.east - (g.y or 0)
+
+    g.x = args.north
+    g.y = args.east
+
+    for _, u in ipairs(g.units or {}) do
+        u.x = (u.x or 0) + dx
+        u.y = (u.y or 0) + dy
+    end
+    if g.route and type(g.route.points) == 'table' then
+        for _, wpt in ipairs(g.route.points) do
+            wpt.x = (wpt.x or 0) + dx
+            wpt.y = (wpt.y or 0) + dy
+        end
+    end
+
+    -- Refresh visual state so the ME view tracks the data move. Build map
+    -- objects first if they're nil (disk-loaded groups have mapObjects=nil
+    -- until selected; same defensive pattern as group_remove).
+    local Mission = require('me_mission')
+    if g.mapObjects == nil and type(Mission.create_group_map_objects) == 'function' then
+        pcall(Mission.create_group_map_objects, g)
+    end
+    if type(Mission.update_group_map_objects) == 'function' then
+        pcall(Mission.update_group_map_objects, g)
+    end
+
+    return { ok = true, id = g.groupId, name = g.name,
+             north = g.x, east = g.y, delta = { north = dx, east = dy } }
+end
+
+-- ============================================================
 -- Trigger zone lifecycle verbs
 -- ============================================================
 
