@@ -3917,6 +3917,462 @@ local function _trigger_friendly_type(canonical)
     return _trigger_make_alias(canonical or '')
 end
 
+-- trigger_list — compact list of every trigger in mission.trigrules.
+-- Returns one row per trigger: {name, type, conditions, actions, eventlist}.
+function M.trigger_list(args)
+    local trigrules, err = _trigger_ensure_trigrules()
+    if not trigrules then return { ok = false, error = err } end
+    local out = {}
+    for _, t in ipairs(trigrules) do
+        if type(t) == 'table' then
+            table.insert(out, {
+                name       = t.comment or '',
+                type       = _trigger_friendly_type(t.predicate),
+                conditions = (type(t.rules)   == 'table') and #t.rules   or 0,
+                actions    = (type(t.actions) == 'table') and #t.actions or 0,
+                eventlist  = t.eventlist or '',
+            })
+        end
+    end
+    return { ok = true, count = #out, triggers = out }
+end
+
+-- trigger_get — full trigger detail. Resolves DictKey_* references to
+-- literal text and enriches reference ids with their *_name companion
+-- (group_name, unit_name, zone_name). args.raw=true returns the
+-- on-disk trigrules entry verbatim for debugging.
+function M.trigger_get(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'trigger_get requires args.name (string)' }
+    end
+    local raw = args.raw == true
+    local _, err = _trigger_ensure_trigrules()
+    if err then return { ok = false, error = err } end
+    local t, idx = _trigger_find_by_name(args.name)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.name .. '"' }
+    end
+    if raw then
+        return { ok = true, name = args.name, index = idx, trigger = t }
+    end
+
+    local conditions = {}
+    if type(t.rules) == 'table' then
+        for i, r in ipairs(t.rules) do
+            local _, _, descr = _trigger_resolve_predicate(r.predicate)
+            local fields = _trigger_resolve_for_get(r, descr, false)
+            fields.predicate = nil  -- don't double-emit
+            table.insert(conditions, {
+                index     = i,
+                predicate = r.predicate,
+                alias     = _trigger_make_alias(r.predicate or ''),
+                fields    = fields,
+            })
+        end
+    end
+
+    local actions = {}
+    if type(t.actions) == 'table' then
+        for i, a in ipairs(t.actions) do
+            local _, _, descr = _trigger_resolve_predicate(a.predicate)
+            local fields = _trigger_resolve_for_get(a, descr, false)
+            fields.predicate = nil
+            table.insert(actions, {
+                index     = i,
+                predicate = a.predicate,
+                alias     = _trigger_make_alias(a.predicate or ''),
+                fields    = fields,
+            })
+        end
+    end
+
+    return {
+        ok         = true,
+        name       = t.comment or '',
+        type       = _trigger_friendly_type(t.predicate),
+        eventlist  = t.eventlist or '',
+        conditions = conditions,
+        actions    = actions,
+    }
+end
+
+-- _trigger_descr_to_field_dump — flatten a descr.fields list to a dump
+-- shape suitable for JSON: array of {id, type, default, kind?}.
+local function _trigger_descr_to_field_dump(descr)
+    local out = {}
+    if type(descr) ~= 'table' or type(descr.fields) ~= 'table' then return out end
+    for _, f in ipairs(descr.fields) do
+        if type(f) == 'table' and type(f.id) == 'string' then
+            local entry = { id = f.id, type = f.type or 'edit' }
+            if f.default ~= nil then entry.default = f.default end
+            local refkind = _trigger_field_combo_kind(f)
+            if refkind then entry.refkind = refkind end
+            table.insert(out, entry)
+        end
+    end
+    return out
+end
+
+-- _trigger_predicate_example — generate the CLI invocation string for a
+-- predicate. Used in the dump to show agents how to invoke it.
+local function _trigger_predicate_example(canonical, alias, kind, descr)
+    local parts = {}
+    if kind == 'condition' or kind == 'action' then
+        table.insert(parts, 'me trigger add-' .. kind .. ' --trigger T --predicate ' .. alias)
+    elseif kind == 'trigger' then
+        table.insert(parts, 'me trigger create --type ' .. alias .. ' --name N')
+    else
+        return ''
+    end
+    -- Suggest one example pair per known field (skip KeyDict_* internal
+    -- companions; user only sees the literal field).
+    if type(descr) == 'table' and type(descr.fields) == 'table' then
+        for _, f in ipairs(descr.fields) do
+            if type(f) == 'table' and type(f.id) == 'string'
+                    and f.id:sub(1, 8) ~= 'KeyDict_' and f.id ~= 'comment' then
+                local val = '<' .. f.id .. '>'
+                table.insert(parts, f.id .. '=' .. val)
+                break  -- one suggestion is enough; full list is in `fields`.
+            end
+        end
+    end
+    return table.concat(parts, ' ')
+end
+
+-- trigger_list_predicates — dump every predicate ED knows about, optionally
+-- filtered by kind ("condition" / "action" / "trigger") and/or substring.
+-- Each entry: {name, alias, kind, display, fields=[...], example=...}.
+function M.trigger_list_predicates(args)
+    args = args or {}
+    if not _trigger_alias_cache then _trigger_build_alias_cache() end
+    local kind_filter = (type(args.kind) == 'string' and args.kind ~= '') and args.kind or nil
+    local search = (type(args.search) == 'string' and args.search ~= '') and string.lower(args.search) or nil
+
+    -- Walk only canonical names (the cache keys both canonical and alias to
+    -- the same entry; we deduplicate by the canonical we walk).
+    local Trigger = require('me_trigrules')
+    local seen = {}
+    local out = {}
+
+    local function collect(name, kind)
+        if seen[name] then return end
+        seen[name] = true
+        local entry = _trigger_alias_cache[name]
+        if not entry then return end
+        if kind_filter and entry.kind ~= kind_filter then return end
+        local alias = _trigger_make_alias(name)
+        if search and not (string.lower(name):find(search, 1, true)
+                          or alias:find(search, 1, true)) then
+            return
+        end
+        local display = ''
+        if Trigger.predicates and Trigger.predicates.descrs
+                and type(Trigger.predicates.descrs[name]) == 'table'
+                and type(Trigger.predicates.descrs[name].name) == 'string' then
+            display = Trigger.predicates.descrs[name].name
+        elseif type(entry.descr) == 'table' and type(entry.descr.display) == 'string' then
+            display = entry.descr.display
+        end
+        table.insert(out, {
+            name    = name,
+            alias   = alias,
+            kind    = entry.kind,
+            display = display,
+            fields  = _trigger_descr_to_field_dump(entry.descr),
+            example = _trigger_predicate_example(name, alias, entry.kind, entry.descr),
+        })
+    end
+
+    if Trigger.predicates and Trigger.predicates.descrs then
+        for name, _ in pairs(Trigger.predicates.descrs) do collect(name) end
+    end
+    if Trigger.triggersDescr then
+        for _, td in ipairs(Trigger.triggersDescr) do
+            if type(td) == 'table' and type(td.name) == 'string' then collect(td.name) end
+        end
+    end
+
+    table.sort(out, function(a, b) return a.name < b.name end)
+    return { ok = true, count = #out, predicates = out }
+end
+
+-- trigger_describe_predicate — single-predicate spec. Same shape as one
+-- entry from trigger_list_predicates. Accepts canonical or alias name.
+function M.trigger_describe_predicate(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'trigger_describe_predicate requires args.name (string)' }
+    end
+    local canonical, kind, descr, err = _trigger_resolve_predicate(args.name)
+    if err then return { ok = false, error = err } end
+    local Trigger = require('me_trigrules')
+    local display = ''
+    if Trigger.predicates and Trigger.predicates.descrs
+            and type(Trigger.predicates.descrs[canonical]) == 'table'
+            and type(Trigger.predicates.descrs[canonical].name) == 'string' then
+        display = Trigger.predicates.descrs[canonical].name
+    elseif type(descr) == 'table' and type(descr.display) == 'string' then
+        display = descr.display
+    end
+    local alias = _trigger_make_alias(canonical)
+    return {
+        ok      = true,
+        name    = canonical,
+        alias   = alias,
+        kind    = kind,
+        display = display,
+        fields  = _trigger_descr_to_field_dump(descr),
+        example = _trigger_predicate_example(canonical, alias, kind, descr),
+    }
+end
+
+-- trigger_create — insert a new trigger of the given type. Name defaults
+-- to ED's "Trigger <epoch>" pattern with auto-suffix on collision.
+-- Bundled rules/actions are added by the caller via repeated calls to
+-- trigger_add_condition / trigger_add_action — that composition lives at
+-- the CLI layer (see me_trigger_create.go).
+function M.trigger_create(args)
+    args = args or {}
+    local type_arg = args['type']
+    if type(type_arg) ~= 'string' or type_arg == '' then
+        return { ok = false, error = 'trigger_create requires args.type (once|continuous|start|front)' }
+    end
+    local canonical, kind, descr, err = _trigger_resolve_predicate(type_arg, 'trigger')
+    if err then return { ok = false, error = 'trigger_create: ' .. err } end
+
+    local trigrules, terr = _trigger_ensure_trigrules()
+    if not trigrules then return { ok = false, error = terr } end
+
+    -- Build the trigger via ED's createTrigger to inherit field defaults.
+    local Trigger = require('me_trigrules')
+    if type(Trigger.createTrigger) ~= 'function' then
+        return { ok = false, error = 'me_trigrules.createTrigger unavailable' }
+    end
+    local ok_call, new_trigger = pcall(Trigger.createTrigger, descr)
+    if not ok_call or type(new_trigger) ~= 'table' then
+        return { ok = false, error = 'createTrigger failed: ' .. tostring(new_trigger) }
+    end
+
+    -- Override the auto-generated comment with the user's name (or its
+    -- collision-resolved equivalent).
+    local desired_name = (type(args.name) == 'string' and args.name ~= '')
+                        and args.name or _trigger_default_name()
+    new_trigger.comment = _trigger_unique_name(desired_name)
+
+    -- Force the predicate to the canonical even if createTrigger picked
+    -- something else (paranoia; createTrigger should already match descr).
+    new_trigger.predicate = canonical
+
+    table.insert(trigrules, new_trigger)
+    _trigger_panel_refresh()
+
+    return {
+        ok    = true,
+        name  = new_trigger.comment,
+        type  = _trigger_friendly_type(canonical),
+        index = #trigrules,
+    }
+end
+
+-- trigger_remove — delete a trigger by name. Refuses on missing trigger.
+function M.trigger_remove(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'trigger_remove requires args.name (string)' }
+    end
+    local trigrules, err = _trigger_ensure_trigrules()
+    if not trigrules then return { ok = false, error = err } end
+    local _, idx = _trigger_find_by_name(args.name)
+    if not idx then
+        return { ok = false, error = 'no trigger named "' .. args.name .. '"' }
+    end
+    table.remove(trigrules, idx)
+    _trigger_panel_refresh()
+    return { ok = true, name = args.name, removed_index = idx, count = #trigrules }
+end
+
+-- trigger_set_name — rename a trigger (mutate the comment field).
+-- Refuses if the new name collides with another existing trigger.
+function M.trigger_set_name(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'trigger_set_name requires args.name (current name, string)' }
+    end
+    if type(args.to) ~= 'string' or args.to == '' then
+        return { ok = false, error = 'trigger_set_name requires args.to (new name, string)' }
+    end
+    local _, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+    local t = _trigger_find_by_name(args.name)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.name .. '"' }
+    end
+    if args.to ~= args.name then
+        local existing = _trigger_find_by_name(args.to)
+        if existing then
+            return { ok = false, error = 'a trigger named "' .. args.to .. '" already exists' }
+        end
+    end
+    t.comment = args.to
+    _trigger_panel_refresh()
+    return { ok = true, name = args.to, previous_name = args.name }
+end
+
+-- trigger_set_eventlist — set or clear the event filter on a trigger.
+-- args.event is the event id (string from ED's eventLister) or empty
+-- string to clear.
+function M.trigger_set_eventlist(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'trigger_set_eventlist requires args.name' }
+    end
+    if args.event ~= nil and type(args.event) ~= 'string' then
+        return { ok = false, error = 'trigger_set_eventlist requires args.event (string or nil)' }
+    end
+    local _, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+    local t = _trigger_find_by_name(args.name)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.name .. '"' }
+    end
+    t.eventlist = args.event or ''
+    _trigger_panel_refresh()
+    return { ok = true, name = args.name, eventlist = t.eventlist }
+end
+
+-- _trigger_build_rule_or_action — internal: build a {predicate=..., ...}
+-- entry from a user-supplied predicate name + fields, validating against
+-- the descriptor and applying type coercion / reference resolution / dict
+-- key allocation. Returns entry, err.
+local function _trigger_build_rule_or_action(predicate_name, fields, expected_kind)
+    local canonical, kind, descr, err = _trigger_resolve_predicate(predicate_name, expected_kind)
+    if err then return nil, err end
+
+    -- Use ED's predicates.createRule to inherit field defaults if available
+    -- — but if it's not available or returns an unexpected shape, fall back
+    -- to a minimal {predicate=canonical}.
+    local Trigger = require('me_trigrules')
+    local entry = nil
+    if Trigger.predicates and type(Trigger.predicates.createRule) == 'function' then
+        local ok, built = pcall(Trigger.predicates.createRule, descr)
+        if ok and type(built) == 'table' then entry = built end
+    end
+    if entry == nil then
+        entry = { predicate = canonical }
+    else
+        -- createRule sets predicate via descr.name; force canonical for safety.
+        entry.predicate = canonical
+    end
+
+    local ok_apply, apply_err = _trigger_apply_fields(entry, descr, fields)
+    if not ok_apply then return nil, apply_err end
+    return entry, nil
+end
+
+-- trigger_add_condition — append a condition entry to trigger.rules.
+function M.trigger_add_condition(args)
+    if type(args) ~= 'table' or type(args.trigger) ~= 'string' or args.trigger == '' then
+        return { ok = false, error = 'trigger_add_condition requires args.trigger (name)' }
+    end
+    if type(args.predicate) ~= 'string' or args.predicate == '' then
+        return { ok = false, error = 'trigger_add_condition requires args.predicate' }
+    end
+    local _, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+    local t = _trigger_find_by_name(args.trigger)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.trigger .. '"' }
+    end
+    if type(t.rules) ~= 'table' then t.rules = {} end
+
+    local entry, err = _trigger_build_rule_or_action(args.predicate, args.fields, 'condition')
+    if not entry then return { ok = false, error = 'trigger_add_condition: ' .. err } end
+
+    table.insert(t.rules, entry)
+    _trigger_panel_refresh()
+    return {
+        ok        = true,
+        trigger   = args.trigger,
+        predicate = entry.predicate,
+        index     = #t.rules,
+    }
+end
+
+-- trigger_add_action — append an action entry to trigger.actions.
+function M.trigger_add_action(args)
+    if type(args) ~= 'table' or type(args.trigger) ~= 'string' or args.trigger == '' then
+        return { ok = false, error = 'trigger_add_action requires args.trigger (name)' }
+    end
+    if type(args.predicate) ~= 'string' or args.predicate == '' then
+        return { ok = false, error = 'trigger_add_action requires args.predicate' }
+    end
+    local _, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+    local t = _trigger_find_by_name(args.trigger)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.trigger .. '"' }
+    end
+    if type(t.actions) ~= 'table' then t.actions = {} end
+
+    local entry, err = _trigger_build_rule_or_action(args.predicate, args.fields, 'action')
+    if not entry then return { ok = false, error = 'trigger_add_action: ' .. err } end
+
+    table.insert(t.actions, entry)
+    _trigger_panel_refresh()
+    return {
+        ok        = true,
+        trigger   = args.trigger,
+        predicate = entry.predicate,
+        index     = #t.actions,
+    }
+end
+
+-- trigger_remove_condition — remove the rule at index N (1-based).
+function M.trigger_remove_condition(args)
+    if type(args) ~= 'table' or type(args.trigger) ~= 'string' or args.trigger == '' then
+        return { ok = false, error = 'trigger_remove_condition requires args.trigger (name)' }
+    end
+    if type(args.index) ~= 'number' or args.index < 1 then
+        return { ok = false, error = 'trigger_remove_condition requires args.index (1-based)' }
+    end
+    local _, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+    local t = _trigger_find_by_name(args.trigger)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.trigger .. '"' }
+    end
+    if type(t.rules) ~= 'table' or args.index > #t.rules then
+        return { ok = false,
+                 error = 'trigger has only ' .. (type(t.rules) == 'table' and #t.rules or 0)
+                         .. ' conditions; cannot remove index ' .. args.index }
+    end
+    table.remove(t.rules, args.index)
+    _trigger_panel_refresh()
+    return { ok = true, trigger = args.trigger,
+             removed_index = args.index, remaining = #t.rules }
+end
+
+-- trigger_remove_action — remove the action at index N (1-based).
+function M.trigger_remove_action(args)
+    if type(args) ~= 'table' or type(args.trigger) ~= 'string' or args.trigger == '' then
+        return { ok = false, error = 'trigger_remove_action requires args.trigger (name)' }
+    end
+    if type(args.index) ~= 'number' or args.index < 1 then
+        return { ok = false, error = 'trigger_remove_action requires args.index (1-based)' }
+    end
+    local _, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+    local t = _trigger_find_by_name(args.trigger)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.trigger .. '"' }
+    end
+    if type(t.actions) ~= 'table' or args.index > #t.actions then
+        return { ok = false,
+                 error = 'trigger has only ' .. (type(t.actions) == 'table' and #t.actions or 0)
+                         .. ' actions; cannot remove index ' .. args.index }
+    end
+    table.remove(t.actions, args.index)
+    _trigger_panel_refresh()
+    return { ok = true, trigger = args.trigger,
+             removed_index = args.index, remaining = #t.actions }
+end
+
 -- group_list — return concise summaries of all groups, with optional filters.
 --
 -- args (all optional):
