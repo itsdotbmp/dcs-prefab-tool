@@ -107,11 +107,15 @@ func meZoneCreateCmd(args []string, stdout, stderr io.Writer) int {
 
 // parseVerticesToLua converts "n1,e1;n2,e2;n3,e3;n4,e4" into a Lua table
 // expression "{ {north=n1,east=e1}, {north=n2,east=e2}, ... }".
+//
+// Per-shape minimum vertex count is enforced Lua-side (zone quad needs
+// >= 3; line drawing >= 2; free polygon >= 3). This parser only checks
+// that the string isn't empty so all callers can share it.
 func parseVerticesToLua(s string) (string, error) {
-	parts := strings.Split(s, ";")
-	if len(parts) < 3 {
-		return "", fmt.Errorf("--vertices needs >= 3 corner pairs separated by ';' (got %d)", len(parts))
+	if strings.TrimSpace(s) == "" {
+		return "", fmt.Errorf("--vertices is empty")
 	}
+	parts := strings.Split(s, ";")
 	var b strings.Builder
 	b.WriteString("{ ")
 	for i, p := range parts {

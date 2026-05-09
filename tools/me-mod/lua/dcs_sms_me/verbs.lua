@@ -2574,6 +2574,112 @@ function M.drawing_create_arrow(args)
              layer = args.layer or 'Common' }
 end
 
+-- compute_center_and_relative_points — shared helper for line and free
+-- polygon. Takes a list of {north, east} absolute world coords and
+-- returns center (mapX, mapY) + relative points table {{x, y}, ...}
+-- where (x, y) is each vertex's offset from the center. Same convention
+-- as zone_create_quad uses internally.
+local function compute_center_and_relative_points(vertices)
+    local cx, cy = 0, 0
+    for _, v in ipairs(vertices) do
+        cx = cx + v.north; cy = cy + v.east
+    end
+    cx = cx / #vertices; cy = cy / #vertices
+    local rel = {}
+    for _, v in ipairs(vertices) do
+        table.insert(rel, { x = v.north - cx, y = v.east - cy })
+    end
+    return cx, cy, rel
+end
+
+-- drawing_create_line — multi-segment line / polyline.
+--
+-- args (required):
+--   vertices  list of { north, east } in absolute world meters (>= 2)
+--
+-- args (optional):
+--   name, color, thickness, style, layer, hidden_on_planner
+--   closed     bool (default false; closes the polyline back to first vertex)
+--   line_mode  segments | segment | free  (default 'segments')
+function M.drawing_create_line(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'drawing_create_line requires args (table)' }
+    end
+    if type(args.vertices) ~= 'table' or #args.vertices < 2 then
+        return { ok = false, error = 'drawing_create_line requires args.vertices (>= 2 {north,east} pairs)' }
+    end
+    for i, v in ipairs(args.vertices) do
+        if type(v) ~= 'table' or type(v.north) ~= 'number' or type(v.east) ~= 'number' then
+            return { ok = false, error = 'vertex ' .. i .. ' missing/invalid {north, east} numbers' }
+        end
+    end
+
+    local cx, cy, rel = compute_center_and_relative_points(args.vertices)
+    local name = (type(args.name) == 'string' and args.name ~= '') and args.name
+                 or unique_drawing_name('Line')
+
+    local obj = {
+        primitiveType = 'Line',
+        name = name,
+        colorString = args.color or '0xff0000ff',
+        mapX = cx, mapY = cy,
+        visible = true,
+        hiddenOnPlanner = (args.hidden_on_planner == true),
+        lineMode = args.line_mode or 'segments',
+        style = args.style or DEFAULT_LINE_STYLE,
+        thickness = args.thickness or DEFAULT_THICKNESS,
+        closed = (args.closed == true),
+        points = rel,
+    }
+    local _, err = inject_drawing(obj, args.layer or 'Common')
+    if err then return { ok = false, error = err } end
+    return { ok = true, name = name, type = 'Line', mode = obj.lineMode,
+             north = cx, east = cy, vertex_count = #rel,
+             closed = obj.closed, layer = args.layer or 'Common' }
+end
+
+-- drawing_create_polygon — free-shape polygon (closed by default; no
+-- closed flag, the polygon is always closed because polygonFreeLoad
+-- sets up a fill region).
+--
+-- args (required): vertices (>= 3)
+-- args (optional): name, color, fill_color, thickness, style, layer,
+--                  hidden_on_planner
+function M.drawing_create_polygon(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'drawing_create_polygon requires args (table)' }
+    end
+    if type(args.vertices) ~= 'table' or #args.vertices < 3 then
+        return { ok = false, error = 'drawing_create_polygon requires args.vertices (>= 3 {north,east} pairs)' }
+    end
+    for i, v in ipairs(args.vertices) do
+        if type(v) ~= 'table' or type(v.north) ~= 'number' or type(v.east) ~= 'number' then
+            return { ok = false, error = 'vertex ' .. i .. ' missing/invalid {north, east} numbers' }
+        end
+    end
+
+    local cx, cy, rel = compute_center_and_relative_points(args.vertices)
+    local name = (type(args.name) == 'string' and args.name ~= '') and args.name
+                 or unique_drawing_name('Polygon')
+
+    local obj = {
+        primitiveType = 'Polygon', polygonMode = 'free', name = name,
+        colorString = args.color or '0xff0000ff',
+        fillColorString = args.fill_color or '0xff000080',
+        mapX = cx, mapY = cy,
+        visible = true,
+        hiddenOnPlanner = (args.hidden_on_planner == true),
+        style = args.style or DEFAULT_LINE_STYLE,
+        thickness = args.thickness or DEFAULT_THICKNESS,
+        points = rel,
+    }
+    local _, err = inject_drawing(obj, args.layer or 'Common')
+    if err then return { ok = false, error = err } end
+    return { ok = true, name = name, type = 'Polygon', mode = 'free',
+             north = cx, east = cy, vertex_count = #rel,
+             layer = args.layer or 'Common' }
+end
+
 -- ============================================================
 -- Read-side verbs: list / get
 -- ============================================================
