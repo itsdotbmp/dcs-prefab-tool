@@ -72,3 +72,20 @@ func parseBundledRuleString(s string) (predicate string, fields map[string]strin
 	}
 	return predicate, fields, nil
 }
+
+// stringSliceFlag implements flag.Value to allow repeatable --condition /
+// --action flags on `me trigger create`. Each occurrence appends to the
+// underlying slice; FilePath: tools/cmd/dcs-sms/me_trigger_args.go.
+type stringSliceFlag []string
+
+func (s *stringSliceFlag) String() string {
+	if s == nil {
+		return ""
+	}
+	return strings.Join(*s, ", ")
+}
+
+func (s *stringSliceFlag) Set(v string) error {
+	*s = append(*s, v)
+	return nil
+}
