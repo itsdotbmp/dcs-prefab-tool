@@ -3579,11 +3579,28 @@ end
 -- practice — this cache is a perf optimization, not a correctness gate).
 local _trigger_alias_cache
 
+-- _trigger_predicate_name — normalize a predicate value to its canonical
+-- string name, regardless of whether ED stored it as a string (in-memory
+-- after createTrigger / fresh insert) or a descriptor table (loaded from
+-- disk by me_mission.load via Trigger.loadTriggers, which expands string
+-- names to {name=..., fields=...} entries).
+--
+-- Returns "" for unrecognized shapes so callers can short-circuit cleanly.
+local function _trigger_predicate_name(p)
+    if type(p) == 'string' then return p end
+    if type(p) == 'table' and type(p.name) == 'string' then return p.name end
+    return ''
+end
+
 -- _trigger_make_alias — strip prefix + underscore→dash to get the friendly
 -- form. "c_flag_is_true" → "flag-is-true", "a_set_flag" → "set-flag",
 -- "triggerOnce" → "once", "triggerContinious" → "continuous" (fixes typo).
+-- Accepts either a canonical string or a {name=..., fields=...} descriptor
+-- table — ED uses both shapes for the predicate field depending on whether
+-- the trigger was just created (string) or loaded from disk (table).
 local function _trigger_make_alias(canonical)
-    local s = canonical
+    local s = _trigger_predicate_name(canonical)
+    if s == '' then return '' end
     if s:sub(1, 2) == 'c_' or s:sub(1, 2) == 'a_' then
         s = s:sub(3)
     elseif s:sub(1, 7) == 'trigger' then
@@ -4017,13 +4034,14 @@ function M.trigger_get(args)
     local conditions = {}
     if type(t.rules) == 'table' then
         for i, r in ipairs(t.rules) do
-            local _, _, descr = _trigger_resolve_predicate(r.predicate)
+            local pname = _trigger_predicate_name(r.predicate)
+            local _, _, descr = _trigger_resolve_predicate(pname)
             local fields = _trigger_resolve_for_get(r, descr, false)
             fields.predicate = nil  -- don't double-emit
             table.insert(conditions, {
                 index     = i,
-                predicate = r.predicate,
-                alias     = _trigger_make_alias(r.predicate or ''),
+                predicate = pname,
+                alias     = _trigger_make_alias(r.predicate),
                 fields    = fields,
             })
         end
@@ -4032,13 +4050,14 @@ function M.trigger_get(args)
     local actions = {}
     if type(t.actions) == 'table' then
         for i, a in ipairs(t.actions) do
-            local _, _, descr = _trigger_resolve_predicate(a.predicate)
+            local pname = _trigger_predicate_name(a.predicate)
+            local _, _, descr = _trigger_resolve_predicate(pname)
             local fields = _trigger_resolve_for_get(a, descr, false)
             fields.predicate = nil
             table.insert(actions, {
                 index     = i,
-                predicate = a.predicate,
-                alias     = _trigger_make_alias(a.predicate or ''),
+                predicate = pname,
+                alias     = _trigger_make_alias(a.predicate),
                 fields    = fields,
             })
         end
@@ -4219,9 +4238,10 @@ function M.trigger_create(args)
                         and args.name or _trigger_default_name()
     new_trigger.comment = _trigger_unique_name(desired_name)
 
-    -- Force the predicate to the canonical even if createTrigger picked
-    -- something else (paranoia; createTrigger should already match descr).
-    new_trigger.predicate = canonical
+    -- DO NOT overwrite new_trigger.predicate. ED's createTrigger sets
+    -- new_trigger.predicate = descr (the descriptor TABLE {name=..., fields=...}).
+    -- ED's saveTriggers reads .predicate.name to serialize, so replacing the
+    -- table with a canonical string would silently drop the trigger on save.
 
     table.insert(trigrules, new_trigger)
     _trigger_panel_refresh()
@@ -4325,11 +4345,16 @@ local function _trigger_build_rule_or_action(predicate_name, fields, expected_ki
         end
     end
     if entry == nil then
-        entry = { predicate = canonical }
-    else
-        -- The factories set predicate via descr.name; force canonical for safety.
-        entry.predicate = canonical
+        -- Fallback path only: factories returned nothing usable, so we
+        -- synthesize a minimal entry. Use the descriptor table shape that
+        -- ED's saveTriggers expects (it reads .predicate.name) so the
+        -- entry survives a save round-trip.
+        entry = { predicate = descr }
     end
+    -- DO NOT overwrite entry.predicate when the factory built it.
+    -- createRule / createAction set entry.predicate = descr (the descriptor
+    -- TABLE), which is what ED's saveTriggers reads .name from at save time.
+    -- Replacing the table with a canonical string drops the entry on save.
 
     local ok_apply, apply_err = _trigger_apply_fields(entry, descr, fields)
     if not ok_apply then return nil, apply_err end
@@ -4360,7 +4385,7 @@ function M.trigger_add_condition(args)
     return {
         ok        = true,
         trigger   = args.trigger,
-        predicate = entry.predicate,
+        predicate = _trigger_predicate_name(entry.predicate),
         index     = #t.rules,
     }
 end
@@ -4389,7 +4414,7 @@ function M.trigger_add_action(args)
     return {
         ok        = true,
         trigger   = args.trigger,
-        predicate = entry.predicate,
+        predicate = _trigger_predicate_name(entry.predicate),
         index     = #t.actions,
     }
 end
