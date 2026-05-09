@@ -2,8 +2,11 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/nielsvaes/dcs-sms/tools/internal/dcspath"
@@ -68,8 +71,8 @@ func runInteractiveMenuWith(stdin io.Reader, stdout, stderr io.Writer, deps menu
 		case "3":
 			return runActionAndPause(reader, stdout, stderr, deps.actions.update)
 		case "4":
-			// Option 4 lands in Task 5.
-			fmt.Fprintln(stdout, "(option 4 not yet implemented)")
+			promptAndSaveDCSPath(reader, stdout, stderr, deps.configPath)
+			invalidStreak = 0
 			continue
 		default:
 			invalidStreak++
@@ -110,4 +113,63 @@ func dcsInstallLine(deps menuDeps) string {
 		return "DCS install: not detected — pick option 4 to set it"
 	}
 	return "DCS install: " + path
+}
+
+const maxPathAttempts = 2
+
+// promptAndSaveDCSPath asks the user to paste their DCS install folder.
+// On success it persists the (sanitized) path to deps.configPath via
+// dcspath.SaveInstallConfig and prints "Saved.". On failure it reprompts
+// once; after two failed attempts it returns to the main menu without
+// saving.
+func promptAndSaveDCSPath(reader *bufio.Reader, stdout, stderr io.Writer, configPath string) {
+	for attempt := 0; attempt < maxPathAttempts; attempt++ {
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, `Paste your DCS install folder (the one containing MissionEditor\MissionEditor.lua).`)
+		fmt.Fprintln(stdout, `Quotes are fine, they'll be stripped.`)
+		fmt.Fprint(stdout, "> ")
+		line, err := reader.ReadString('\n')
+		if err != nil && line == "" {
+			fmt.Fprintln(stderr, "dcs-sms: no path entered")
+			return
+		}
+		path := dcspath.SanitizeUserPath(line)
+		if path == "" {
+			fmt.Fprintln(stdout, "Empty path — try again.")
+			continue
+		}
+		if err := validateDCSInstallRoot(path); err != nil {
+			fmt.Fprintf(stdout, "%v\n", err)
+			continue
+		}
+		if configPath == "" {
+			fmt.Fprintln(stderr, "dcs-sms: cannot determine config file location; not saving")
+			return
+		}
+		if err := dcspath.SaveInstallConfig(configPath, filepath.ToSlash(path)); err != nil {
+			fmt.Fprintf(stderr, "dcs-sms: failed to save config: %v\n", err)
+			return
+		}
+		fmt.Fprintln(stdout, "Saved.")
+		return
+	}
+	fmt.Fprintln(stdout, "Returning to menu without saving.")
+}
+
+func validateDCSInstallRoot(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("path does not exist: %s", path)
+		}
+		return fmt.Errorf("could not stat %s: %v", path, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("not a directory: %s", path)
+	}
+	meFile := filepath.Join(path, "MissionEditor", "MissionEditor.lua")
+	if _, err := os.Stat(meFile); err != nil {
+		return fmt.Errorf("MissionEditor.lua not found at %s — is this really the DCS install root?", meFile)
+	}
+	return nil
 }

@@ -169,3 +169,115 @@ func TestMenuBannerShowsNotDetected(t *testing.T) {
 		t.Errorf("expected 'not detected' in banner, got %q", stdout.String())
 	}
 }
+
+// makeFakeDCSInstall creates a tmp dir with MissionEditor/MissionEditor.lua
+// in it — a stand-in for a real DCS install root that passes validation.
+func makeFakeDCSInstall(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	meDir := filepath.Join(root, "MissionEditor")
+	if err := os.MkdirAll(meDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(meDir, "MissionEditor.lua"), []byte("-- stub\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+func TestMenuOption4SavesValidPath(t *testing.T) {
+	dcsRoot := makeFakeDCSInstall(t)
+	cfgDir := t.TempDir()
+	cfg := filepath.Join(cfgDir, "config.toml")
+	deps := menuDeps{
+		actions:    menuActions{install: failHandler(t), uninstall: failHandler(t), update: failHandler(t)},
+		configPath: cfg,
+	}
+
+	// Input: option 4, paste path, then `q`.
+	in := "4\n" + dcsRoot + "\nq\n"
+	var stdout, stderr bytes.Buffer
+	code := runInteractiveMenuWith(strings.NewReader(in), &stdout, &stderr, deps)
+	if code != 0 {
+		t.Errorf("exit code %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "Saved.") {
+		t.Errorf("expected 'Saved.' in stdout, got %q", stdout.String())
+	}
+	// Banner after save should show the path.
+	if c := strings.Count(stdout.String(), "DCS install: "+filepath.ToSlash(dcsRoot)); c < 1 {
+		t.Errorf("expected banner to show new path after save, got %q", stdout.String())
+	}
+	// Config file should now contain the path.
+	data, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), filepath.ToSlash(dcsRoot)) {
+		t.Errorf("expected %q in config %q", filepath.ToSlash(dcsRoot), string(data))
+	}
+}
+
+func TestMenuOption4StripsQuotes(t *testing.T) {
+	dcsRoot := makeFakeDCSInstall(t)
+	cfgDir := t.TempDir()
+	cfg := filepath.Join(cfgDir, "config.toml")
+	deps := menuDeps{
+		actions:    menuActions{install: failHandler(t), uninstall: failHandler(t), update: failHandler(t)},
+		configPath: cfg,
+	}
+
+	in := "4\n" + `"` + dcsRoot + `"` + "\nq\n"
+	var stdout, stderr bytes.Buffer
+	_ = runInteractiveMenuWith(strings.NewReader(in), &stdout, &stderr, deps)
+	data, _ := os.ReadFile(cfg)
+	if strings.Contains(string(data), `\"`) {
+		t.Errorf("config should not contain escaped quote literals: %q", string(data))
+	}
+	if !strings.Contains(string(data), filepath.ToSlash(dcsRoot)) {
+		t.Errorf("expected sanitized %q in config %q", filepath.ToSlash(dcsRoot), string(data))
+	}
+}
+
+func TestMenuOption4RejectsMissingMissionEditor(t *testing.T) {
+	bogus := t.TempDir() // dir exists, but no MissionEditor/ in it
+	cfgDir := t.TempDir()
+	cfg := filepath.Join(cfgDir, "config.toml")
+	deps := menuDeps{
+		actions:    menuActions{install: failHandler(t), uninstall: failHandler(t), update: failHandler(t)},
+		configPath: cfg,
+	}
+
+	// First attempt: bogus. Second attempt: bogus again. Then `q`.
+	in := "4\n" + bogus + "\n" + bogus + "\nq\n"
+	var stdout, stderr bytes.Buffer
+	code := runInteractiveMenuWith(strings.NewReader(in), &stdout, &stderr, deps)
+	if code != 0 {
+		t.Errorf("exit code %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "MissionEditor") {
+		t.Errorf("expected error mentioning MissionEditor, got %q", stdout.String())
+	}
+	// Config should be empty / non-existent.
+	if data, err := os.ReadFile(cfg); err == nil && strings.Contains(string(data), bogus) {
+		t.Errorf("config should not have been written: %q", string(data))
+	}
+}
+
+func TestMenuOption4RejectsNonDirectory(t *testing.T) {
+	cfgDir := t.TempDir()
+	cfg := filepath.Join(cfgDir, "config.toml")
+	deps := menuDeps{
+		actions:    menuActions{install: failHandler(t), uninstall: failHandler(t), update: failHandler(t)},
+		configPath: cfg,
+	}
+
+	bogus := filepath.Join(t.TempDir(), "nope")
+	in := "4\n" + bogus + "\n" + bogus + "\nq\n"
+	var stdout, stderr bytes.Buffer
+	_ = runInteractiveMenuWith(strings.NewReader(in), &stdout, &stderr, deps)
+	if !strings.Contains(stdout.String(), "not a directory") &&
+		!strings.Contains(stdout.String(), "does not exist") {
+		t.Errorf("expected error about missing/invalid directory, got %q", stdout.String())
+	}
+}
