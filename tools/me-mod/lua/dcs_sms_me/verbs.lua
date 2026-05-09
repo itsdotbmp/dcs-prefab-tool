@@ -790,6 +790,45 @@ function M.zone_create_quad(args)
              center = { north = cx, east = cy }, vertex_count = #points }
 end
 
+-- ============================================================
+-- Zone setters (per-field)
+-- ============================================================
+--
+-- Each setter takes { name = "<X>" | id = <N>, <field> = <value> } and wraps
+-- the matching Mission.TriggerZoneData.setTriggerZone* call. Returns the new
+-- value on success so callers can confirm the write took.
+
+-- zone_set_color — change RGBA color of a zone.
+-- args: { name | id, color = { r, g, b[, a] } } floats 0..1.
+-- Alpha defaults to 0.15 (DCS's translucent fill alpha) if missing.
+function M.zone_set_color(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'zone_set_color requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'zone_set_color requires exactly one of args.name or args.id' }
+    end
+    if type(args.color) ~= 'table' or type(args.color[1]) ~= 'number'
+            or type(args.color[2]) ~= 'number' or type(args.color[3]) ~= 'number' then
+        return { ok = false, error = 'zone_set_color requires args.color = { r, g, b[, a] } floats 0..1' }
+    end
+    local zid, zname = find_zone(has_name and args.name or nil,
+                                 has_id and args.id or nil)
+    if not zid then
+        return { ok = false, error = 'zone not found' }
+    end
+    local r, g, b = args.color[1], args.color[2], args.color[3]
+    local a = (type(args.color[4]) == 'number') and args.color[4] or 0.15
+    local TZD = require('Mission.TriggerZoneData')
+    local ok_call, err = pcall(TZD.setTriggerZoneColor, zid, r, g, b, a)
+    if not ok_call then
+        return { ok = false, error = 'setTriggerZoneColor: ' .. tostring(err) }
+    end
+    return { ok = true, id = zid, name = zname, color = { r, g, b, a } }
+end
+
 -- zone_remove — remove a trigger zone by name or id (mutually exclusive).
 function M.zone_remove(args)
     if type(args) ~= 'table' then
