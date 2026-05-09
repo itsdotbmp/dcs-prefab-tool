@@ -2383,6 +2383,83 @@ function M.drawing_remove(args)
 end
 
 -- ============================================================
+-- Drawings — create-* verbs
+-- ============================================================
+--
+-- Each builds the right on-disk shape (per saveToMission's per-shape
+-- savers in me_draw_panel.lua) and routes through inject_drawing.
+--
+-- Common fields every shape needs:
+--   primitiveType  Line | Polygon | TextBox | Icon
+--   name           unique across all layers (verifyName enforces)
+--   colorString    '0xRRGGBBAA' (outline color)
+--   mapX, mapY     world coords (mission-table x = N–S, y = E–W)
+--   visible        bool
+--   layerName      Red | Blue | Neutral | Common | Author
+--   hiddenOnPlanner  bool
+--
+-- Polygon adds: polygonMode (circle/oval/rect/free/arrow), style,
+-- thickness, fillColorString, plus mode-specific shape fields.
+-- Line adds:    lineMode (segments/segment/free), style, thickness,
+--               closed, points (relative to mapX/mapY).
+-- TextBox adds: text, font, fontSize, borderThickness, angle.
+-- Icon adds:    file (relative to icons folder), scale, angle.
+
+-- DEFAULT_LINE_STYLE / DEFAULT_THICKNESS — match the panel's own
+-- newPrimitiveInfo_ defaults at me_draw_panel.lua:157. lineStyles_ holds
+-- per-style canonical thickness; without a panel hook we hard-code
+-- 'solid' = 2 which matches ED's polyline_solid.png pixel height.
+local DEFAULT_LINE_STYLE = 'solid'
+local DEFAULT_THICKNESS = 2
+
+-- drawing_create_circle — disk-shape polygon (filled disc with outline).
+--
+-- args (required):
+--   north, east   meters; center of the circle
+--   radius        meters
+--
+-- args (optional):
+--   name             default 'Circle-N' (auto-incremented)
+--   color            '0xRRGGBBAA' (outline; default red, opaque)
+--   fill_color       '0xRRGGBBAA' (fill;    default red, half-alpha)
+--   thickness        outline thickness in pixels (default 2)
+--   style            line style: solid / dot / dash / boundry1 ... (default 'solid')
+--   layer            Red | Blue | Neutral | Common | Author (default 'Common')
+--   hidden_on_planner   bool (default false)
+function M.drawing_create_circle(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'drawing_create_circle requires args (table)' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'drawing_create_circle requires args.north and args.east (numbers, meters)' }
+    end
+    if type(args.radius) ~= 'number' or args.radius <= 0 then
+        return { ok = false, error = 'drawing_create_circle requires args.radius (positive number, meters)' }
+    end
+
+    local name = (type(args.name) == 'string' and args.name ~= '') and args.name
+                 or unique_drawing_name('Circle')
+    local obj = {
+        primitiveType = 'Polygon',
+        polygonMode = 'circle',
+        name = name,
+        colorString = args.color or '0xff0000ff',
+        fillColorString = args.fill_color or '0xff000080',
+        mapX = args.north, mapY = args.east,
+        visible = true,
+        hiddenOnPlanner = (args.hidden_on_planner == true),
+        style = args.style or DEFAULT_LINE_STYLE,
+        thickness = args.thickness or DEFAULT_THICKNESS,
+        radius = args.radius,
+    }
+    local _, err = inject_drawing(obj, args.layer or 'Common')
+    if err then return { ok = false, error = err } end
+    return { ok = true, name = name, type = 'Polygon', mode = 'circle',
+             north = args.north, east = args.east, radius = args.radius,
+             layer = args.layer or 'Common' }
+end
+
+-- ============================================================
 -- Read-side verbs: list / get
 -- ============================================================
 --

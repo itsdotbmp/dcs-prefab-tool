@@ -32,6 +32,65 @@ var namedZoneColors = map[string][4]float64{
 	"purple":  {0.5, 0, 1, 0.15},
 }
 
+// parseDrawingColorToHex converts the --color / --fill-color flag value to
+// a `'0xRRGGBBAA'` Lua string literal — the format me_draw_panel uses
+// internally (parseColorString in me_draw_panel.lua does
+// tonumber(colorString) and bit-extracts RGBA). Returns "" if the flag is
+// empty (caller should then omit the color clause and let the Lua verb
+// apply the default).
+//
+// `defaultAlpha` is the alpha byte (0..255) used when the user didn't
+// supply explicit alpha — typically 0xFF for outline colors and 0x80 for
+// fill colors, matching the ME's own defaults at newPrimitiveInfo_ in
+// me_draw_panel.lua.
+//
+// Same input shapes as parseColorToLua: named (red / blue / ...),
+// "#rrggbb", or "#rrggbbaa". Returns the literal already wrapped in
+// single quotes — ready to splice into a Lua arg expression.
+func parseDrawingColorToHex(s string, defaultAlpha uint8) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	var r, g, b, a uint8
+	if rgba, ok := namedZoneColors[strings.ToLower(s)]; ok {
+		r = uint8(rgba[0]*255 + 0.5)
+		g = uint8(rgba[1]*255 + 0.5)
+		b = uint8(rgba[2]*255 + 0.5)
+		a = defaultAlpha // override the zone-table's 0.15 alpha — drawings
+		// have their own opacity convention by primitive role.
+	} else {
+		hex := strings.TrimPrefix(s, "#")
+		switch len(hex) {
+		case 6, 8:
+		default:
+			return "", fmt.Errorf("--color %q: expected name or #rrggbb / #rrggbbaa", s)
+		}
+		ru, err := strconv.ParseUint(hex[0:2], 16, 8)
+		if err != nil {
+			return "", fmt.Errorf("--color %q: invalid red byte: %w", s, err)
+		}
+		gu, err := strconv.ParseUint(hex[2:4], 16, 8)
+		if err != nil {
+			return "", fmt.Errorf("--color %q: invalid green byte: %w", s, err)
+		}
+		bu, err := strconv.ParseUint(hex[4:6], 16, 8)
+		if err != nil {
+			return "", fmt.Errorf("--color %q: invalid blue byte: %w", s, err)
+		}
+		r, g, b = uint8(ru), uint8(gu), uint8(bu)
+		a = defaultAlpha
+		if len(hex) == 8 {
+			au, err := strconv.ParseUint(hex[6:8], 16, 8)
+			if err != nil {
+				return "", fmt.Errorf("--color %q: invalid alpha byte: %w", s, err)
+			}
+			a = uint8(au)
+		}
+	}
+	return fmt.Sprintf("'0x%02x%02x%02x%02x'", r, g, b, a), nil
+}
+
 // parseColorToLua converts the --color flag value to a "{r, g, b, a}" Lua
 // table expression with floats 0..1. Returns "" if the flag is empty (caller
 // should then omit the color clause and let the Lua verb apply the default).
