@@ -1493,6 +1493,131 @@ function M.group_set_pos(args)
              north = g.x, east = g.y, delta = { north = dx, east = dy } }
 end
 
+-- group_set_formation — set the per-waypoint formation for a vehicle group.
+--
+-- Vehicle waypoints carry a "formation action" (wp.type, the action table
+-- reference): one of Off Road / On Road / Rank / Cone / Vee / Diamond /
+-- Echelon L / Echelon R / Custom. For Custom, wp.formation_template names
+-- a DB.templates entry (e.g. "Hawk SAM Battery"). For built-ins, the
+-- formation_template field is irrelevant and gets cleared so it doesn't
+-- linger as stale state.
+--
+-- Vehicle groups only:
+--   * plane / helicopter: formation is per-WrappedAction-task on the
+--     waypoint, not via wp.type. Hidden from the route panel
+--     (me_route.lua:2084: c_form_templ:setVisible(not isAirGroup)). A
+--     future air-formation verb will do task surgery — out of scope here.
+--   * ship: only the turningPoint action is valid (me_route.lua:204) —
+--     formation actions don't apply.
+--   * static: no route, no formations.
+--
+-- args:
+--   name | id        group selector (mutually exclusive)
+--   formation        formation name; built-in alias OR a DB.templates entry.
+--                    Built-in aliases (case-insensitive, dash/space tolerant):
+--                      off-road, on-road, rank, cone, vee, diamond,
+--                      echelon-left (echelonl), echelon-right (echelonr),
+--                      custom (just sets the action; no template name)
+--                    Any other string is treated as a custom template name —
+--                    must be a DB.templates key. Sets wp.type=actions.customForm
+--                    AND wp.formation_template=<name>.
+--   waypoint         1-indexed waypoint number (default 1)
+function M.group_set_formation(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_set_formation requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_set_formation requires exactly one of args.name or args.id' }
+    end
+    if type(args.formation) ~= 'string' or args.formation == '' then
+        return { ok = false, error = 'group_set_formation requires args.formation (non-empty string)' }
+    end
+    local g, _, _, cat = find_group_in_mission(has_name and args.name or nil,
+                                                has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+    if cat ~= 'vehicle' then
+        local why
+        if cat == 'plane' or cat == 'helicopter' then
+            why = ' — air-group formations are per-waypoint tasks, not yet exposed'
+        elseif cat == 'ship' then
+            why = ' — ship waypoints only support the turningPoint action'
+        elseif cat == 'static' then
+            why = ' — statics do not have a route'
+        else
+            why = ''
+        end
+        return { ok = false,
+                 error = 'group_set_formation only applies to vehicle groups (got '
+                         .. cat .. ')' .. why }
+    end
+    local wp_idx = (type(args.waypoint) == 'number') and args.waypoint or 1
+    if wp_idx < 1 then
+        return { ok = false, error = 'group_set_formation: args.waypoint must be >= 1' }
+    end
+    if not g.route or type(g.route.points) ~= 'table' or not g.route.points[wp_idx] then
+        return { ok = false, error = 'group_set_formation: waypoint ' .. tostring(wp_idx) .. ' not found' }
+    end
+
+    -- Resolve formation name. Built-in aliases first; otherwise treat as a
+    -- DB.templates name and require Custom action.
+    local key = string.lower(args.formation):gsub('[%s_-]', '')
+    local builtin_aliases = {
+        offroad     = 'offRoad',
+        onroad      = 'onRoad',
+        rank        = 'rank',
+        cone        = 'cone',
+        vee         = 'vee',
+        diamond     = 'diamond',
+        echelonleft = 'echelonL',
+        echelonl    = 'echelonL',
+        echelonright= 'echelonR',
+        echelonr    = 'echelonR',
+        custom      = 'customForm',
+        customform  = 'customForm',
+    }
+    local action_key = builtin_aliases[key]
+    local UC = require('utils_common')
+    if type(UC) ~= 'table' or type(UC.actions) ~= 'table' then
+        return { ok = false, error = 'group_set_formation: utils_common.actions unavailable' }
+    end
+    local wp = g.route.points[wp_idx]
+    local resolved_template = ''
+    local resolved_action_name
+    if action_key then
+        wp.type = UC.actions[action_key]
+        if action_key ~= 'customForm' then
+            wp.formation_template = ''  -- clear stale Custom state
+        else
+            -- Custom alias without a template name keeps any existing template.
+            resolved_template = wp.formation_template or ''
+        end
+        resolved_action_name = action_key
+    else
+        -- Treat as a DB.templates key — must exist, sets Custom + template.
+        local ok_db, DB = pcall(require, 'me_db_api')
+        local exists = ok_db and type(DB) == 'table' and type(DB.templates) == 'table'
+                       and DB.templates[args.formation] ~= nil
+        if not exists then
+            return { ok = false,
+                     error = 'group_set_formation: unknown formation "' .. args.formation
+                             .. '" (not a built-in alias and not in DB.templates)' }
+        end
+        wp.type = UC.actions.customForm
+        wp.formation_template = args.formation
+        resolved_template = args.formation
+        resolved_action_name = 'customForm'
+    end
+
+    return { ok = true, id = g.groupId, name = g.name,
+             waypoint = wp_idx,
+             action = resolved_action_name,
+             formation_template = resolved_template }
+end
+
 -- ============================================================
 -- Unit setters (per-field)
 -- ============================================================
