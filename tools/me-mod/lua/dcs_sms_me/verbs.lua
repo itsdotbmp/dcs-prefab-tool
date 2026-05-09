@@ -1618,6 +1618,149 @@ function M.group_set_formation(args)
              formation_template = resolved_template }
 end
 
+-- group_set_country — change a group's country (and possibly coalition).
+--
+-- Replicates the data-side flow of me_aircraft.lua:1460 changeCountry.
+-- ED's panel function does both the data mutation AND a pile of UI refreshes
+-- (combo boxes, task list, callsign refresh, panel_loadout.update). Those
+-- panels read from the mutated mission state when next opened, so we skip
+-- them here — the mutation alone is enough for save-survival and runtime.
+--
+-- Steps:
+--   1. resolve target country (must already exist in mission tree)
+--   2. detect coalition change (side flip)
+--   3. remove group from oldCountry[cat].group
+--   4. update g.boss = newCountry, defensive newCountry.boss = side
+--   5. insert into newCountry[cat].group (create sub-table if missing)
+--   6. update g.color = newCountry.boss.color
+--   7. fixup unit liveries via panel_payload.setDefaultLivery (air groups —
+--      schemes are country-keyed, defaults differ per country)
+--   8. re-attract first waypoint if it's a takeoff/landing airfield action
+--      (the old airfield may not exist in the new coalition)
+--   9. refresh map objects (color updates immediately)
+--
+-- ME does NOT refuse country changes that would make unit types invalid for
+-- the new country (e.g. moving an Su-27 to USA). The unit type persists; the
+-- livery list goes empty. Mirror that behavior — log a warning if liveries
+-- come back empty but don't refuse.
+--
+-- args:
+--   name | id  group selector (mutually exclusive)
+--   country    target country name (case-insensitive)
+function M.group_set_country(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_set_country requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_set_country requires exactly one of args.name or args.id' }
+    end
+    if type(args.country) ~= 'string' or args.country == '' then
+        return { ok = false, error = 'group_set_country requires args.country (string)' }
+    end
+    local g, oldCountry, oldSide, cat = find_group_in_mission(
+        has_name and args.name or nil, has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+    local newCountry, newSide = find_country_by_name(args.country)
+    if not newCountry then
+        return { ok = false,
+                 error = 'group_set_country: country "' .. args.country .. '" not in mission tree' }
+    end
+    if newCountry == oldCountry then
+        return { ok = true, id = g.groupId, name = g.name,
+                 country = newCountry.name, side = newSide,
+                 coalition_changed = false, no_op = true }
+    end
+    local coalition_changed = newSide ~= oldSide
+
+    local Mission = require('me_mission')
+
+    -- Step 3: remove from old country list.
+    if oldCountry and oldCountry[cat] and type(oldCountry[cat].group) == 'table' then
+        for i, v in ipairs(oldCountry[cat].group) do
+            if v == g then
+                table.remove(oldCountry[cat].group, i)
+                break
+            end
+        end
+    end
+
+    -- Step 4: update boss back-reference + defensive country.boss = side.
+    g.boss = newCountry
+    if not newCountry.boss then
+        local mission = Mission.mission or {}
+        for sn, side in pairs(mission.coalition or {}) do
+            if type(side) == 'table' and type(side.country) == 'table' then
+                for _, c in ipairs(side.country) do
+                    if c == newCountry then newCountry.boss = side; break end
+                end
+            end
+            if newCountry.boss then break end
+        end
+    end
+
+    -- Step 5: insert into new country list (create sub-table if missing).
+    if type(newCountry[cat]) ~= 'table' then
+        newCountry[cat] = { name = cat, group = {} }
+    end
+    if type(newCountry[cat].group) ~= 'table' then
+        newCountry[cat].group = {}
+    end
+    table.insert(newCountry[cat].group, g)
+
+    -- Step 6: color = new coalition color (via newCountry.boss.color).
+    if newCountry.boss and newCountry.boss.color then
+        g.color = newCountry.boss.color
+    end
+
+    -- Step 7: livery fixup (air groups — countries with non-overlapping
+    -- airframe rosters end up with empty livery lists; that's fine, ME
+    -- doesn't refuse it either).
+    local empty_liveries = 0
+    if cat == 'plane' or cat == 'helicopter' then
+        local ok_pl, panel_payload = pcall(require, 'me_payload')
+        if ok_pl and type(panel_payload) == 'table' and type(panel_payload.setDefaultLivery) == 'function' then
+            for _, u in ipairs(g.units or {}) do
+                pcall(panel_payload.setDefaultLivery, u)
+                if u.livery_id == nil or u.livery_id == '' then
+                    empty_liveries = empty_liveries + 1
+                end
+            end
+        end
+    end
+
+    -- Step 8: airfield re-attract for takeoff/landing waypoints. Only
+    -- meaningful for plane/helicopter groups.
+    local airfield_reattracted = false
+    if (cat == 'plane' or cat == 'helicopter')
+            and g.route and type(g.route.points) == 'table' and g.route.points[1] then
+        local ok_pr, panel_route = pcall(require, 'me_route')
+        if ok_pr and type(panel_route) == 'table'
+                and type(panel_route.isAirfieldWaypoint) == 'function'
+                and type(panel_route.attractToAirfield) == 'function' then
+            local wpt = g.route.points[1]
+            if wpt.type and panel_route.isAirfieldWaypoint(wpt.type) then
+                local ok_at, _ = pcall(panel_route.attractToAirfield, wpt, g)
+                airfield_reattracted = ok_at
+            end
+        end
+    end
+
+    -- Step 9: refresh map objects (color update reflects immediately).
+    refresh_group_view(g)
+
+    return { ok = true, id = g.groupId, name = g.name,
+             country = newCountry.name, side = newSide,
+             previous_country = oldCountry and oldCountry.name,
+             previous_side = oldSide,
+             coalition_changed = coalition_changed,
+             empty_liveries = empty_liveries,
+             airfield_reattracted = airfield_reattracted }
+end
+
 -- ============================================================
 -- Unit setters (per-field)
 -- ============================================================
