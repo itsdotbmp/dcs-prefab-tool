@@ -101,6 +101,21 @@ local function strip_back_refs(v, depth)
     return out
 end
 
+-- refresh_group_view — defensive map-objects refresh after a unit-level
+-- mutation. Disk-loaded groups have mapObjects=nil until selected; the
+-- create_group_map_objects + update_group_map_objects pair handles both
+-- the never-rendered and already-rendered cases. Shared by group_set_pos,
+-- group_add_unit, and every unit-level setter that moves something.
+local function refresh_group_view(g)
+    local Mission = require('me_mission')
+    if g.mapObjects == nil and type(Mission.create_group_map_objects) == 'function' then
+        pcall(Mission.create_group_map_objects, g)
+    end
+    if type(Mission.update_group_map_objects) == 'function' then
+        pcall(Mission.update_group_map_objects, g)
+    end
+end
+
 -- ============================================================
 -- File / mission lifecycle verbs
 -- ============================================================
@@ -1058,6 +1073,167 @@ function M.group_create_static(args)
     }
 end
 
+-- group_add_unit — add a unit to an existing group, copying defaults from
+-- the group's last unit (matching the ME's own "+" button behaviour).
+--
+-- Position semantics:
+--   * --offset-north / --offset-east (either or both) → unit at
+--     (g.x + offset_north, g.y + offset_east) — relative to the group
+--     anchor, NOT cumulative across calls.
+--   * Neither passed → let Mission.insert_unit apply its built-in index-
+--     cumulative spread (40m south / 40m east per added unit), which is
+--     what the ME does when you click + with nothing selected.
+--
+-- Type rule for air groups: plane / helicopter groups can't be
+-- heterogeneous (no F-16 + F-14 in one group — DCS doesn't permit it).
+-- We refuse if --type is given and differs from g.units[1].type, and
+-- default to g.units[1].type when --type is omitted. Vehicle / ship /
+-- static groups allow mixed types (Hawk SAM site = PCP + SR + TR + LN).
+--
+-- Field defaults: skill / livery / heading / alt / alt_type / payload
+-- copy from the LAST unit in the group, so adding a unit to a 4-ship
+-- F-16 flight with one weapon load keeps the same load on #5. Any field
+-- can be overridden via the matching arg.
+--
+-- args (required):
+--   name | id   group selector (mutually exclusive)
+--
+-- args (optional):
+--   type           string  (auto-fill from last/first unit if absent)
+--   offset_north   number  (meters; nil → insert_unit default spread)
+--   offset_east    number  (meters; nil → insert_unit default spread)
+--   skill / livery / heading_deg / alt / alt_type
+--   onboard_num / callsign / frequency  (set after insert_unit)
+function M.group_add_unit(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_add_unit requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_add_unit requires exactly one of args.name or args.id' }
+    end
+
+    local g, country, side_name, cat = find_group_in_mission(
+        has_name and args.name or nil, has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+    if type(g.units) ~= 'table' or #g.units == 0 then
+        return { ok = false, error = 'group has no existing units to derive defaults from' }
+    end
+
+    local first_unit = g.units[1]
+    local last_unit = g.units[#g.units]
+
+    -- Type resolution + air-group homogeneity check.
+    local utype = (type(args.type) == 'string' and args.type ~= '') and args.type or last_unit.type
+    if (cat == 'plane' or cat == 'helicopter') and utype ~= first_unit.type then
+        return { ok = false,
+                 error = cat .. ' groups can only contain one airframe; existing="'
+                         .. tostring(first_unit.type) .. '", requested="' .. utype .. '"' }
+    end
+
+    -- Field defaults — explicit args win, otherwise inherit from last unit.
+    local skill = (type(args.skill) == 'string' and args.skill ~= '') and args.skill
+                  or last_unit.skill or 'Average'
+    local livery = (type(args.livery) == 'string') and args.livery
+                   or last_unit.livery_id or ''
+    local heading_rad
+    if type(args.heading_deg) == 'number' then
+        heading_rad = math.rad(args.heading_deg)
+    else
+        heading_rad = last_unit.heading or 0
+    end
+
+    -- Position. Pass nil for x/y to Mission.insert_unit when no offset
+    -- supplied — it then applies its index-cumulative 40m spread.
+    local x, y
+    if type(args.offset_north) == 'number' or type(args.offset_east) == 'number' then
+        x = g.x + (args.offset_north or 0)
+        y = g.y + (args.offset_east or 0)
+    end
+
+    local Mission = require('me_mission')
+
+    -- check_unit_name (called inside insert_unit) crashes on a nil seed —
+    -- it does string.reverse(seed) to find a base for suffix-uniquify.
+    -- Use the LAST unit's name as the seed: it already has the
+    -- "<group>-N" shape so check_unit_name picks the next free index
+    -- cleanly (CAP4-1 → CAP4-2 → CAP4-3 …). Using g.name as the seed
+    -- gives back g.name itself for the first add (group names live in
+    -- group_by_name, unit names in unit_by_name — no collision).
+    local index = #g.units + 1
+    local ok_call, u_or_err = pcall(Mission.insert_unit,
+        g, utype, skill, index, last_unit.name, x, y, heading_rad, nil, livery)
+    if not ok_call then
+        return { ok = false, error = 'insert_unit: ' .. tostring(u_or_err) }
+    end
+    local u = u_or_err
+    if type(u) ~= 'table' then
+        return { ok = false, error = 'insert_unit returned no unit table' }
+    end
+
+    -- Air-only fields. insert_unit doesn't set u.alt — copy from the last
+    -- unit (or use --alt). Same for alt_type. Payload defaults from
+    -- unitDef inside insert_unit; we override with last-unit's payload
+    -- so #5 in a flight inherits the loadout (deep copy to avoid shared
+    -- mutation). Allow explicit args.payload to skip the copy.
+    if cat == 'plane' or cat == 'helicopter' then
+        u.alt = (type(args.alt) == 'number') and args.alt or last_unit.alt
+        u.alt_type = (type(args.alt_type) == 'string' and args.alt_type ~= '')
+                     and args.alt_type or last_unit.alt_type or 'BARO'
+        if last_unit.payload and not args.payload then
+            local copy = {}
+            for k, v in pairs(last_unit.payload) do
+                if k == 'pylons' and type(v) == 'table' then
+                    copy.pylons = {}
+                    for pk, pv in pairs(v) do copy.pylons[pk] = pv end
+                else
+                    copy[k] = v
+                end
+            end
+            u.payload = copy
+        end
+    end
+
+    -- Optional explicit overrides for fields the user might want to set
+    -- right at add-time without a follow-up `unit set-*` call.
+    if type(args.onboard_num) == 'string' and args.onboard_num ~= '' then
+        u.onboard_num = args.onboard_num
+    end
+    if type(args.callsign) == 'string' and args.callsign ~= '' then
+        local existing = (type(u.callsign) == 'table') and u.callsign or {}
+        local sq = (type(existing[1]) == 'number' and existing[1]) or 1
+        local fl = (type(existing[2]) == 'number' and existing[2]) or 1
+        local pl = (type(existing[3]) == 'number' and existing[3]) or 1
+        u.callsign = { sq, fl, pl, name = args.callsign }
+    end
+    if type(args.frequency) == 'number' and args.frequency > 0 then
+        u.frequency = args.frequency
+    end
+
+    -- Refresh visuals — insert_unit_symbol drew the sprite, but the rest
+    -- of the group (e.g. existing units' positions if anything cares) is
+    -- safe-to-update via the standard helper.
+    refresh_group_view(g)
+
+    return {
+        ok = true,
+        groupId = g.groupId,
+        group = g.name,
+        category = cat,
+        country = country and country.name,
+        side = side_name,
+        unitId = u.unitId,
+        unitName = u.name,
+        type = u.type,
+        north = u.x,
+        east = u.y,
+        unit_count = #g.units,
+    }
+end
+
 -- ============================================================
 -- Group setters (per-field)
 -- ============================================================
@@ -1236,19 +1412,6 @@ local function find_unit_in_mission(by_name, by_id)
         end
     end)
     return found_unit, found_group, found_country, found_side, found_cat
-end
-
--- refresh_group_view — defensive map-objects refresh after a unit-level
--- mutation. Disk-loaded groups have mapObjects=nil until selected; same
--- pattern as group_remove and group_set_pos.
-local function refresh_group_view(g)
-    local Mission = require('me_mission')
-    if g.mapObjects == nil and type(Mission.create_group_map_objects) == 'function' then
-        pcall(Mission.create_group_map_objects, g)
-    end
-    if type(Mission.update_group_map_objects) == 'function' then
-        pcall(Mission.update_group_map_objects, g)
-    end
 end
 
 -- unit_set_name — rename via Mission.renameUnit. Refuses on collision.
