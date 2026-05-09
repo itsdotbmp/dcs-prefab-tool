@@ -12,10 +12,9 @@
 > **🚀 Quick start:**
 >
 > 1. [**Download `dcs-sms.exe`**](https://github.com/nielsvaes/dcs-sms/releases/latest/download/dcs-sms.exe) — save it anywhere (Downloads is fine).
-> 2. Open a **CMD** or **PowerShell** terminal in that folder. (Don't know how? In File Explorer click the address bar, type `cmd`, press Enter.)
-> 3. Run: `dcs-sms.exe install-me-mod`
-> 4. **Fully quit DCS** (not just the Mission Editor) and start it again.
-> 5. Open the Mission Editor — **DCS-SMS** will appear in the top menu bar.
+> 2. **Double-click `dcs-sms.exe`** — a small menu opens. Pick **1** to install. (Prefer the command line? Open a CMD/PowerShell in that folder and run `dcs-sms.exe install-me-mod` — same result.)
+> 3. **Fully quit DCS** (not just the Mission Editor) and start it again.
+> 4. Open the Mission Editor — **DCS-SMS** will appear in the top menu bar.
 >
 > Hit a snag? Jump to [Troubleshooting](#troubleshooting).
 
@@ -58,7 +57,15 @@ You design DCS missions in the Mission Editor and want to reuse pieces of one mi
 
 ## Install
 
-`dcs-sms.exe` is a command-line tool, not a GUI installer — double-clicking it won't do anything useful. Save it anywhere convenient (Downloads, Desktop, `C:\Tools`, wherever — the .exe doesn't write anything to that folder; it just needs to be where you can run it from). Then open a **CMD** or **PowerShell** terminal in that folder and run:
+Save `dcs-sms.exe` anywhere convenient (Downloads, Desktop, `C:\Tools`, wherever — the .exe doesn't write anything to that folder; it just needs to be where you can run it from). Then **double-click it**. A console window opens with a small menu — type `1` and press Enter to install:
+
+<p align="center">
+  <img src="../../assets/dcs-sms-doubleclick.png" alt="dcs-sms.exe interactive menu — 'DCS install: ...' line plus four numbered options (Install / Uninstall / Update / Set DCS install path) and 'q. Quit'" width="780">
+</p>
+
+The menu shows the auto-detected DCS install path at the top. If it says **"not detected"**, type `4` first to paste the full path to your DCS install folder (the menu will strip surrounding quotes for you, so `"D:\Program Files\Eagle Dynamics\DCS World"` from Explorer's address-bar copy works as-is).
+
+**Prefer the command line?** Open a **CMD** or **PowerShell** terminal in the folder where you saved `dcs-sms.exe` and run:
 
 ```powershell
 dcs-sms.exe install-me-mod
@@ -66,7 +73,7 @@ dcs-sms.exe install-me-mod
 
 > 💡 Easiest way to open a terminal in a specific folder: in File Explorer, click the address bar, type `cmd`, and press Enter. The terminal opens with that folder as the working directory.
 
-A successful run looks like this:
+A successful CLI run looks like this:
 
 <p align="center">
   <img src="../../assets/cmd.png" alt="dcs-sms.exe install-me-mod running in a CMD window — output shows 'copied', 'patched', 'Install complete. Restart DCS.'" width="780">
@@ -156,9 +163,12 @@ If your environment refuses to let you bypass this at all (locked-down corporate
 
 ### I ran the .exe and nothing happened
 
-Most likely you double-clicked it. `dcs-sms.exe` is a command-line tool — double-clicking briefly opens and closes a terminal window with the help text and you don't see any output.
+Two possibilities:
 
-Open a terminal *in the folder where you saved the .exe* (File Explorer → click the address bar → type `cmd` → Enter), then run `dcs-sms.exe install-me-mod` from there. The output stays visible until you close the terminal.
+- **The terminal window closed before you read it.** If you double-clicked and the menu flashed by, it's because something inside the menu (an error, or you typed something it didn't expect) returned and the window closed before you could see it. Run it again — the menu prints "Press Enter to exit..." after every action so you can read what happened.
+- **Windows blocked the .exe entirely.** SmartScreen may have killed the process before the menu could open. See [Windows SmartScreen says "Windows protected your PC"](#windows-smartscreen-says-windows-protected-your-pc) above.
+
+If you'd rather avoid the menu altogether: open a terminal *in the folder where you saved the .exe* (File Explorer → click the address bar → type `cmd` → Enter), then run `dcs-sms.exe install-me-mod` from there. Output stays visible until you close the terminal.
 
 ### Install said "Install complete" but DCS-SMS isn't in the Mission Editor menu
 
