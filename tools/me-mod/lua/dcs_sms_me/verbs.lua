@@ -2211,6 +2211,178 @@ function M.zone_remove(args)
 end
 
 -- ============================================================
+-- Drawings — shared helpers + read-side
+-- ============================================================
+--
+-- Drawings live in mission.drawings under a layered structure: the ME has
+-- 5 layers (Red / Blue / Neutral / Common / Author) and each layer carries
+-- a list of objects. Each object has a primitiveType (Line / Polygon /
+-- TextBox / Icon) plus shape-specific fields. Polygon further splits into
+-- 5 sub-modes (circle / oval / rect / free / arrow) — 9 distinct shapes
+-- in total counting Line's segments / segment / free sub-modes.
+--
+-- The me_draw_panel module exposes saveToMission / loadFromMission as the
+-- canonical IO pair, plus getObjects / objectDelete for read/destroy. It
+-- does NOT expose objectAdd / layers_, so to inject a new drawing we go
+-- through a save → modify → reload cycle:
+--
+--   data = panel.saveToMission()    -- current state
+--   table.insert(data.layers[k].objects, new_object)
+--   panel.loadFromMission(data)     -- resets and rebuilds with new state
+--
+-- Round-trip-tested against save+full-DCS-reload during the probe phase
+-- (the injected circle survived). One-shot reset+rebuild is fine for
+-- ME-time editing — drawings are at most a few dozen objects per mission.
+
+-- inject_drawing — add a single drawing object to a named layer using
+-- the panel's saveToMission/loadFromMission cycle. The new object must
+-- carry all required fields for its primitiveType (lineLoad /
+-- polygonCircleLoad / etc. expect specific shapes — see saveToMission's
+-- per-shape savers for the exact field set).
+local function inject_drawing(new_object, layer_name)
+    local panel = require('me_draw_panel')
+    local data = panel.saveToMission()
+    layer_name = layer_name or 'Common'
+
+    local target_layer
+    for _, layer in ipairs(data.layers or {}) do
+        if layer.name == layer_name then target_layer = layer; break end
+    end
+    if not target_layer then
+        return nil, 'unknown layer: ' .. tostring(layer_name)
+            .. ' (valid: Red, Blue, Neutral, Common, Author)'
+    end
+
+    new_object.layerName = layer_name
+    table.insert(target_layer.objects, new_object)
+
+    local ok_call, err = pcall(panel.loadFromMission, data)
+    if not ok_call then
+        return nil, 'loadFromMission: ' .. tostring(err)
+    end
+    return new_object, nil
+end
+
+-- find_drawing_by_name — return the live drawing object (with its
+-- primitiveType, mapData, etc.) by name. Walks all layers via
+-- panel.getObjects() which produces a name → object map. Returns nil if
+-- not found.
+local function find_drawing_by_name(name)
+    local panel = require('me_draw_panel')
+    local objs = panel.getObjects()
+    return objs[name]
+end
+
+-- unique_drawing_name — allocate the next free name with the given
+-- prefix. Walks existing drawings; if "Circle-1" through "Circle-N" are
+-- in use, returns "Circle-(N+1)". Mirrors the ME's own "Line-1" /
+-- "Polygon-1" / "Text Box-1" / "Icon-1" naming but lets us pick the
+-- prefix per shape for clarity.
+local function unique_drawing_name(prefix)
+    local panel = require('me_draw_panel')
+    local objs = panel.getObjects()
+    local n = 0
+    repeat
+        n = n + 1
+    until objs[prefix .. '-' .. n] == nil
+    return prefix .. '-' .. n
+end
+
+-- summarize_drawing — concise list-row shape (matches the convention used
+-- by group_list / zone_list — translated north / east, the underlying
+-- type, and the shape-defining field where relevant).
+local function summarize_drawing(obj)
+    local mode = obj.polygonMode or obj.lineMode
+    return {
+        name = obj.name,
+        type = obj.primitiveType,
+        mode = mode,
+        layer = obj.layerName,
+        north = obj.mapData and obj.mapData.x,
+        east = obj.mapData and obj.mapData.y,
+        color = obj.colorString,
+        fill_color = obj.fillColorString,
+        visible = obj.visible,
+        hidden_on_planner = obj.hiddenOnPlanner,
+    }
+end
+
+-- drawing_list — concise per-drawing summaries from all layers.
+--
+-- args (all optional):
+--   layer:  Red | Blue | Neutral | Common | Author  (exact match)
+--   type:   Line | Polygon | TextBox | Icon          (exact match)
+--   mode:   circle | oval | rect | free | arrow | segments | segment
+--   name:   substring (case-insensitive)
+function M.drawing_list(args)
+    args = args or {}
+    local f_layer = args.layer
+    local f_type = args.type
+    local f_mode = args.mode and string.lower(args.mode) or nil
+    local f_name = args.name and string.lower(args.name) or nil
+
+    local panel = require('me_draw_panel')
+    local out = {}
+    for name, obj in pairs(panel.getObjects()) do
+        local mode = obj.polygonMode or obj.lineMode
+        if not (f_layer and obj.layerName ~= f_layer)
+                and not (f_type and obj.primitiveType ~= f_type)
+                and not (f_mode and (not mode or string.lower(mode) ~= f_mode))
+                and not (f_name and not string.find(string.lower(name), f_name, 1, true)) then
+            table.insert(out, summarize_drawing(obj))
+        end
+    end
+    -- Stable order by name so the CLI output is repeatable.
+    table.sort(out, function(a, b) return (a.name or '') < (b.name or '') end)
+    return { ok = true, drawings = out, count = #out }
+end
+
+-- drawing_get — full structure of a single drawing by name.
+-- Returns the live object minus mapId/mapData (mapId is a render-side
+-- handle, mapData is largely a derivation of the on-disk fields). The
+-- relevant runtime extras (e.g. polygonCircleLoad's points) are
+-- regenerated by loadFromMission, so omitting them keeps the response
+-- focused on the writable surface.
+function M.drawing_get(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'drawing_get requires args.name (string)' }
+    end
+    local obj = find_drawing_by_name(args.name)
+    if not obj then
+        return { ok = false, error = 'drawing not found' }
+    end
+    local snapshot = {}
+    for k, v in pairs(obj) do
+        if k ~= 'mapId' and k ~= 'mapData' then
+            snapshot[k] = v
+        end
+    end
+    -- Surface the position from mapData since it's the most-asked-for thing.
+    if obj.mapData then
+        snapshot.north = obj.mapData.x
+        snapshot.east = obj.mapData.y
+    end
+    return { ok = true, drawing = snapshot }
+end
+
+-- drawing_remove — remove a drawing by name. Wraps panel.objectDelete.
+function M.drawing_remove(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'drawing_remove requires args.name (string)' }
+    end
+    local panel = require('me_draw_panel')
+    local obj = panel.getObjects()[args.name]
+    if not obj then
+        return { ok = false, error = 'drawing not found' }
+    end
+    local ok_call, err = pcall(panel.objectDelete, obj)
+    if not ok_call then
+        return { ok = false, error = 'objectDelete: ' .. tostring(err) }
+    end
+    return { ok = true, name = args.name }
+end
+
+-- ============================================================
 -- Read-side verbs: list / get
 -- ============================================================
 --
