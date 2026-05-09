@@ -3556,6 +3556,367 @@ end
 --     verbs or scripting). Cycle-causing back-references (boss, mapObjects)
 --     are stripped to keep JSON serializable.
 
+-- ============================================================
+-- Trigger verbs (mission.trigrules)
+-- ============================================================
+--
+-- mission.trigrules is the editor source-of-truth. Each entry has shape:
+--   { predicate = "triggerOnce" | "triggerContinious" | "triggerStart" | "triggerFront",
+--     comment   = "<user-facing name>",
+--     eventlist = "" | <event id>,
+--     rules     = { { predicate = "c_*", ...field args... }, ... },
+--     actions   = { { predicate = "a_*", ...field args... }, ... } }
+--
+-- ED's me_mission.unload regenerates mission.trig.{conditions,actions,func,
+-- events,funcStartup} from trigrules at save time (me_mission.lua:4592-4598),
+-- so we never touch mission.trig.* directly — only trigrules.
+
+-- _trigger_alias_cache — lazy-built map of every predicate ED knows about,
+-- keyed by both canonical name AND friendly kebab-alias. Each value is
+-- { canonical=..., kind="condition"|"action"|"trigger", descr=<field-schema> }.
+-- Cleared on first call after init; rebuilt only if ED's descriptor tables
+-- look like they've shifted (descriptor tables are session-stable in
+-- practice — this cache is a perf optimization, not a correctness gate).
+local _trigger_alias_cache
+
+-- _trigger_make_alias — strip prefix + underscore→dash to get the friendly
+-- form. "c_flag_is_true" → "flag-is-true", "a_set_flag" → "set-flag",
+-- "triggerOnce" → "once", "triggerContinious" → "continuous" (fixes typo).
+local function _trigger_make_alias(canonical)
+    local s = canonical
+    if s:sub(1, 2) == 'c_' or s:sub(1, 2) == 'a_' then
+        s = s:sub(3)
+    elseif s:sub(1, 7) == 'trigger' then
+        s = s:sub(8)
+        -- Special case: ED's misspelling of "Continuous"
+        if s == 'Continious' then return 'continuous' end
+    end
+    return s:gsub('_', '-'):lower()
+end
+
+-- _trigger_build_alias_cache — populate _trigger_alias_cache from ED's
+-- predicates.descrs (conditions + actions) and triggersDescr (trigger types).
+local function _trigger_build_alias_cache()
+    local Trigger = require('me_trigrules')
+    local cache = {}
+    -- predicates.descrs is a flat name → descr map; descr.kind is not stored
+    -- there, so we need to classify by name prefix.
+    local pred_table = Trigger.predicates and Trigger.predicates.descrs or {}
+    for name, descr in pairs(pred_table) do
+        local kind
+        if name:sub(1, 2) == 'c_' then kind = 'condition'
+        elseif name:sub(1, 2) == 'a_' then kind = 'action'
+        else kind = 'unknown' end
+        local entry = { canonical = name, kind = kind, descr = descr }
+        cache[name] = entry
+        cache[_trigger_make_alias(name)] = entry
+    end
+    -- Trigger types live in triggersDescr (an array of {name=..., fields=...}).
+    for _, tdescr in ipairs(Trigger.triggersDescr or {}) do
+        if type(tdescr) == 'table' and type(tdescr.name) == 'string' then
+            local entry = { canonical = tdescr.name, kind = 'trigger', descr = tdescr }
+            cache[tdescr.name] = entry
+            cache[_trigger_make_alias(tdescr.name)] = entry
+        end
+    end
+    _trigger_alias_cache = cache
+end
+
+-- _trigger_resolve_predicate — name-or-alias → canonical_name, kind, descr,
+-- err. Optionally filter by kind ("condition" / "action" / "trigger") to
+-- disambiguate — passing kind=nil accepts any.
+local function _trigger_resolve_predicate(name_or_alias, expected_kind)
+    if not _trigger_alias_cache then _trigger_build_alias_cache() end
+    local entry = _trigger_alias_cache[name_or_alias]
+    if not entry then
+        return nil, nil, nil, 'unknown predicate "' .. tostring(name_or_alias) .. '"'
+    end
+    if expected_kind and entry.kind ~= expected_kind then
+        return nil, nil, nil,
+               'predicate "' .. name_or_alias .. '" is a ' .. entry.kind
+               .. ', expected ' .. expected_kind
+    end
+    return entry.canonical, entry.kind, entry.descr, nil
+end
+
+-- _trigger_panel_visible — set/cleared by the monkey-patched Trigger.show
+-- below. Local to this module; queried only by _trigger_panel_refresh().
+local _trigger_panel_visible = false
+local _trigger_show_patched = false
+
+-- _trigger_install_show_hook — wrap Trigger.show once per session so we
+-- track panel visibility. Idempotent: subsequent calls are no-ops.
+local function _trigger_install_show_hook()
+    if _trigger_show_patched then return end
+    local Trigger = require('me_trigrules')
+    if type(Trigger) ~= 'table' or type(Trigger.show) ~= 'function' then
+        return  -- ME not fully loaded; try again next call
+    end
+    local orig = Trigger.show
+    Trigger.show = function(b)
+        _trigger_panel_visible = (b == true)
+        return orig(b)
+    end
+    _trigger_show_patched = true
+end
+
+-- _trigger_panel_refresh — best-effort kick: if the panel is currently
+-- visible, call show(false) + show(true) to re-bind the listbox to current
+-- mission.trigrules (matches saveTriggers/setupCallbacks rebind path).
+local function _trigger_panel_refresh()
+    _trigger_install_show_hook()
+    if not _trigger_panel_visible then return end
+    local Trigger = require('me_trigrules')
+    pcall(Trigger.show, false)
+    pcall(Trigger.show, true)
+end
+
+-- _trigger_find_by_name — locate a trigger in mission.trigrules by its
+-- comment field. Returns trigger, index_1based, total_count or nil.
+local function _trigger_find_by_name(name)
+    local Mission = require('me_mission')
+    local mission = Mission.mission
+    if type(mission) ~= 'table' or type(mission.trigrules) ~= 'table' then
+        return nil, nil, 0
+    end
+    for i, t in ipairs(mission.trigrules) do
+        if type(t) == 'table' and t.comment == name then
+            return t, i, #mission.trigrules
+        end
+    end
+    return nil, nil, #mission.trigrules
+end
+
+-- _trigger_unique_name — auto-suffix "-2", "-3", ... on collision (matches
+-- the existing me group create-* collision behavior).
+local function _trigger_unique_name(base)
+    if not _trigger_find_by_name(base) then return base end
+    local n = 2
+    while _trigger_find_by_name(base .. '-' .. n) do n = n + 1 end
+    return base .. '-' .. n
+end
+
+-- _trigger_default_name — ED's default when the user hits "new trigger" in
+-- the panel: "Trigger " .. os.time(). We mirror it for parity.
+local function _trigger_default_name()
+    return 'Trigger ' .. tostring(os.time())
+end
+
+-- _trigger_field_combo_kind — classify a field's reference kind by its
+-- comboFunc slot. Returns "group" / "unit" / "zone" / "coalition" /
+-- "airdrome" / "event" / nil (literal field, no resolution).
+local function _trigger_field_combo_kind(field_descr)
+    if type(field_descr) ~= 'table' or field_descr.type ~= 'combo' then
+        return nil
+    end
+    local fn = field_descr.comboFunc
+    -- comboFunc is a function reference; we identify it by introspecting
+    -- the function's environment / debug info isn't reliable in DCS Lua.
+    -- Instead, ED stores friendly listers as named globals in me_trigrules
+    -- — match by reference equality against the known set.
+    local Trigger = require('me_trigrules')
+    if fn == Trigger.groupsLister
+            or fn == Trigger.groupsStaticLister
+            or fn == Trigger.groupsAirLister then
+        return 'group'
+    end
+    if fn == Trigger.unitsLister or fn == Trigger.unitsAirLister then
+        return 'unit'
+    end
+    if fn == Trigger.zoneLister or fn == Trigger.triggerZoneLister then
+        return 'zone'
+    end
+    if fn == Trigger.coalitionLister or fn == Trigger.coalition2Lister
+            or fn == Trigger.winnerLister then
+        return 'coalition'
+    end
+    if fn == Trigger.airdromeAndHeliportLister then return 'airdrome' end
+    if fn == Trigger.eventLister then return 'event' end
+    return nil
+end
+
+-- _trigger_resolve_ref — value normalization for reference fields. If kind
+-- is group/unit/zone, accept either an integer id or a name (string) and
+-- return the integer id. For coalition, pass through. For other kinds,
+-- pass through. Returns resolved_value, err.
+local function _trigger_resolve_ref(kind, value)
+    if kind == 'coalition' or kind == 'event' or kind == nil then
+        return value, nil
+    end
+    -- integer-or-numeric-string → treat as id
+    local as_num = tonumber(value)
+    if as_num and as_num == math.floor(as_num) then
+        return as_num, nil
+    end
+    if type(value) ~= 'string' then
+        return nil, 'expected integer or name string for ' .. kind .. ' reference'
+    end
+    if kind == 'group' then
+        local Mission = require('me_mission')
+        local g = Mission.group_by_name and Mission.group_by_name[value]
+        if g then return g.groupId, nil end
+        return nil, 'no group named "' .. value .. '"'
+    elseif kind == 'unit' then
+        local Mission = require('me_mission')
+        local u = Mission.unit_by_name and Mission.unit_by_name[value]
+        if u then return u.unitId, nil end
+        return nil, 'no unit named "' .. value .. '"'
+    elseif kind == 'zone' then
+        local Mission = require('me_mission')
+        local mission = Mission.mission
+        if type(mission) == 'table' and type(mission.triggers) == 'table'
+                and type(mission.triggers.zones) == 'table' then
+            for _, z in ipairs(mission.triggers.zones) do
+                if z.name == value then return z.zoneId, nil end
+            end
+        end
+        return nil, 'no zone named "' .. value .. '"'
+    elseif kind == 'airdrome' then
+        return nil, 'airdrome reference by name not supported in v1; pass integer id'
+    end
+    return value, nil
+end
+
+-- _trigger_coerce_value — string from CLI → typed Lua value per descriptor.
+-- For "edit" fields the descriptor may not say what the type should be, so
+-- we infer: "true"/"false" → bool, parseable → number, else string. Array
+-- values use comma-separated form (descriptor signals via field.type or
+-- by the field having a known multi-int shape like typebomb/typemissile).
+local function _trigger_coerce_value(field_descr, value)
+    if type(field_descr) ~= 'table' then return value end
+    -- known array-of-int fields per ED's trigger schema
+    local id = field_descr.id
+    if id == 'typebomb' or id == 'typemissile' or id == 'typemlrs' then
+        local out = {}
+        for piece in tostring(value):gmatch('[^,]+') do
+            local n = tonumber(piece)
+            if not n then return nil end
+            table.insert(out, n)
+        end
+        return out
+    end
+    if value == 'true' then return true end
+    if value == 'false' then return false end
+    local n = tonumber(value)
+    if n ~= nil then return n end
+    return tostring(value)
+end
+
+-- _trigger_field_descr — find a single field descriptor by id within a
+-- predicate's descr.fields list (or descr.fields under triggersDescr).
+local function _trigger_field_descr(descr, field_id)
+    if type(descr) ~= 'table' or type(descr.fields) ~= 'table' then return nil end
+    for _, f in ipairs(descr.fields) do
+        if type(f) == 'table' and f.id == field_id then return f end
+    end
+    return nil
+end
+
+-- _trigger_apply_fields — walk the user-supplied fields table, validate
+-- each against descr, coerce types, resolve references, allocate dict
+-- keys for text fields (those with a KeyDict_<id> companion). Mutates
+-- entry in place. Returns ok, err.
+local function _trigger_apply_fields(entry, descr, fields)
+    if type(fields) ~= 'table' then return true, nil end
+    local ok_dict, dictionary = pcall(require, 'dictionary')
+    for k, v in pairs(fields) do
+        local fd = _trigger_field_descr(descr, k)
+        if not fd then
+            return false, 'unknown field "' .. tostring(k) .. '" for predicate "'
+                          .. tostring(descr and descr.name or '?') .. '"'
+        end
+        local coerced = _trigger_coerce_value(fd, v)
+        if coerced == nil then
+            return false, 'invalid value for field "' .. tostring(k) .. '"'
+        end
+        local kind = _trigger_field_combo_kind(fd)
+        local resolved, ref_err = _trigger_resolve_ref(kind, coerced)
+        if ref_err then return false, ref_err end
+        -- Dictionary handling: descriptor flags text fields by having a
+        -- companion id "KeyDict_<id>" elsewhere in descr.fields.
+        local keydict_id = 'KeyDict_' .. k
+        if _trigger_field_descr(descr, keydict_id) and type(resolved) == 'string'
+                and resolved:sub(1, 8) ~= 'DictKey_' and ok_dict
+                and type(dictionary.fixDict) == 'function' then
+            -- fixDict allocates a new key, sets the value, and writes both
+            -- entry[k] and entry[keydict_id] = the new key.
+            pcall(dictionary.fixDict, entry, k, resolved, k)
+        else
+            entry[k] = resolved
+        end
+    end
+    return true, nil
+end
+
+-- _trigger_resolve_for_get — reverse of fixDict: given an entry from a
+-- trigrules trigger / rule / action, return a flat fields table with
+-- DictKey_* references resolved back to literal strings, and reference
+-- ids accompanied by *_name fields where resolvable. Skips the
+-- KeyDict_* companions (they're internal indirection). If raw=true,
+-- returns the entry verbatim instead.
+local function _trigger_resolve_for_get(entry, descr, raw)
+    local out = {}
+    if type(entry) ~= 'table' then return out end
+    if raw then
+        for k, v in pairs(entry) do out[k] = v end
+        return out
+    end
+    local ok_dict, dictionary = pcall(require, 'dictionary')
+    for k, v in pairs(entry) do
+        if k == 'predicate' then
+            -- skip — emitted separately at the caller's level
+        elseif k:sub(1, 8) == 'KeyDict_' then
+            -- skip companion
+        elseif type(v) == 'string' and v:sub(1, 8) == 'DictKey_'
+                and ok_dict and type(dictionary.getValueDict) == 'function' then
+            local literal = dictionary.getValueDict(v)
+            out[k] = literal or v
+        else
+            out[k] = v
+            -- enrichment for reference fields
+            local fd = _trigger_field_descr(descr, k)
+            local kind = fd and _trigger_field_combo_kind(fd)
+            if kind == 'group' and type(v) == 'number' then
+                local Mission = require('me_mission')
+                if Mission.group_by_id and Mission.group_by_id[v] then
+                    out[k .. '_name'] = Mission.group_by_id[v].name
+                end
+            elseif kind == 'unit' and type(v) == 'number' then
+                local Mission = require('me_mission')
+                if Mission.unit_by_id and Mission.unit_by_id[v] then
+                    out[k .. '_name'] = Mission.unit_by_id[v].name
+                end
+            elseif kind == 'zone' and type(v) == 'number' then
+                local Mission = require('me_mission')
+                local mission = Mission.mission
+                if type(mission) == 'table' and type(mission.triggers) == 'table'
+                        and type(mission.triggers.zones) == 'table' then
+                    for _, z in ipairs(mission.triggers.zones) do
+                        if z.zoneId == v then out[k .. '_name'] = z.name; break end
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+-- _trigger_ensure_trigrules — make sure mission.trigrules exists; create
+-- an empty array if not. Mirrors ED's me_trigrules.show() init guard.
+local function _trigger_ensure_trigrules()
+    local Mission = require('me_mission')
+    local mission = Mission.mission
+    if type(mission) ~= 'table' then return nil, 'no mission loaded' end
+    if type(mission.trigrules) ~= 'table' then mission.trigrules = {} end
+    return mission.trigrules, nil
+end
+
+-- _trigger_friendly_type — canonical "triggerOnce" / "triggerContinious" /
+-- ... → friendly alias ("once" / "continuous" / ...).
+local function _trigger_friendly_type(canonical)
+    return _trigger_make_alias(canonical or '')
+end
+
 -- group_list — return concise summaries of all groups, with optional filters.
 --
 -- args (all optional):
