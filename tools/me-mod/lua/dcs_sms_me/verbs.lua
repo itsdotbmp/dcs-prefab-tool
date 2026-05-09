@@ -3837,12 +3837,16 @@ local function _trigger_resolve_ref(kind, value)
         if u then return u.unitId, nil end
         return nil, 'no unit named "' .. value .. '"'
     elseif kind == 'zone' then
-        local Mission = require('me_mission')
-        local mission = Mission.mission
-        if type(mission) == 'table' and type(mission.triggers) == 'table'
-                and type(mission.triggers.zones) == 'table' then
-            for _, z in ipairs(mission.triggers.zones) do
-                if z.name == value then return z.zoneId, nil end
+        -- Trigger zones don't live in mission.triggers.zones at runtime —
+        -- they're held by the Mission.TriggerZoneData controller, which
+        -- exposes ids + a name lookup but no by-name index. Iterate ids
+        -- and match (same pattern as find_zone above).
+        local ok_tzd, TZD = pcall(require, 'Mission.TriggerZoneData')
+        if ok_tzd and type(TZD) == 'table'
+                and type(TZD.getTriggerZoneIds) == 'function'
+                and type(TZD.getTriggerZoneName) == 'function' then
+            for _, zid in ipairs(TZD.getTriggerZoneIds() or {}) do
+                if TZD.getTriggerZoneName(zid) == value then return zid, nil end
             end
         end
         return nil, 'no zone named "' .. value .. '"'
@@ -3990,13 +3994,13 @@ local function _trigger_resolve_for_get(entry, descr, raw)
                     out[k .. '_name'] = Mission.unit_by_id[v].name
                 end
             elseif kind == 'zone' and type(v) == 'number' then
-                local Mission = require('me_mission')
-                local mission = Mission.mission
-                if type(mission) == 'table' and type(mission.triggers) == 'table'
-                        and type(mission.triggers.zones) == 'table' then
-                    for _, z in ipairs(mission.triggers.zones) do
-                        if z.zoneId == v then out[k .. '_name'] = z.name; break end
-                    end
+                -- Same as _trigger_resolve_ref: zones live in TriggerZoneData
+                -- at runtime, not mission.triggers.zones.
+                local ok_tzd, TZD = pcall(require, 'Mission.TriggerZoneData')
+                if ok_tzd and type(TZD) == 'table'
+                        and type(TZD.getTriggerZoneName) == 'function' then
+                    local n = TZD.getTriggerZoneName(v)
+                    if n then out[k .. '_name'] = n end
                 end
             end
         end
