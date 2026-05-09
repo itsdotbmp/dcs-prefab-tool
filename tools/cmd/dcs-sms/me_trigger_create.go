@@ -105,6 +105,17 @@ func meTriggerCreateCmd(args []string, stdout, stderr io.Writer) int {
 			// Bundled rule failed mid-stream; surface the partial state.
 			return emitMeResponse(condResp, *flagPretty, stdout)
 		}
+		// Outer OK only confirms the Lua snippet ran — the verb itself may
+		// still have rejected the rule (unknown predicate, missing field,
+		// etc.). Inspect the inner return_value.ok to surface those.
+		if len(condResp.ReturnValue) > 0 {
+			var rv map[string]any
+			if err := json.Unmarshal(condResp.ReturnValue, &rv); err == nil {
+				if ok, _ := rv["ok"].(bool); !ok {
+					return emitMeResponse(condResp, *flagPretty, stdout)
+				}
+			}
+		}
 	}
 
 	// 3) Apply each bundled action.
@@ -118,6 +129,15 @@ func meTriggerCreateCmd(args []string, stdout, stderr io.Writer) int {
 		}
 		if !actResp.OK {
 			return emitMeResponse(actResp, *flagPretty, stdout)
+		}
+		// Same inner-ok guard as for conditions above.
+		if len(actResp.ReturnValue) > 0 {
+			var rv map[string]any
+			if err := json.Unmarshal(actResp.ReturnValue, &rv); err == nil {
+				if ok, _ := rv["ok"].(bool); !ok {
+					return emitMeResponse(actResp, *flagPretty, stdout)
+				}
+			}
 		}
 	}
 
