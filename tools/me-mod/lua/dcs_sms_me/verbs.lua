@@ -140,4 +140,119 @@ function M.file_new(args)
     return { ok = true, map = map, async = true }
 end
 
+-- refresh_menubar_title — keep the ME's top-bar filename label in sync with
+-- the actual saved path. DCS native flows update this via the post-save
+-- reload (module_mission.load → MenuBar.setFileName at me_mission.lua:2550),
+-- but in the no-reload path we have to do it ourselves.
+local function refresh_menubar_title(path)
+    pcall(function()
+        local mb = require('me_menubar')
+        local U = require('me_utilities')
+        if type(mb.setFileName) == 'function' and type(U.extractFileName) == 'function' then
+            mb.setFileName(U.extractFileName(path))
+        end
+    end)
+end
+
+-- file_save — save the current mission to its existing path.
+--
+-- Wraps module_mission.save_mission_safe(path, false, noLoad).
+--   showError=false: no UI popup on error (we surface it in the response)
+--   noLoad:          when reopen=true (default), DCS re-loads the file we
+--                    just wrote — same as clicking Ctrl+S in the ME. This
+--                    refreshes the title bar, dictionary state, etc.
+--                    when reopen=false, we skip the reload to avoid the
+--                    F-16-waypoint reload-crash documented in the discovery
+--                    log (me_route.lua:2413, post-save load() of a mission
+--                    with un-fix'd waypoints corrupts the .miz and hangs
+--                    DCS). We still refresh the title bar manually so the
+--                    user sees the right filename.
+--
+-- args:
+--   reopen: bool (optional, default true) — match DCS-native behavior; pass
+--                false only when you've just inject'd groups but haven't run
+--                Mission.fixWaypointForGroup yet
+--
+-- Errors if the mission has no real path yet (i.e. it's the temp/new
+-- placeholder) — use file_save_as for that case.
+function M.file_save(args)
+    local reopen = true
+    if type(args) == 'table' and args.reopen ~= nil then reopen = (args.reopen == true) end
+    local ok_mm, module_mission = pcall(require, 'me_mission')
+    if not ok_mm or type(module_mission) ~= 'table' then
+        return { ok = false, error = 'me_mission unavailable' }
+    end
+    if type(module_mission.save_mission_safe) ~= 'function' then
+        return { ok = false, error = 'me_mission.save_mission_safe unavailable' }
+    end
+    if type(module_mission.getMissionPathIsSaved) ~= 'function'
+            or not module_mission.getMissionPathIsSaved() then
+        return { ok = false,
+                 error = 'mission has no saved path; use file save-as --path <X.miz>' }
+    end
+    local path = module_mission.mission and module_mission.mission.path
+    if type(path) ~= 'string' or path == '' then
+        return { ok = false, error = 'mission.path missing' }
+    end
+    local noLoad = not reopen
+    local ok_call, ok_or_err = pcall(module_mission.save_mission_safe, path, false, noLoad)
+    if not ok_call then
+        return { ok = false,
+                 error = 'save_mission_safe: ' .. tostring(ok_or_err)
+                         .. ' (file written; post-save reload crashed — try --reopen=false)' }
+    end
+    if ok_or_err ~= true then
+        return { ok = false, error = 'save failed (mission validation or I/O); enable showError to see details' }
+    end
+    if noLoad then refresh_menubar_title(path) end
+    return { ok = true, path = path, reopen = reopen }
+end
+
+-- file_save_as — save the current mission to a new path.
+--
+-- args:
+--   path:   string  — absolute path to write (forward slashes preferred)
+--   reopen: bool (optional, default true) — see file_save for semantics
+--
+-- Updates module_mission.mission.path and MeSettings.missionPath so the next
+-- bare file_save targets the new file (matching what me_toolbar's Save-As
+-- flow does after FileDialog.save returns a filename). When reopen=true the
+-- post-save load() also resets mission.path internally and refreshes the
+-- title bar; when reopen=false we maintain that state ourselves.
+function M.file_save_as(args)
+    if type(args) ~= 'table' or type(args.path) ~= 'string' or args.path == '' then
+        return { ok = false, error = 'file_save_as requires args.path (string)' }
+    end
+    local reopen = true
+    if args.reopen ~= nil then reopen = (args.reopen == true) end
+    local ok_mm, module_mission = pcall(require, 'me_mission')
+    if not ok_mm or type(module_mission) ~= 'table' then
+        return { ok = false, error = 'me_mission unavailable' }
+    end
+    if type(module_mission.save_mission_safe) ~= 'function' then
+        return { ok = false, error = 'me_mission.save_mission_safe unavailable' }
+    end
+    local noLoad = not reopen
+    local ok_call, ok_or_err = pcall(module_mission.save_mission_safe, args.path, false, noLoad)
+    if not ok_call then
+        return { ok = false,
+                 error = 'save_mission_safe: ' .. tostring(ok_or_err)
+                         .. ' (file written; post-save reload crashed — try --reopen=false)' }
+    end
+    if ok_or_err ~= true then
+        return { ok = false, error = 'save failed (mission validation or I/O); enable showError to see details' }
+    end
+    -- Always sync MeSettings (the DCS user-flow does this in me_toolbar; load() doesn't).
+    local ok_ms, MeSettings = pcall(require, 'MeSettings')
+    if ok_ms and type(MeSettings) == 'table' and type(MeSettings.setMissionPath) == 'function' then
+        pcall(MeSettings.setMissionPath, args.path)
+    end
+    if noLoad then
+        -- load() would have set these for us; in the no-reload path do it manually.
+        if module_mission.mission then module_mission.mission.path = args.path end
+        refresh_menubar_title(args.path)
+    end
+    return { ok = true, path = args.path, reopen = reopen }
+end
+
 return M
