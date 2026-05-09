@@ -2089,11 +2089,21 @@ end
 -- zone_set_link — link a trigger zone to a unit (so the zone's center
 -- follows the unit), or clear an existing link.
 --
--- TZD.linkToUnit computes local coords (the zone's offset from the unit
--- at link time), sets the heading to the unit's heading, and stores the
--- unitId on the zone. As the unit moves at runtime, the zone's world
--- coords are derived from unit pos + local offset. TZD.unlinkToUnit
--- clears all three.
+-- Wraps Mission.linkTriggerZone / Mission.unlinkTriggerZone (the
+-- high-level wrappers used by the ME's panel UI), NOT the lower-level
+-- TZD.linkToUnit directly. The wrappers do TWO things on link:
+--   1. TriggerZoneController.linkToUnit(zid, uid) — sets the zone's
+--      linkUnitId, captures local coords, captures heading.
+--   2. table.insert(unit.linkChildrenTZone, zid) — back-reference on
+--      the unit so the unit's drag/move handlers (in me_map_window,
+--      me_aircraft, me_ship, me_vehicle, me_static) know to refresh
+--      this zone's position when the unit moves.
+--
+-- Calling only step 1 (the bare TZD function) leaves the link visible
+-- in the LINK UNIT dropdown and persisted to .miz, but the zone won't
+-- move with the unit in the live ME view — save+reload "fixes" it
+-- because load reconstructs linkChildrenTZone from the zone's stored
+-- linkUnitId, but in-session drag is broken without the back-ref.
 --
 -- args (zone selector — required): name | id (mutually exclusive)
 -- args (action — exactly one required):
@@ -2124,12 +2134,15 @@ function M.zone_set_link(args)
         return { ok = false, error = 'zone not found' }
     end
 
-    local TZD = require('Mission.TriggerZoneData')
+    local Mission = require('me_mission')
 
     if has_clear then
-        local ok_call, err = pcall(TZD.unlinkToUnit, zid)
+        if type(Mission.unlinkTriggerZone) ~= 'function' then
+            return { ok = false, error = 'Mission.unlinkTriggerZone unavailable' }
+        end
+        local ok_call, err = pcall(Mission.unlinkTriggerZone, zid)
         if not ok_call then
-            return { ok = false, error = 'unlinkToUnit: ' .. tostring(err) }
+            return { ok = false, error = 'unlinkTriggerZone: ' .. tostring(err) }
         end
         return { ok = true, id = zid, name = zname, cleared = true }
     end
@@ -2141,9 +2154,24 @@ function M.zone_set_link(args)
         return { ok = false, error = 'unit not found' }
     end
 
-    local ok_call, err = pcall(TZD.linkToUnit, zid, u.unitId)
+    if type(Mission.linkTriggerZone) ~= 'function' then
+        return { ok = false, error = 'Mission.linkTriggerZone unavailable' }
+    end
+
+    -- linkTriggerZone tolerates re-linking but doesn't dedupe the
+    -- linkChildrenTZone back-reference list — calling it twice on the
+    -- same (zone, unit) pair would push the zoneId in twice. Defensively
+    -- unlink first if the zone is currently linked.
+    if type(Mission.unlinkTriggerZone) == 'function' then
+        local TZD = require('Mission.TriggerZoneData')
+        if type(TZD.getLinkUnitId) == 'function' and TZD.getLinkUnitId(zid) then
+            pcall(Mission.unlinkTriggerZone, zid)
+        end
+    end
+
+    local ok_call, err = pcall(Mission.linkTriggerZone, zid, u.unitId)
     if not ok_call then
-        return { ok = false, error = 'linkToUnit: ' .. tostring(err) }
+        return { ok = false, error = 'linkTriggerZone: ' .. tostring(err) }
     end
 
     return {
