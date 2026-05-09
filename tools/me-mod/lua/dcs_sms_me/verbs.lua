@@ -1969,6 +1969,242 @@ function M.unit_set_callsign(args)
 end
 
 -- ============================================================
+-- Unit payload verbs (plane / helicopter only)
+-- ============================================================
+--
+-- Payload data shape on a plane/heli unit:
+--   u.payload = {
+--     name   = "CAP",                       -- named loadout selector
+--     pylons = {                            -- pylonNumber → weapon entry
+--       [1] = { CLSID = "{...GUID...}", settings = { ... } | nil },
+--       [3] = { CLSID = "ALQ_184",          settings = nil },
+--       ...                                 -- non-contiguous
+--     },
+--     fuel  = 2500,    -- kg
+--     chaff = 150,     -- count
+--     flare = 120,     -- count
+--     gun   = 100,     -- ammo % (0-100)
+--   }
+--
+-- CLSID format is mixed: GUIDs ("{B6...}") and human-readable codes
+-- ("ALQ_184", "{Mk82AIR}"). The pylon-specific weapon list lives at
+-- DB.unit_by_type[u.type].Pylons[i].Launchers and is the source of truth
+-- for what's valid where.
+
+-- _resolve_weapon — accept either a CLSID or a display name, return the
+-- CLSID. Looks up against the pylon's Launchers list. Returns nil + error
+-- if no match.
+local function _resolve_weapon(pylon_def, weapon_arg)
+    if type(weapon_arg) ~= 'string' or weapon_arg == '' then
+        return nil, 'weapon must be a non-empty string'
+    end
+    if type(pylon_def) ~= 'table' or type(pylon_def.Launchers) ~= 'table' then
+        return nil, 'pylon has no Launchers list'
+    end
+    -- 1) exact CLSID match (skip obsolete launchers).
+    for _, lnch in pairs(pylon_def.Launchers) do
+        if type(lnch) == 'table' and lnch.CLSID == weapon_arg and not lnch.obsolete then
+            return weapon_arg, nil
+        end
+    end
+    -- 2) display-name match. base.get_weapon_display_name_by_clsid is the
+    --    same lookup the ME panel uses; available globally in ME context.
+    if type(get_weapon_display_name_by_clsid) == 'function' then
+        local target = string.lower(weapon_arg)
+        for _, lnch in pairs(pylon_def.Launchers) do
+            if type(lnch) == 'table' and lnch.CLSID and not lnch.obsolete then
+                local dn = get_weapon_display_name_by_clsid(lnch.CLSID)
+                if type(dn) == 'string' and string.lower(dn) == target then
+                    return lnch.CLSID, nil
+                end
+            end
+        end
+    end
+    return nil, 'weapon "' .. weapon_arg .. '" not valid for this pylon'
+end
+
+-- _find_pylon_def — locate the pylon definition table for a given airframe
+-- type and pylon number. Returns the pylon-def table or nil + error.
+local function _find_pylon_def(unit_type, pylon_number)
+    local ok_db, DB = pcall(require, 'me_db_api')
+    if not ok_db or type(DB) ~= 'table' or type(DB.unit_by_type) ~= 'table' then
+        return nil, 'me_db_api.unit_by_type unavailable'
+    end
+    local def = DB.unit_by_type[unit_type]
+    if type(def) ~= 'table' or type(def.Pylons) ~= 'table' then
+        return nil, 'unit type "' .. tostring(unit_type) .. '" has no Pylons'
+    end
+    for _, p in pairs(def.Pylons) do
+        if type(p) == 'table' and p.Number == pylon_number then
+            return p, nil
+        end
+    end
+    return nil, 'pylon ' .. tostring(pylon_number) .. ' not valid for ' .. tostring(unit_type)
+end
+
+-- _check_air_unit — shared up-front guard. Resolves the unit and refuses
+-- on non-air categories (only planes/helicopters carry payloads).
+local function _check_air_unit(verb, args)
+    if type(args) ~= 'table' then
+        return nil, verb .. ' requires args (table)'
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return nil, verb .. ' requires exactly one of args.name or args.id'
+    end
+    local u, g, _, _, cat = find_unit_in_mission(
+        has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return nil, 'unit not found'
+    end
+    if cat ~= 'plane' and cat ~= 'helicopter' then
+        return nil, verb .. ' only applies to plane / helicopter units (got ' .. tostring(cat) .. ')'
+    end
+    return { unit = u, group = g, cat = cat }, nil
+end
+
+-- unit_set_loadout — apply a named loadout (e.g. "CAP", "CAS", "Empty").
+-- Looks up the loadout via me_loadoututils.getUnitPylons, replaces
+-- u.payload.pylons with its contents, and sets u.payload.name. Other
+-- payload fields (chaff, flare, fuel, gun) are preserved.
+function M.unit_set_loadout(args)
+    local ctx, err = _check_air_unit('unit_set_loadout', args)
+    if not ctx then return { ok = false, error = err } end
+    if type(args.loadout) ~= 'string' or args.loadout == '' then
+        return { ok = false, error = 'unit_set_loadout requires args.loadout (string)' }
+    end
+    local ok_lu, loadoutUtils = pcall(require, 'me_loadoututils')
+    if not ok_lu or type(loadoutUtils) ~= 'table'
+            or type(loadoutUtils.getUnitPylons) ~= 'function' then
+        return { ok = false, error = 'me_loadoututils.getUnitPylons unavailable' }
+    end
+    local pylons = loadoutUtils.getUnitPylons(ctx.unit.type, args.loadout)
+    if type(pylons) ~= 'table' then
+        return { ok = false,
+                 error = 'unit_set_loadout: loadout "' .. args.loadout
+                         .. '" not found for ' .. ctx.unit.type }
+    end
+    local u = ctx.unit
+    u.payload = u.payload or {}
+    u.payload.name = args.loadout
+    u.payload.pylons = {}
+    local pylon_count = 0
+    for pylonNumber, v in pairs(pylons) do
+        if type(v) == 'table' and v.CLSID then
+            u.payload.pylons[pylonNumber] = { CLSID = v.CLSID, settings = v.settings }
+            pylon_count = pylon_count + 1
+        end
+    end
+    return { ok = true, id = u.unitId, name = u.name,
+             loadout = args.loadout, pylon_count = pylon_count }
+end
+
+-- unit_payload_set — set a single pylon's weapon by CLSID or display name.
+-- Validates the pylon number against the airframe's Pylons table and the
+-- weapon against that pylon's Launchers list. Refuses obsolete launchers.
+function M.unit_payload_set(args)
+    local ctx, err = _check_air_unit('unit_payload_set', args)
+    if not ctx then return { ok = false, error = err } end
+    if type(args.pylon) ~= 'number' or args.pylon < 1 then
+        return { ok = false, error = 'unit_payload_set requires args.pylon (positive integer)' }
+    end
+    if type(args.weapon) ~= 'string' or args.weapon == '' then
+        return { ok = false, error = 'unit_payload_set requires args.weapon (CLSID or display name)' }
+    end
+    local pylon_def, perr = _find_pylon_def(ctx.unit.type, args.pylon)
+    if not pylon_def then
+        return { ok = false, error = 'unit_payload_set: ' .. perr }
+    end
+    local clsid, werr = _resolve_weapon(pylon_def, args.weapon)
+    if not clsid then
+        return { ok = false, error = 'unit_payload_set: ' .. werr }
+    end
+    local u = ctx.unit
+    u.payload = u.payload or {}
+    u.payload.pylons = u.payload.pylons or {}
+    u.payload.pylons[args.pylon] = { CLSID = clsid, settings = nil }
+    return { ok = true, id = u.unitId, name = u.name,
+             pylon = args.pylon, clsid = clsid }
+end
+
+-- unit_payload_clear — remove a single pylon's weapon entry.
+function M.unit_payload_clear(args)
+    local ctx, err = _check_air_unit('unit_payload_clear', args)
+    if not ctx then return { ok = false, error = err } end
+    if type(args.pylon) ~= 'number' or args.pylon < 1 then
+        return { ok = false, error = 'unit_payload_clear requires args.pylon (positive integer)' }
+    end
+    -- Pylon-existence check (ergonomic — refuse on a pylon that's not a
+    -- valid hardpoint for the airframe even though clearing nothing is
+    -- a no-op data-wise).
+    local _, perr = _find_pylon_def(ctx.unit.type, args.pylon)
+    if perr then
+        return { ok = false, error = 'unit_payload_clear: ' .. perr }
+    end
+    local u = ctx.unit
+    local had_weapon = u.payload and u.payload.pylons and u.payload.pylons[args.pylon]
+    u.payload = u.payload or {}
+    u.payload.pylons = u.payload.pylons or {}
+    u.payload.pylons[args.pylon] = nil
+    return { ok = true, id = u.unitId, name = u.name,
+             pylon = args.pylon, had_weapon = had_weapon ~= nil }
+end
+
+-- unit_set_chaff — set u.payload.chaff (count).
+function M.unit_set_chaff(args)
+    local ctx, err = _check_air_unit('unit_set_chaff', args)
+    if not ctx then return { ok = false, error = err } end
+    if type(args.count) ~= 'number' or args.count < 0 then
+        return { ok = false, error = 'unit_set_chaff requires args.count (non-negative number)' }
+    end
+    local u = ctx.unit
+    u.payload = u.payload or {}
+    u.payload.chaff = args.count
+    return { ok = true, id = u.unitId, name = u.name, chaff = u.payload.chaff }
+end
+
+-- unit_set_flare — set u.payload.flare (count).
+function M.unit_set_flare(args)
+    local ctx, err = _check_air_unit('unit_set_flare', args)
+    if not ctx then return { ok = false, error = err } end
+    if type(args.count) ~= 'number' or args.count < 0 then
+        return { ok = false, error = 'unit_set_flare requires args.count (non-negative number)' }
+    end
+    local u = ctx.unit
+    u.payload = u.payload or {}
+    u.payload.flare = args.count
+    return { ok = true, id = u.unitId, name = u.name, flare = u.payload.flare }
+end
+
+-- unit_set_fuel — set u.payload.fuel (kg). No max validation (the panel
+-- clamps to airframe max; we let the user pass any non-negative number).
+function M.unit_set_fuel(args)
+    local ctx, err = _check_air_unit('unit_set_fuel', args)
+    if not ctx then return { ok = false, error = err } end
+    if type(args.fuel) ~= 'number' or args.fuel < 0 then
+        return { ok = false, error = 'unit_set_fuel requires args.fuel (non-negative kg)' }
+    end
+    local u = ctx.unit
+    u.payload = u.payload or {}
+    u.payload.fuel = args.fuel
+    return { ok = true, id = u.unitId, name = u.name, fuel = u.payload.fuel }
+end
+
+-- unit_set_gun — set u.payload.gun (ammo percent, 0-100).
+function M.unit_set_gun(args)
+    local ctx, err = _check_air_unit('unit_set_gun', args)
+    if not ctx then return { ok = false, error = err } end
+    if type(args.percent) ~= 'number' or args.percent < 0 or args.percent > 100 then
+        return { ok = false, error = 'unit_set_gun requires args.percent (0-100)' }
+    end
+    local u = ctx.unit
+    u.payload = u.payload or {}
+    u.payload.gun = args.percent
+    return { ok = true, id = u.unitId, name = u.name, gun = u.payload.gun }
+end
+
+-- ============================================================
 -- Trigger zone lifecycle verbs
 -- ============================================================
 
