@@ -268,6 +268,67 @@ local function refresh_menubar_title(path)
     end)
 end
 
+-- _save_mission_with_reopen_dance — shared body for file_save / file_save_as.
+--
+-- module_mission.save_mission_safe(path, false, noLoad=false) writes the .miz
+-- and synchronously calls module_mission.load(fName) inside save() (line
+-- ~4889 in me_mission.lua). load() rebuilds the entire mission table:
+-- coalition[].country[].<cat>.group lists, unit_by_name, group_by_name, and
+-- the per-group/per-unit map objects. **Any reference held outside that
+-- table becomes stale.**
+--
+-- The ME-native saveMission flow at me_toolbar.lua:769-803 mirrors this with
+-- two cleanup steps that our verbs must reproduce when reopen=true:
+--   1. BEFORE save: MapWindow.unselectAll() — clears MapWindow.selectedGroup
+--      / selectedUnit and the selection sprites. Without this, after load()
+--      rebuilds the tables those references point at orphan objects: the
+--      title bar updates correctly (it's just a string) but the user can't
+--      select anything new because the ME's click handlers walk the dangling
+--      selection state and short-circuit on stale identity checks.
+--   2. AFTER save: MapWindow.show(true) — re-creates / re-renders the map
+--      against the new mission data.
+--
+-- When reopen=false we skip both: there's no rebuild, references stay valid.
+local function _save_mission_with_reopen_dance(verb, path, reopen)
+    local ok_mm, module_mission = pcall(require, 'me_mission')
+    if not ok_mm or type(module_mission) ~= 'table' then
+        return { ok = false, error = 'me_mission unavailable' }
+    end
+    if type(module_mission.save_mission_safe) ~= 'function' then
+        return { ok = false, error = 'me_mission.save_mission_safe unavailable' }
+    end
+
+    -- Pre-save: clear stale selection refs so they don't survive into the
+    -- post-load() ME state.
+    local MapWindow
+    if reopen then
+        local ok_mw
+        ok_mw, MapWindow = pcall(require, 'me_map_window')
+        if ok_mw and type(MapWindow) == 'table' and type(MapWindow.unselectAll) == 'function' then
+            pcall(MapWindow.unselectAll)
+        end
+    end
+
+    local noLoad = not reopen
+    local ok_call, ok_or_err = pcall(module_mission.save_mission_safe, path, false, noLoad)
+    if not ok_call then
+        return { ok = false,
+                 error = 'save_mission_safe: ' .. tostring(ok_or_err)
+                         .. ' (file written; post-save reload crashed — try --reopen=false)' }
+    end
+    if ok_or_err ~= true then
+        return { ok = false, error = 'save failed (mission validation or I/O); enable showError to see details' }
+    end
+
+    -- Post-save: refresh the map view against the rebuilt tables. Mirrors
+    -- saveMissionFileDialog at me_toolbar.lua:757.
+    if reopen and MapWindow and type(MapWindow.show) == 'function' then
+        pcall(MapWindow.show, true)
+    end
+
+    return { ok = true, path = path, reopen = reopen }
+end
+
 -- file_save — save the current mission to its existing path.
 --
 -- Wraps module_mission.save_mission_safe(path, false, noLoad).
@@ -296,9 +357,6 @@ function M.file_save(args)
     if not ok_mm or type(module_mission) ~= 'table' then
         return { ok = false, error = 'me_mission unavailable' }
     end
-    if type(module_mission.save_mission_safe) ~= 'function' then
-        return { ok = false, error = 'me_mission.save_mission_safe unavailable' }
-    end
     if type(module_mission.getMissionPathIsSaved) ~= 'function'
             or not module_mission.getMissionPathIsSaved() then
         return { ok = false,
@@ -308,18 +366,10 @@ function M.file_save(args)
     if type(path) ~= 'string' or path == '' then
         return { ok = false, error = 'mission.path missing' }
     end
-    local noLoad = not reopen
-    local ok_call, ok_or_err = pcall(module_mission.save_mission_safe, path, false, noLoad)
-    if not ok_call then
-        return { ok = false,
-                 error = 'save_mission_safe: ' .. tostring(ok_or_err)
-                         .. ' (file written; post-save reload crashed — try --reopen=false)' }
-    end
-    if ok_or_err ~= true then
-        return { ok = false, error = 'save failed (mission validation or I/O); enable showError to see details' }
-    end
-    if noLoad then refresh_menubar_title(path) end
-    return { ok = true, path = path, reopen = reopen }
+    local result = _save_mission_with_reopen_dance('file_save', path, reopen)
+    if not result.ok then return result end
+    if not reopen then refresh_menubar_title(path) end
+    return result
 end
 
 -- file_save_as — save the current mission to a new path.
@@ -339,34 +389,20 @@ function M.file_save_as(args)
     end
     local reopen = true
     if args.reopen ~= nil then reopen = (args.reopen == true) end
-    local ok_mm, module_mission = pcall(require, 'me_mission')
-    if not ok_mm or type(module_mission) ~= 'table' then
-        return { ok = false, error = 'me_mission unavailable' }
-    end
-    if type(module_mission.save_mission_safe) ~= 'function' then
-        return { ok = false, error = 'me_mission.save_mission_safe unavailable' }
-    end
-    local noLoad = not reopen
-    local ok_call, ok_or_err = pcall(module_mission.save_mission_safe, args.path, false, noLoad)
-    if not ok_call then
-        return { ok = false,
-                 error = 'save_mission_safe: ' .. tostring(ok_or_err)
-                         .. ' (file written; post-save reload crashed — try --reopen=false)' }
-    end
-    if ok_or_err ~= true then
-        return { ok = false, error = 'save failed (mission validation or I/O); enable showError to see details' }
-    end
+    local result = _save_mission_with_reopen_dance('file_save_as', args.path, reopen)
+    if not result.ok then return result end
     -- Always sync MeSettings (the DCS user-flow does this in me_toolbar; load() doesn't).
     local ok_ms, MeSettings = pcall(require, 'MeSettings')
     if ok_ms and type(MeSettings) == 'table' and type(MeSettings.setMissionPath) == 'function' then
         pcall(MeSettings.setMissionPath, args.path)
     end
-    if noLoad then
+    if not reopen then
         -- load() would have set these for us; in the no-reload path do it manually.
-        if module_mission.mission then module_mission.mission.path = args.path end
+        local ok_mm, module_mission = pcall(require, 'me_mission')
+        if ok_mm and module_mission.mission then module_mission.mission.path = args.path end
         refresh_menubar_title(args.path)
     end
-    return { ok = true, path = args.path, reopen = reopen }
+    return result
 end
 
 -- ============================================================
