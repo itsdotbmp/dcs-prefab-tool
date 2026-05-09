@@ -1,5 +1,10 @@
 module github.com/nielsvaes/dcs-sms/tools
 
-go 1.22
+go 1.25.0
 
-require github.com/google/uuid v1.6.0 // indirect
+require (
+	github.com/google/uuid v1.6.0
+	golang.org/x/term v0.43.0
+)
+
+require golang.org/x/sys v0.44.0 // indirect

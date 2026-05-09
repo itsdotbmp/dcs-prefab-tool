@@ -189,3 +189,33 @@ func TestDiscoverInstall_PriorityOrder(t *testing.T) {
 		t.Fatalf("expected error when no source provided, got %q", got)
 	}
 }
+
+func TestSanitizeUserPath(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"bare", `D:\Eagle Dynamics\DCS World`, `D:\Eagle Dynamics\DCS World`},
+		{"ascii double quotes", `"D:\Program Files\Eagle Dynamics\DCS World"`, `D:\Program Files\Eagle Dynamics\DCS World`},
+		{"ascii single quotes", `'D:\Program Files\Eagle Dynamics\DCS World'`, `D:\Program Files\Eagle Dynamics\DCS World`},
+		{"smart double quotes", "“D:\\Eagle Dynamics\\DCS World”", `D:\Eagle Dynamics\DCS World`},
+		{"smart single quotes", "‘D:\\Eagle Dynamics\\DCS World’", `D:\Eagle Dynamics\DCS World`},
+		{"stray leading double", `"D:\Eagle Dynamics\DCS World`, `D:\Eagle Dynamics\DCS World`},
+		{"stray trailing double", `D:\Eagle Dynamics\DCS World"`, `D:\Eagle Dynamics\DCS World`},
+		{"stray leading smart double", "“D:\\Eagle Dynamics\\DCS World", `D:\Eagle Dynamics\DCS World`},
+		{"surrounding whitespace and quotes", `   "D:\Eagle Dynamics\DCS World"   `, `D:\Eagle Dynamics\DCS World`},
+		{"trailing separator", `D:\Eagle Dynamics\DCS World\`, `D:\Eagle Dynamics\DCS World`},
+		{"empty", ``, ``},
+		{"only whitespace", `   `, ``},
+		{"only quotes", `""`, ``},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := SanitizeUserPath(tc.in)
+			if got != tc.want {
+				t.Errorf("SanitizeUserPath(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

@@ -1,6 +1,10 @@
 package main
 
-import "os"
+import (
+	"os"
+
+	"golang.org/x/term"
+)
 
 // version is overridden at release-build time via
 // `-ldflags="-X main.version=$VERSION"` (see release-me-mod.yml).
@@ -9,5 +13,7 @@ import "os"
 var version = "0.1.0-dev"
 
 func main() {
-	os.Exit(dispatch(os.Args[1:], os.Stdout, os.Stderr))
+	args := os.Args[1:]
+	interactive := len(args) == 0 && term.IsTerminal(int(os.Stdin.Fd()))
+	os.Exit(dispatch(args, os.Stdin, os.Stdout, os.Stderr, interactive))
 }
