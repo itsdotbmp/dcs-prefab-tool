@@ -256,3 +256,150 @@ for _, g in ipairs(groups) do pcall(Mission.remove_group, g) end
 **Tag:** needs-more
 **Touches:** CLI `--timeout` default
 **Notes:** Spawning a complex group (full task array + options + payload) with `--timeout 15s` timed out client-side, but `dcs-sms.exe status` immediately after showed the request had been processed (inbox empty, group present). Default `--timeout 5s` and even `15s` is sometimes too short; bumping to `30s` for non-trivial spawns is reasonable. Suspected cause: bridge polls inbox every ~30 UpdateManager ticks and the ME may stutter during heavy operations. Worth investigating whether to (a) raise the CLI default timeout, (b) tighten the bridge poll interval, or (c) leave as-is and document.
+
+## land vs water at a coordinate
+**Tag:** command-worthy
+**Touches:** `terrain.GetSurfaceType`
+**Snippet:**
+```lua
+return terrain.GetSurfaceType(x, y)  -- "land" or "sea"
+```
+**Notes:** Mission-table coords (x = N–S, y = E–W). Returns lowercase string. Sea returns `terrain.GetHeight = 0`. Other surface kinds (`shallow_water`, `road`, `runway`) likely also returnable but only `"land"` and `"sea"` observed during the Akrotiri probe sweep (peninsula, surrounding sea, salt-lake region). `terrain` and `Terrain` (capitalized) are the same table — pick one for consistency.
+
+## terrain height at a coordinate
+**Tag:** command-worthy
+**Touches:** `terrain.GetHeight`, `terrain.GetSurfaceHeightWithSeabed`
+**Snippet:**
+```lua
+local h = terrain.GetHeight(x, y)                       -- meters above sea level
+local h_surf, depth = terrain.GetSurfaceHeightWithSeabed(x, y)  -- includes seabed depth (depth = 0 over land)
+```
+**Notes:** Mission-table coords. `GetHeight` returns 0 over sea (it's the surface above the water). For underwater bathymetry use `GetSurfaceHeightWithSeabed` — second return value is depth in meters (0 over land). Akrotiri runway = 21m, Cypriot peninsula = ~8m, hills 15km N = 125m, mountains 25km N = 479m.
+
+## slope / placement validity (the ME's own steep-slope check)
+**Tag:** command-worthy
+**Touches:** `MapWindow.isValidSurfacePro`, `MapWindow.isValidSurface`, `MapWindow.checkSurface`, `MapWindow.findValidStrikePoint`
+**Snippet:**
+```lua
+-- ME's "is this surface flat enough for a ground unit" check, with footprint:
+local ok = MapWindow.isValidSurfacePro(angle_deg, footprint_m, x, y, 'land')
+-- Used internally for VTOL helicopter takeoff at me_map_window.lua:3338
+-- with angle=5°, footprint = max(wing_span, length) — same threshold ED uses
+-- to draw the steep-slope warning icon.
+
+-- Pure height-delta variant (no surface-type filter):
+local flat = MapWindow.isValidSurface(delta_m, side_m, x, y)
+
+-- "Find me a valid land/water spot near (x, y)" — spirals out until found:
+local vx, vy = MapWindow.findValidStrikePoint(x, y, {'land'}, 50, nil)
+```
+**Notes:**
+- Returns true at runway, peninsula, 5km-15km N (low rolling hills) for 5°/30m. Returns false at 25km N (479m mountains) for 5°/30m — confirms it correctly detects steep slopes.
+- The 'land' filter combined with isValidSurfacePro's slope check is what the ME uses for the icon you see when placing a unit on a too-steep surface — confirmed by reading me_map_window.lua:3298–3368 (`checkSurface`).
+- `isValidSurface(delta, side, x, y)` is height-delta-only: max height variation within a `side × side` square must be ≤ `delta`. No surface type check.
+- `findValidStrikePoint(x, y, surfTypes, offset, minDepth)` is the "snap to valid spot" used internally by ME's strike-target placement. Useful for "make this anchor placeable" upstream of an injection. Returns `nil, nil` if nothing valid found in 200 spiral rings (huge search radius — safe to assume it'll find something).
+
+## scenery objects (buildings, walls, wires) at/near a coordinate
+**Tag:** command-worthy
+**Touches:** `terrain.getObjectsAtMapPoint`
+**Snippet:**
+```lua
+-- Single-point query — only returns objects whose AABB contains the point:
+local objs = terrain.getObjectsAtMapPoint(x, y)
+-- Returns nil OR a list of objects with rich metadata:
+--   { id = "161786066",       -- string, persistent
+--     model = "israel_block_building_05",  -- known model name
+--     type = 65536,            -- numeric type code
+--     center = { cx, cy },
+--     boxMin = { mnx, mny }, boxMax = { mxx, mxy },
+--     sizeOBB = { dx, dy }, radius = 13.3, rotation = 0.077 }
+
+-- Radius scan (necessary — single-point misses nearby objects):
+local function scenery_in_radius(x, y, radius, step)
+  step = step or 15
+  local seen = {}
+  for dx = -radius, radius, step do
+    for dy = -radius, radius, step do
+      if dx*dx + dy*dy <= radius*radius then
+        local objs = terrain.getObjectsAtMapPoint(x + dx, y + dy)
+        if type(objs) == 'table' then
+          for _, o in ipairs(objs) do
+            if o.id and not seen[o.id] then seen[o.id] = o end
+          end
+        end
+      end
+    end
+  end
+  local list = {}
+  for _, o in pairs(seen) do table.insert(list, o) end
+  return list
+end
+```
+**Notes:**
+- Detects: buildings (e.g. `israel_block_building_05`, `village_house_02`, `israel_city_house_03`), small statics (`cafe_umbrella`), and infrastructure (`wire` for power lines).
+- **Does NOT detect trees / forests** — see the next entry.
+- Use `step <= radius_of_smallest_object_you_care_about`. Buildings have radii ~13–20m so step=15 is fine for buildings; for catching `wire`-type small objects use step=5–8.
+- Performance: ~50µs per call. A 250m × 25m-step radius scan (≈80 probes) finishes in ~4ms; full SAM-site sweep across 31 candidates × 80 probes ≈ 50ms.
+
+## terrain LOS (terrain-only, NOT scenery / trees)
+**Tag:** command-worthy
+**Touches:** `terrain.isVisible`
+**Snippet:**
+```lua
+-- 3D coords with altitude in the middle: (x, alt, y, x2, alt2, y2)
+local ok = terrain.isVisible(x1, alt1, y1, x2, alt2, y2)
+```
+**Notes:** Returns true if a straight line between the two points is unobstructed by the terrain mesh. Does NOT account for buildings, walls, or trees — those passing through the line do not block visibility per this API. Useful for ridge-masking checks ("is this peak visible from there"); useless for occlusion by scenery/vegetation. Mission-table x/y conventions; altitude is height above sea level (or above terrain — only differs by `terrain.GetHeight` either way).
+
+## trees / forests are a script blind spot
+**Tag:** confirmed limitation
+**Touches:** every terrain-query API
+**Notes:** Trees / forests are stored on the terrain mod as binary rasters (`Mods/terrains/<theatre>/*.surface5`, `*.sd5`) and are **not exposed to the script API at all**. Validated against three user-placed AAV7 units explicitly in tree cover (`in-forrest-1/2/3`):
+
+| Probe | in-forrest-1 | in-forrest-2 | in-forrest-3 | Akrotiri runway (open) | 5km N (open) |
+|---|---|---|---|---|---|
+| `GetSurfaceType` | land | land | land | land | land |
+| `isValidSurfacePro(5°, 30m, 'land')` | true | true | false (steep, 338m elev) | true | true |
+| `getObjectsAtMapPoint` (80m radius, step=5) | 0 | 0 | 0 | 0 | 0 |
+| `getCrossParam` | "" | "" | "" | "" | "" |
+| `getTerrainShpare` | "FLAT" | "FLAT" | "FLAT" | "FLAT" | "FLAT" |
+| 8-direction LOS sweep, blocked rays @ 25–100m, h=0.5–10m | all 0 | all 0 | small (terrain undulation) | all 0 | all 0 |
+
+The forest spots are **indistinguishable** from the open controls across every API. `in-forrest-3`'s minor LOS-blocking is from terrain undulation at 338m elevation, not vegetation — same signature you'd see at any rough-terrain spot.
+
+The ME's own placement code (`MapWindow.checkSurface` at me_map_window.lua:3298) does NOT check for trees either — it only filters on surface type and slope. ED is consistent: the editor will silently let you place a unit inside a forest with no warning. The user-recalled steep-slope icon **is** the slope check (isValidSurfacePro), not a forest check.
+
+**Workarounds for "avoid trees" placement:**
+1. **User-in-the-loop**: framework returns top-N candidates ranked by surface/slope/clear-radius; user visually picks. Pragmatic, low cost, what humans do anyway.
+2. **Larger safety margins**: require a 300–500m clear-radius and accept candidates may sit in a small clearing inside a forest.
+3. **Pre-built forest mask per theatre**: extract from `.surface5` (binary, undocumented format — see `surface5-extraction` entry if/when reverse-engineered) or screenshot-color-sample the ME map view; ship as JSON. Brittle to DCS updates and theatre-specific.
+4. **Mission-play probe via `world.searchObjects(Object.Category.SCENERY, ...)`** — only available in mission-env (not editor). Untested whether trees are SCENERY-categorized at runtime; DCS docs imply they are not.
+
+## terrain query functions that look useful but aren't
+**Tag:** confirmed dead-end
+**Touches:** `terrain.getCrossParam`, `terrain.getTerrainShpare`
+**Notes:**
+- `terrain.getCrossParam(x1, y1, x2, y2)` — name suggests "cross-country navigation parameter" but returned `""` for every line tested (over open land, over trees, over urban, over sea, zero-length, 30m, 100m, 1500m). Either takes a different arg shape or is meaningful only on theatres / surfaces we didn't probe. Not useful as a terrain-type discriminator.
+- `terrain.getTerrainShpare(x, y)` — returned `"FLAT"` everywhere, including at sea, in cities, and on 479m mountain slopes. Probably unrelated to terrain category (perhaps render-LOD shape or similar). Not useful.
+
+## Mission table coords for unit lookup
+**Tag:** recipe
+**Touches:** `me_mission.unit_by_name`, `me_mission.group_by_name`
+**Snippet:**
+```lua
+-- Find units by name pattern (case-insensitive substring):
+local mm = require('me_mission')
+local matches = {}
+local seen = {}
+local function add(label, x, y, type) if not seen[label] then seen[label]=true; table.insert(matches, {name=label, x=x, y=y, type=type}) end end
+for n, u in pairs(mm.unit_by_name or {}) do
+  if string.find(string.lower(n), 'pattern') then add(n, u.x, u.y, u.type) end
+end
+-- Some units may be missing from unit_by_name; group walk catches them:
+for n, g in pairs(mm.group_by_name or {}) do
+  if string.find(string.lower(n), 'pattern') and g.units and g.units[1] then
+    add(n .. ' [via group]', g.units[1].x, g.units[1].y, g.units[1].type)
+  end
+end
+```
+**Notes:** During the in-forrest probe, one of three placed units was missing from `unit_by_name` — likely a stale-entry quirk after rename / undo / something. Walking `group_by_name` and falling back to `g.units[1]` caught it. Always do both for reliability.
