@@ -2511,7 +2511,12 @@ function M.drawing_create_rect(args)
     end
     local name = (type(args.name) == 'string' and args.name ~= '') and args.name
                  or unique_drawing_name('Rect')
-    local angle_rad = math.rad(args.angle_deg or 0)
+    -- IMPORTANT: drawing `angle` is stored in DEGREES, not radians. The ME's
+    -- own draw panel reads/writes mapData.angle as a 0..360 integer
+    -- (objectUpdateSpinBoxAngle at me_draw_panel.lua:558 clamps to that
+    -- range with math.floor(angle + 0.5)) — this is opposite to unit/group
+    -- heading which IS radians. Don't math.rad it.
+    local angle = args.angle_deg or 0
     local obj = {
         primitiveType = 'Polygon', polygonMode = 'rect', name = name,
         colorString = args.color or '0xff0000ff',
@@ -2521,14 +2526,13 @@ function M.drawing_create_rect(args)
         style = args.style or DEFAULT_LINE_STYLE,
         thickness = args.thickness or DEFAULT_THICKNESS,
         width = args.width, height = args.height,
-        angle = angle_rad,
+        angle = angle,
     }
     local _, err = inject_drawing(obj, args.layer or 'Common')
     if err then return { ok = false, error = err } end
     return { ok = true, name = name, type = 'Polygon', mode = 'rect',
              north = args.north, east = args.east,
-             width = args.width, height = args.height,
-             angle_deg = args.angle_deg or 0, angle_rad = angle_rad,
+             width = args.width, height = args.height, angle = angle,
              layer = args.layer or 'Common' }
 end
 
@@ -2549,7 +2553,8 @@ function M.drawing_create_oval(args)
     end
     local name = (type(args.name) == 'string' and args.name ~= '') and args.name
                  or unique_drawing_name('Oval')
-    local angle_rad = math.rad(args.angle_deg or 0)
+    -- See drawing_create_rect for why angle is degrees, not radians.
+    local angle = args.angle_deg or 0
     local obj = {
         primitiveType = 'Polygon', polygonMode = 'oval', name = name,
         colorString = args.color or '0xff0000ff',
@@ -2559,14 +2564,13 @@ function M.drawing_create_oval(args)
         style = args.style or DEFAULT_LINE_STYLE,
         thickness = args.thickness or DEFAULT_THICKNESS,
         r1 = args.r1, r2 = args.r2,
-        angle = angle_rad,
+        angle = angle,
     }
     local _, err = inject_drawing(obj, args.layer or 'Common')
     if err then return { ok = false, error = err } end
     return { ok = true, name = name, type = 'Polygon', mode = 'oval',
              north = args.north, east = args.east,
-             r1 = args.r1, r2 = args.r2,
-             angle_deg = args.angle_deg or 0, angle_rad = angle_rad,
+             r1 = args.r1, r2 = args.r2, angle = angle,
              layer = args.layer or 'Common' }
 end
 
@@ -2591,7 +2595,8 @@ function M.drawing_create_arrow(args)
     end
     local name = (type(args.name) == 'string' and args.name ~= '') and args.name
                  or unique_drawing_name('Arrow')
-    local angle_rad = math.rad(args.angle_deg or 0)
+    -- See drawing_create_rect for why angle is degrees, not radians.
+    local angle = args.angle_deg or 0
     local obj = {
         primitiveType = 'Polygon', polygonMode = 'arrow', name = name,
         colorString = args.color or '0xff0000ff',
@@ -2601,7 +2606,7 @@ function M.drawing_create_arrow(args)
         style = args.style or DEFAULT_LINE_STYLE,
         thickness = args.thickness or DEFAULT_THICKNESS,
         length = args.length,
-        angle = angle_rad,
+        angle = angle,
         -- points field is required by saveToMission but regenerated on
         -- load via polygonArrowMakePoints(length). Empty placeholder.
         points = {},
@@ -2610,8 +2615,7 @@ function M.drawing_create_arrow(args)
     if err then return { ok = false, error = err } end
     return { ok = true, name = name, type = 'Polygon', mode = 'arrow',
              north = args.north, east = args.east, length = args.length,
-             angle_deg = args.angle_deg or 0, angle_rad = angle_rad,
-             layer = args.layer or 'Common' }
+             angle = angle, layer = args.layer or 'Common' }
 end
 
 -- compute_center_and_relative_points — shared helper for line and free
@@ -2764,7 +2768,8 @@ function M.drawing_create_textbox(args)
     end
     local name = (type(args.name) == 'string' and args.name ~= '') and args.name
                  or unique_drawing_name('Text Box')
-    local angle_rad = math.rad(args.angle_deg or 0)
+    -- See drawing_create_rect for why angle is degrees, not radians.
+    local angle = args.angle_deg or 0
     local obj = {
         primitiveType = 'TextBox', name = name,
         colorString = args.color or '0x00ff00ff',
@@ -2775,7 +2780,7 @@ function M.drawing_create_textbox(args)
         font = args.font or 'DejaVuLGCSansCondensed.ttf',
         fontSize = args.font_size or 24,
         borderThickness = args.border_thickness or 4,
-        angle = angle_rad,
+        angle = angle,
     }
     local _, err = inject_drawing(obj, args.layer or 'Common')
     if err then return { ok = false, error = err } end
@@ -2809,7 +2814,8 @@ function M.drawing_create_icon(args)
     end
     local name = (type(args.name) == 'string' and args.name ~= '') and args.name
                  or unique_drawing_name('Icon')
-    local angle_rad = math.rad(args.angle_deg or 0)
+    -- See drawing_create_rect for why angle is degrees, not radians.
+    local angle = args.angle_deg or 0
     local obj = {
         primitiveType = 'Icon', name = name,
         colorString = args.color or '0xffffffff',
@@ -2817,7 +2823,7 @@ function M.drawing_create_icon(args)
         visible = true, hiddenOnPlanner = (args.hidden_on_planner == true),
         file = args.file,
         scale = args.scale or 1,
-        angle = angle_rad,
+        angle = angle,
     }
     local _, err = inject_drawing(obj, args.layer or 'Common')
     if err then return { ok = false, error = err } end
@@ -2962,9 +2968,11 @@ end
 --
 -- Args:
 --   name       drawing name (required)
---   angle_deg  rotation in degrees (CW positive). Stored internally as
---              radians via math.rad() — matches saveToMission's format
---              (object.angle is radians both at runtime and on disk).
+--   angle_deg  rotation in degrees (CW positive). Stored verbatim — the
+--              ME's draw panel reads/writes mapData.angle as DEGREES
+--              (objectUpdateSpinBoxAngle at me_draw_panel.lua:558 does
+--              math.floor(angle + 0.5) clamped [0, 360]). Opposite to
+--              unit/group heading which IS radians; ED inconsistency.
 function M.drawing_set_angle(args)
     if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
         return { ok = false, error = 'drawing_set_angle requires args.name (string)' }
@@ -2990,11 +2998,10 @@ function M.drawing_set_angle(args)
                          .. 'Polygon oval/rect/arrow' }
     end
 
-    local rad = math.rad(args.angle_deg)
-    local obj, err = mutate_drawing(args.name, function(o) o.angle = rad end)
+    -- Degrees stored verbatim; no math.rad — see comment above.
+    local obj, err = mutate_drawing(args.name, function(o) o.angle = args.angle_deg end)
     if err then return { ok = false, error = err } end
-    return { ok = true, name = args.name,
-             angle_deg = args.angle_deg, angle_rad = obj.angle }
+    return { ok = true, name = args.name, angle = obj.angle }
 end
 
 -- ============================================================
