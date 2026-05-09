@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/nielsvaes/dcs-sms/tools/internal/dcspath"
 )
 
 // menuActions holds the three subcommand handlers the menu invokes.
@@ -17,18 +19,20 @@ type menuActions struct {
 }
 
 // menuDeps bundles every external dependency the menu needs.
-// Future fields (e.g. a config-path override for option 4) live here.
 type menuDeps struct {
-	actions menuActions
+	actions    menuActions
+	configPath string // empty → resolved from dcspath.DefaultConfigPath()
 }
 
 func defaultMenuDeps() menuDeps {
+	cfg, _ := dcspath.DefaultConfigPath()
 	return menuDeps{
 		actions: menuActions{
 			install:   installMeModCmd,
 			uninstall: uninstallMeModCmd,
 			update:    updateCmd,
 		},
+		configPath: cfg,
 	}
 }
 
@@ -46,7 +50,7 @@ func runInteractiveMenuWith(stdin io.Reader, stdout, stderr io.Writer, deps menu
 	const maxInvalid = 3
 
 	for {
-		printMenuBanner(stdout)
+		printMenuBanner(stdout, deps)
 		fmt.Fprint(stdout, "Choose [1/2/3/4/q]: ")
 		line, err := reader.ReadString('\n')
 		if err != nil && line == "" {
@@ -86,9 +90,11 @@ func runActionAndPause(reader *bufio.Reader, stdout, stderr io.Writer, action co
 	return code
 }
 
-func printMenuBanner(w io.Writer) {
+func printMenuBanner(w io.Writer, deps menuDeps) {
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "DCS-SMS  v%s\n", version)
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "  "+dcsInstallLine(deps))
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "  1. Install DCS-SMS Mission Editor mod")
 	fmt.Fprintln(w, "  2. Uninstall DCS-SMS Mission Editor mod")
@@ -96,4 +102,12 @@ func printMenuBanner(w io.Writer) {
 	fmt.Fprintln(w, "  4. Set DCS install path manually")
 	fmt.Fprintln(w, "  q. Quit")
 	fmt.Fprintln(w)
+}
+
+func dcsInstallLine(deps menuDeps) string {
+	path, err := dcspath.DiscoverInstall("", deps.configPath)
+	if err != nil || path == "" {
+		return "DCS install: not detected — pick option 4 to set it"
+	}
+	return "DCS install: " + path
 }

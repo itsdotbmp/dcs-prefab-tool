@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -125,5 +127,45 @@ func failHandler(t *testing.T) func([]string, io.Writer, io.Writer) int {
 	return func(args []string, stdout, stderr io.Writer) int {
 		t.Errorf("unexpected handler call")
 		return 99
+	}
+}
+
+func TestMenuBannerShowsDiscoveredPath(t *testing.T) {
+	cfgDir := t.TempDir()
+	cfg := filepath.Join(cfgDir, "config.toml")
+	dcsRoot := t.TempDir()
+	if err := os.WriteFile(cfg, []byte(`dcs_install = "`+filepath.ToSlash(dcsRoot)+`"`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deps := menuDeps{
+		actions:    menuActions{install: failHandler(t), uninstall: failHandler(t), update: failHandler(t)},
+		configPath: cfg,
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := runInteractiveMenuWith(strings.NewReader("q\n"), &stdout, &stderr, deps)
+	if code != 0 {
+		t.Errorf("exit code %d, want 0", code)
+	}
+	// filepath.ToSlash so the comparison works on both Windows and Unix:
+	// the config stores forward-slash paths and DiscoverInstall returns them
+	// verbatim.
+	if !strings.Contains(stdout.String(), "DCS install: "+filepath.ToSlash(dcsRoot)) {
+		t.Errorf("expected discovered path in banner, got %q", stdout.String())
+	}
+}
+
+func TestMenuBannerShowsNotDetected(t *testing.T) {
+	cfgDir := t.TempDir()
+	cfg := filepath.Join(cfgDir, "config.toml") // does not exist
+	deps := menuDeps{
+		actions:    menuActions{install: failHandler(t), uninstall: failHandler(t), update: failHandler(t)},
+		configPath: cfg,
+	}
+
+	var stdout, stderr bytes.Buffer
+	_ = runInteractiveMenuWith(strings.NewReader("q\n"), &stdout, &stderr, deps)
+	if !strings.Contains(stdout.String(), "not detected") {
+		t.Errorf("expected 'not detected' in banner, got %q", stdout.String())
 	}
 }
