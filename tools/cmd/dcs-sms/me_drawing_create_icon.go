@@ -8,8 +8,45 @@ import (
 	"time"
 )
 
+type meDrawingCreateIconOpts struct {
+	North           float64
+	East            float64
+	File            string
+	Scale           float64
+	Angle           float64
+	Name            string
+	Color           string
+	Layer           string
+	HiddenOnPlanner bool
+	Timeout         time.Duration
+	Pretty          bool
+	SavedGames      string
+}
+
+func meDrawingCreateIconFlags() (*flag.FlagSet, *meDrawingCreateIconOpts) {
+	opts := &meDrawingCreateIconOpts{}
+	fs := flag.NewFlagSet("me drawing create-icon", flag.ContinueOnError)
+	fs.Float64Var(&opts.North, "north", 0, "meters north of theatre origin (icon anchor)")
+	fs.Float64Var(&opts.East, "east", 0, "meters east of theatre origin (icon anchor)")
+	fs.StringVar(&opts.File, "file", "", "icon filename within the icons folder")
+	fs.Float64Var(&opts.Scale, "scale", 1, "icon scale (default 1)")
+	fs.Float64Var(&opts.Angle, "angle", 0, "rotation in degrees (CW, 0 = unrotated)")
+	fs.StringVar(&opts.Name, "name", "", "drawing name (auto-allocated if empty)")
+	fs.StringVar(&opts.Color, "color", "", "tint color (default white, opaque)")
+	fs.StringVar(&opts.Layer, "layer", "", "Red|Blue|Neutral|Common|Author (default Common)")
+	fs.BoolVar(&opts.HiddenOnPlanner, "hidden-on-planner", false, "hide on mission planner")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("drawing", "create-icon", meDrawingCreateIconCmd)
+	registerMeInfo("drawing", "create-icon", cmdInfo{
+		Run:      meDrawingCreateIconCmd,
+		Flags:    flagsOnly(meDrawingCreateIconFlags),
+		Synopsis: "place an icon on the F10 map",
+	})
 }
 
 // meDrawingCreateIconCmd implements
@@ -21,60 +58,46 @@ func init() {
 // bare filename (e.g. 'aaa_air_neutral.png'); the runtime resolves the
 // theme prefix.
 func meDrawingCreateIconCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me drawing create-icon", flag.ContinueOnError)
+	fs, opts := meDrawingCreateIconFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagNorth      = fs.Float64("north", 0, "meters north of theatre origin (icon anchor)")
-		flagEast       = fs.Float64("east", 0, "meters east of theatre origin (icon anchor)")
-		flagFile       = fs.String("file", "", "icon filename within the icons folder")
-		flagScale      = fs.Float64("scale", 1, "icon scale (default 1)")
-		flagAngle      = fs.Float64("angle", 0, "rotation in degrees (CW, 0 = unrotated)")
-		flagName       = fs.String("name", "", "drawing name (auto-allocated if empty)")
-		flagColor      = fs.String("color", "", "tint color (default white, opaque)")
-		flagLayer      = fs.String("layer", "", "Red|Blue|Neutral|Common|Author (default Common)")
-		flagHiddenPln  = fs.Bool("hidden-on-planner", false, "hide on mission planner")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagFile == "" {
+	if opts.File == "" {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-icon: --file is required")
 		return 2
 	}
 
-	colorLua, err := parseDrawingColorToHex(*flagColor, 0xFF)
+	colorLua, err := parseDrawingColorToHex(opts.Color, 0xFF)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-icon:", err)
 		return 2
 	}
 
 	parts := []string{
-		fmt.Sprintf("north = %g", *flagNorth),
-		fmt.Sprintf("east = %g", *flagEast),
-		fmt.Sprintf("file = %q", *flagFile),
-		fmt.Sprintf("scale = %g", *flagScale),
-		fmt.Sprintf("angle_deg = %g", *flagAngle),
+		fmt.Sprintf("north = %g", opts.North),
+		fmt.Sprintf("east = %g", opts.East),
+		fmt.Sprintf("file = %q", opts.File),
+		fmt.Sprintf("scale = %g", opts.Scale),
+		fmt.Sprintf("angle_deg = %g", opts.Angle),
 	}
-	if *flagName != "" {
-		parts = append(parts, fmt.Sprintf("name = %q", *flagName))
+	if opts.Name != "" {
+		parts = append(parts, fmt.Sprintf("name = %q", opts.Name))
 	}
 	if colorLua != "" {
 		parts = append(parts, "color = "+colorLua)
 	}
-	if *flagLayer != "" {
-		parts = append(parts, fmt.Sprintf("layer = %q", *flagLayer))
+	if opts.Layer != "" {
+		parts = append(parts, fmt.Sprintf("layer = %q", opts.Layer))
 	}
-	if *flagHiddenPln {
+	if opts.HiddenOnPlanner {
 		parts = append(parts, "hidden_on_planner = true")
 	}
 	luaArgs := "{ " + strings.Join(parts, ", ") + " }"
 
-	resp, exitCode := runMeVerb("drawing_create_icon", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("drawing_create_icon", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

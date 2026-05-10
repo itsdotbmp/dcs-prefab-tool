@@ -7,8 +7,31 @@ import (
 	"time"
 )
 
+type meDrawingSetAngleOpts struct {
+	Name       string
+	Angle      float64
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meDrawingSetAngleFlags() (*flag.FlagSet, *meDrawingSetAngleOpts) {
+	opts := &meDrawingSetAngleOpts{}
+	fs := flag.NewFlagSet("me drawing set-angle", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "drawing name")
+	fs.Float64Var(&opts.Angle, "angle", 0, "rotation in degrees (CW positive)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("drawing", "set-angle", meDrawingSetAngleCmd)
+	registerMeInfo("drawing", "set-angle", cmdInfo{
+		Run:      meDrawingSetAngleCmd,
+		Flags:    flagsOnly(meDrawingSetAngleFlags),
+		Synopsis: "set a drawing's rotation in degrees (CW positive)",
+	})
 }
 
 // meDrawingSetAngleCmd implements
@@ -23,19 +46,12 @@ func init() {
 // via math.rad — saveToMission's `angle` field is radians, so this
 // keeps the on-disk format consistent.
 func meDrawingSetAngleCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me drawing set-angle", flag.ContinueOnError)
+	fs, opts := meDrawingSetAngleFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "drawing name")
-		flagAngle      = fs.Float64("angle", 0, "rotation in degrees (CW positive)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagName == "" {
+	if opts.Name == "" {
 		fmt.Fprintln(stderr, "dcs-sms me drawing set-angle: --name is required")
 		return 2
 	}
@@ -49,11 +65,11 @@ func meDrawingSetAngleCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "dcs-sms me drawing set-angle: --angle is required (degrees)")
 		return 2
 	}
-	luaArgs := fmt.Sprintf("{ name = %q, angle_deg = %g }", *flagName, *flagAngle)
+	luaArgs := fmt.Sprintf("{ name = %q, angle_deg = %g }", opts.Name, opts.Angle)
 
-	resp, exitCode := runMeVerb("drawing_set_angle", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("drawing_set_angle", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

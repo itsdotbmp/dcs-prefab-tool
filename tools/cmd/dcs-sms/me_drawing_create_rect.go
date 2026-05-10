@@ -8,8 +8,51 @@ import (
 	"time"
 )
 
+type meDrawingCreateRectOpts struct {
+	North           float64
+	East            float64
+	Width           float64
+	Height          float64
+	Angle           float64
+	Name            string
+	Color           string
+	FillColor       string
+	Thickness       float64
+	Style           string
+	Layer           string
+	HiddenOnPlanner bool
+	Timeout         time.Duration
+	Pretty          bool
+	SavedGames      string
+}
+
+func meDrawingCreateRectFlags() (*flag.FlagSet, *meDrawingCreateRectOpts) {
+	opts := &meDrawingCreateRectOpts{}
+	fs := flag.NewFlagSet("me drawing create-rect", flag.ContinueOnError)
+	fs.Float64Var(&opts.North, "north", 0, "meters north of theatre origin (rect center)")
+	fs.Float64Var(&opts.East, "east", 0, "meters east of theatre origin (rect center)")
+	fs.Float64Var(&opts.Width, "width", 0, "rect width in meters")
+	fs.Float64Var(&opts.Height, "height", 0, "rect height in meters")
+	fs.Float64Var(&opts.Angle, "angle", 0, "rotation in degrees (CW around center, 0 = aligned with north/east)")
+	fs.StringVar(&opts.Name, "name", "", "drawing name (auto-allocated if empty)")
+	fs.StringVar(&opts.Color, "color", "", "outline color (default red, opaque)")
+	fs.StringVar(&opts.FillColor, "fill-color", "", "fill color (default red, half alpha)")
+	fs.Float64Var(&opts.Thickness, "thickness", 0, "outline thickness in pixels (default 2)")
+	fs.StringVar(&opts.Style, "style", "", "line style (default solid)")
+	fs.StringVar(&opts.Layer, "layer", "", "Red|Blue|Neutral|Common|Author (default Common)")
+	fs.BoolVar(&opts.HiddenOnPlanner, "hidden-on-planner", false, "hide on mission planner")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("drawing", "create-rect", meDrawingCreateRectCmd)
+	registerMeInfo("drawing", "create-rect", cmdInfo{
+		Run:      meDrawingCreateRectCmd,
+		Flags:    flagsOnly(meDrawingCreateRectFlags),
+		Synopsis: "draw a rectangle on the F10 map",
+	})
 }
 
 // meDrawingCreateRectCmd implements
@@ -18,53 +61,36 @@ func init() {
 // Axis-aligned rectangle (or rotated via --angle). Same color / style /
 // layer convention as create-circle.
 func meDrawingCreateRectCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me drawing create-rect", flag.ContinueOnError)
+	fs, opts := meDrawingCreateRectFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagNorth      = fs.Float64("north", 0, "meters north of theatre origin (rect center)")
-		flagEast       = fs.Float64("east", 0, "meters east of theatre origin (rect center)")
-		flagWidth      = fs.Float64("width", 0, "rect width in meters")
-		flagHeight     = fs.Float64("height", 0, "rect height in meters")
-		flagAngle      = fs.Float64("angle", 0, "rotation in degrees (CW around center, 0 = aligned with north/east)")
-		flagName       = fs.String("name", "", "drawing name (auto-allocated if empty)")
-		flagColor      = fs.String("color", "", "outline color (default red, opaque)")
-		flagFillColor  = fs.String("fill-color", "", "fill color (default red, half alpha)")
-		flagThickness  = fs.Float64("thickness", 0, "outline thickness in pixels (default 2)")
-		flagStyle      = fs.String("style", "", "line style (default solid)")
-		flagLayer      = fs.String("layer", "", "Red|Blue|Neutral|Common|Author (default Common)")
-		flagHiddenPln  = fs.Bool("hidden-on-planner", false, "hide on mission planner")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagWidth <= 0 || *flagHeight <= 0 {
+	if opts.Width <= 0 || opts.Height <= 0 {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-rect: --width and --height are required (> 0)")
 		return 2
 	}
 
-	colorLua, err := parseDrawingColorToHex(*flagColor, 0xFF)
+	colorLua, err := parseDrawingColorToHex(opts.Color, 0xFF)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-rect:", err)
 		return 2
 	}
-	fillLua, err := parseDrawingColorToHex(*flagFillColor, 0x80)
+	fillLua, err := parseDrawingColorToHex(opts.FillColor, 0x80)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-rect:", err)
 		return 2
 	}
 
 	parts := []string{
-		fmt.Sprintf("north = %g", *flagNorth),
-		fmt.Sprintf("east = %g", *flagEast),
-		fmt.Sprintf("width = %g", *flagWidth),
-		fmt.Sprintf("height = %g", *flagHeight),
-		fmt.Sprintf("angle_deg = %g", *flagAngle),
+		fmt.Sprintf("north = %g", opts.North),
+		fmt.Sprintf("east = %g", opts.East),
+		fmt.Sprintf("width = %g", opts.Width),
+		fmt.Sprintf("height = %g", opts.Height),
+		fmt.Sprintf("angle_deg = %g", opts.Angle),
 	}
-	if *flagName != "" {
-		parts = append(parts, fmt.Sprintf("name = %q", *flagName))
+	if opts.Name != "" {
+		parts = append(parts, fmt.Sprintf("name = %q", opts.Name))
 	}
 	if colorLua != "" {
 		parts = append(parts, "color = "+colorLua)
@@ -72,23 +98,23 @@ func meDrawingCreateRectCmd(args []string, stdout, stderr io.Writer) int {
 	if fillLua != "" {
 		parts = append(parts, "fill_color = "+fillLua)
 	}
-	if *flagThickness > 0 {
-		parts = append(parts, fmt.Sprintf("thickness = %g", *flagThickness))
+	if opts.Thickness > 0 {
+		parts = append(parts, fmt.Sprintf("thickness = %g", opts.Thickness))
 	}
-	if *flagStyle != "" {
-		parts = append(parts, fmt.Sprintf("style = %q", *flagStyle))
+	if opts.Style != "" {
+		parts = append(parts, fmt.Sprintf("style = %q", opts.Style))
 	}
-	if *flagLayer != "" {
-		parts = append(parts, fmt.Sprintf("layer = %q", *flagLayer))
+	if opts.Layer != "" {
+		parts = append(parts, fmt.Sprintf("layer = %q", opts.Layer))
 	}
-	if *flagHiddenPln {
+	if opts.HiddenOnPlanner {
 		parts = append(parts, "hidden_on_planner = true")
 	}
 	luaArgs := "{ " + strings.Join(parts, ", ") + " }"
 
-	resp, exitCode := runMeVerb("drawing_create_rect", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("drawing_create_rect", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

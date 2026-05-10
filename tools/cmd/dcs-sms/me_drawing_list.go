@@ -8,8 +8,35 @@ import (
 	"time"
 )
 
+type meDrawingListOpts struct {
+	Layer      string
+	Type       string
+	Mode       string
+	Name       string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meDrawingListFlags() (*flag.FlagSet, *meDrawingListOpts) {
+	opts := &meDrawingListOpts{}
+	fs := flag.NewFlagSet("me drawing list", flag.ContinueOnError)
+	fs.StringVar(&opts.Layer, "layer", "", "Red | Blue | Neutral | Common | Author")
+	fs.StringVar(&opts.Type, "type", "", "Line | Polygon | TextBox | Icon")
+	fs.StringVar(&opts.Mode, "mode", "", "circle | oval | rect | free | arrow | segments | segment")
+	fs.StringVar(&opts.Name, "name", "", "name substring (case-insensitive)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("drawing", "list", meDrawingListCmd)
+	registerMeInfo("drawing", "list", cmdInfo{
+		Run:      meDrawingListCmd,
+		Flags:    flagsOnly(meDrawingListFlags),
+		Synopsis: "list all drawings in the open mission",
+	})
 }
 
 // meDrawingListCmd implements `dcs-sms me drawing list [filters]`.
@@ -18,39 +45,30 @@ func init() {
 // (Red / Blue / Neutral / Common / Author). Optional filters narrow by
 // layer, primitive type, polygon/line sub-mode, or substring name match.
 func meDrawingListCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me drawing list", flag.ContinueOnError)
+	fs, opts := meDrawingListFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagLayer      = fs.String("layer", "", "Red | Blue | Neutral | Common | Author")
-		flagType       = fs.String("type", "", "Line | Polygon | TextBox | Icon")
-		flagMode       = fs.String("mode", "", "circle | oval | rect | free | arrow | segments | segment")
-		flagName       = fs.String("name", "", "name substring (case-insensitive)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
 	var parts []string
-	if *flagLayer != "" {
-		parts = append(parts, fmt.Sprintf("layer = %q", *flagLayer))
+	if opts.Layer != "" {
+		parts = append(parts, fmt.Sprintf("layer = %q", opts.Layer))
 	}
-	if *flagType != "" {
-		parts = append(parts, fmt.Sprintf("type = %q", *flagType))
+	if opts.Type != "" {
+		parts = append(parts, fmt.Sprintf("type = %q", opts.Type))
 	}
-	if *flagMode != "" {
-		parts = append(parts, fmt.Sprintf("mode = %q", *flagMode))
+	if opts.Mode != "" {
+		parts = append(parts, fmt.Sprintf("mode = %q", opts.Mode))
 	}
-	if *flagName != "" {
-		parts = append(parts, fmt.Sprintf("name = %q", *flagName))
+	if opts.Name != "" {
+		parts = append(parts, fmt.Sprintf("name = %q", opts.Name))
 	}
 	luaArgs := "{ " + strings.Join(parts, ", ") + " }"
 
-	resp, exitCode := runMeVerb("drawing_list", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("drawing_list", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

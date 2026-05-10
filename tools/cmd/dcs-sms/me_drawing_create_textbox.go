@@ -8,8 +8,51 @@ import (
 	"time"
 )
 
+type meDrawingCreateTextboxOpts struct {
+	North           float64
+	East            float64
+	Text            string
+	FontSize        int
+	BorderThickness int
+	Angle           float64
+	Font            string
+	Name            string
+	Color           string
+	FillColor       string
+	Layer           string
+	HiddenOnPlanner bool
+	Timeout         time.Duration
+	Pretty          bool
+	SavedGames      string
+}
+
+func meDrawingCreateTextboxFlags() (*flag.FlagSet, *meDrawingCreateTextboxOpts) {
+	opts := &meDrawingCreateTextboxOpts{}
+	fs := flag.NewFlagSet("me drawing create-textbox", flag.ContinueOnError)
+	fs.Float64Var(&opts.North, "north", 0, "meters north of theatre origin (textbox anchor)")
+	fs.Float64Var(&opts.East, "east", 0, "meters east of theatre origin (textbox anchor)")
+	fs.StringVar(&opts.Text, "text", "", "text content")
+	fs.IntVar(&opts.FontSize, "font-size", 0, "font size in pixels (default 24)")
+	fs.IntVar(&opts.BorderThickness, "border-thickness", -1, "border thickness in pixels (default 4)")
+	fs.Float64Var(&opts.Angle, "angle", 0, "rotation in degrees (CW, 0 = upright)")
+	fs.StringVar(&opts.Font, "font", "", "font ttf filename (default DejaVuLGCSansCondensed.ttf)")
+	fs.StringVar(&opts.Name, "name", "", "drawing name (auto-allocated if empty)")
+	fs.StringVar(&opts.Color, "color", "", "text color (default green, opaque)")
+	fs.StringVar(&opts.FillColor, "fill-color", "", "background fill (default red, half alpha)")
+	fs.StringVar(&opts.Layer, "layer", "", "Red|Blue|Neutral|Common|Author (default Common)")
+	fs.BoolVar(&opts.HiddenOnPlanner, "hidden-on-planner", false, "hide on mission planner")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("drawing", "create-textbox", meDrawingCreateTextboxCmd)
+	registerMeInfo("drawing", "create-textbox", cmdInfo{
+		Run:      meDrawingCreateTextboxCmd,
+		Flags:    flagsOnly(meDrawingCreateTextboxFlags),
+		Synopsis: "place a text label on the F10 map",
+	})
 }
 
 // meDrawingCreateTextboxCmd implements
@@ -21,61 +64,44 @@ func init() {
 // Default font is DejaVuLGCSansCondensed.ttf — same one the ME uses
 // internally for new textboxes.
 func meDrawingCreateTextboxCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me drawing create-textbox", flag.ContinueOnError)
+	fs, opts := meDrawingCreateTextboxFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagNorth      = fs.Float64("north", 0, "meters north of theatre origin (textbox anchor)")
-		flagEast       = fs.Float64("east", 0, "meters east of theatre origin (textbox anchor)")
-		flagText       = fs.String("text", "", "text content")
-		flagFontSize   = fs.Int("font-size", 0, "font size in pixels (default 24)")
-		flagBorder     = fs.Int("border-thickness", -1, "border thickness in pixels (default 4)")
-		flagAngle      = fs.Float64("angle", 0, "rotation in degrees (CW, 0 = upright)")
-		flagFont       = fs.String("font", "", "font ttf filename (default DejaVuLGCSansCondensed.ttf)")
-		flagName       = fs.String("name", "", "drawing name (auto-allocated if empty)")
-		flagColor      = fs.String("color", "", "text color (default green, opaque)")
-		flagFillColor  = fs.String("fill-color", "", "background fill (default red, half alpha)")
-		flagLayer      = fs.String("layer", "", "Red|Blue|Neutral|Common|Author (default Common)")
-		flagHiddenPln  = fs.Bool("hidden-on-planner", false, "hide on mission planner")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagText == "" {
+	if opts.Text == "" {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-textbox: --text is required")
 		return 2
 	}
 
-	colorLua, err := parseDrawingColorToHex(*flagColor, 0xFF)
+	colorLua, err := parseDrawingColorToHex(opts.Color, 0xFF)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-textbox:", err)
 		return 2
 	}
-	fillLua, err := parseDrawingColorToHex(*flagFillColor, 0x80)
+	fillLua, err := parseDrawingColorToHex(opts.FillColor, 0x80)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-textbox:", err)
 		return 2
 	}
 
 	parts := []string{
-		fmt.Sprintf("north = %g", *flagNorth),
-		fmt.Sprintf("east = %g", *flagEast),
-		fmt.Sprintf("text = %q", *flagText),
-		fmt.Sprintf("angle_deg = %g", *flagAngle),
+		fmt.Sprintf("north = %g", opts.North),
+		fmt.Sprintf("east = %g", opts.East),
+		fmt.Sprintf("text = %q", opts.Text),
+		fmt.Sprintf("angle_deg = %g", opts.Angle),
 	}
-	if *flagFontSize > 0 {
-		parts = append(parts, fmt.Sprintf("font_size = %d", *flagFontSize))
+	if opts.FontSize > 0 {
+		parts = append(parts, fmt.Sprintf("font_size = %d", opts.FontSize))
 	}
-	if *flagBorder >= 0 {
-		parts = append(parts, fmt.Sprintf("border_thickness = %d", *flagBorder))
+	if opts.BorderThickness >= 0 {
+		parts = append(parts, fmt.Sprintf("border_thickness = %d", opts.BorderThickness))
 	}
-	if *flagFont != "" {
-		parts = append(parts, fmt.Sprintf("font = %q", *flagFont))
+	if opts.Font != "" {
+		parts = append(parts, fmt.Sprintf("font = %q", opts.Font))
 	}
-	if *flagName != "" {
-		parts = append(parts, fmt.Sprintf("name = %q", *flagName))
+	if opts.Name != "" {
+		parts = append(parts, fmt.Sprintf("name = %q", opts.Name))
 	}
 	if colorLua != "" {
 		parts = append(parts, "color = "+colorLua)
@@ -83,17 +109,17 @@ func meDrawingCreateTextboxCmd(args []string, stdout, stderr io.Writer) int {
 	if fillLua != "" {
 		parts = append(parts, "fill_color = "+fillLua)
 	}
-	if *flagLayer != "" {
-		parts = append(parts, fmt.Sprintf("layer = %q", *flagLayer))
+	if opts.Layer != "" {
+		parts = append(parts, fmt.Sprintf("layer = %q", opts.Layer))
 	}
-	if *flagHiddenPln {
+	if opts.HiddenOnPlanner {
 		parts = append(parts, "hidden_on_planner = true")
 	}
 	luaArgs := "{ " + strings.Join(parts, ", ") + " }"
 
-	resp, exitCode := runMeVerb("drawing_create_textbox", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("drawing_create_textbox", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

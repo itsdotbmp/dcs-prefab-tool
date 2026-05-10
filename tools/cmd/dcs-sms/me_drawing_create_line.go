@@ -8,8 +8,46 @@ import (
 	"time"
 )
 
+type meDrawingCreateLineOpts struct {
+	Vertices        string
+	Closed          bool
+	LineMode        string
+	Name            string
+	Color           string
+	Thickness       float64
+	Style           string
+	Layer           string
+	HiddenOnPlanner bool
+	Timeout         time.Duration
+	Pretty          bool
+	SavedGames      string
+}
+
+func meDrawingCreateLineFlags() (*flag.FlagSet, *meDrawingCreateLineOpts) {
+	opts := &meDrawingCreateLineOpts{}
+	fs := flag.NewFlagSet("me drawing create-line", flag.ContinueOnError)
+	fs.StringVar(&opts.Vertices, "vertices", "",
+		"vertices as \"n1,e1;n2,e2;...\" (>= 2 absolute world-meter pairs)")
+	fs.BoolVar(&opts.Closed, "closed", false, "close the polyline back to the first vertex")
+	fs.StringVar(&opts.LineMode, "line-mode", "", "segments | segment | free (default segments)")
+	fs.StringVar(&opts.Name, "name", "", "drawing name (auto-allocated if empty)")
+	fs.StringVar(&opts.Color, "color", "", "line color (default red, opaque)")
+	fs.Float64Var(&opts.Thickness, "thickness", 0, "line thickness in pixels (default 2)")
+	fs.StringVar(&opts.Style, "style", "", "line style (default solid)")
+	fs.StringVar(&opts.Layer, "layer", "", "Red|Blue|Neutral|Common|Author (default Common)")
+	fs.BoolVar(&opts.HiddenOnPlanner, "hidden-on-planner", false, "hide on mission planner")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("drawing", "create-line", meDrawingCreateLineCmd)
+	registerMeInfo("drawing", "create-line", cmdInfo{
+		Run:      meDrawingCreateLineCmd,
+		Flags:    flagsOnly(meDrawingCreateLineFlags),
+		Synopsis: "draw a polyline on the F10 map (segments / segment / free; --closed wraps it)",
+	})
 }
 
 // meDrawingCreateLineCmd implements
@@ -20,37 +58,22 @@ func init() {
 // points relative to that center — same convention as
 // `me zone create --type quad --vertices`.
 func meDrawingCreateLineCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me drawing create-line", flag.ContinueOnError)
+	fs, opts := meDrawingCreateLineFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagVertices   = fs.String("vertices", "",
-			"vertices as \"n1,e1;n2,e2;...\" (>= 2 absolute world-meter pairs)")
-		flagClosed     = fs.Bool("closed", false, "close the polyline back to the first vertex")
-		flagLineMode   = fs.String("line-mode", "", "segments | segment | free (default segments)")
-		flagName       = fs.String("name", "", "drawing name (auto-allocated if empty)")
-		flagColor      = fs.String("color", "", "line color (default red, opaque)")
-		flagThickness  = fs.Float64("thickness", 0, "line thickness in pixels (default 2)")
-		flagStyle      = fs.String("style", "", "line style (default solid)")
-		flagLayer      = fs.String("layer", "", "Red|Blue|Neutral|Common|Author (default Common)")
-		flagHiddenPln  = fs.Bool("hidden-on-planner", false, "hide on mission planner")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagVertices == "" {
+	if opts.Vertices == "" {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-line: --vertices is required")
 		return 2
 	}
-	verticesLua, err := parseVerticesToLua(*flagVertices)
+	verticesLua, err := parseVerticesToLua(opts.Vertices)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-line:", err)
 		return 2
 	}
 
-	colorLua, err := parseDrawingColorToHex(*flagColor, 0xFF)
+	colorLua, err := parseDrawingColorToHex(opts.Color, 0xFF)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms me drawing create-line:", err)
 		return 2
@@ -59,35 +82,35 @@ func meDrawingCreateLineCmd(args []string, stdout, stderr io.Writer) int {
 	parts := []string{
 		"vertices = " + verticesLua,
 	}
-	if *flagClosed {
+	if opts.Closed {
 		parts = append(parts, "closed = true")
 	}
-	if *flagLineMode != "" {
-		parts = append(parts, fmt.Sprintf("line_mode = %q", *flagLineMode))
+	if opts.LineMode != "" {
+		parts = append(parts, fmt.Sprintf("line_mode = %q", opts.LineMode))
 	}
-	if *flagName != "" {
-		parts = append(parts, fmt.Sprintf("name = %q", *flagName))
+	if opts.Name != "" {
+		parts = append(parts, fmt.Sprintf("name = %q", opts.Name))
 	}
 	if colorLua != "" {
 		parts = append(parts, "color = "+colorLua)
 	}
-	if *flagThickness > 0 {
-		parts = append(parts, fmt.Sprintf("thickness = %g", *flagThickness))
+	if opts.Thickness > 0 {
+		parts = append(parts, fmt.Sprintf("thickness = %g", opts.Thickness))
 	}
-	if *flagStyle != "" {
-		parts = append(parts, fmt.Sprintf("style = %q", *flagStyle))
+	if opts.Style != "" {
+		parts = append(parts, fmt.Sprintf("style = %q", opts.Style))
 	}
-	if *flagLayer != "" {
-		parts = append(parts, fmt.Sprintf("layer = %q", *flagLayer))
+	if opts.Layer != "" {
+		parts = append(parts, fmt.Sprintf("layer = %q", opts.Layer))
 	}
-	if *flagHiddenPln {
+	if opts.HiddenOnPlanner {
 		parts = append(parts, "hidden_on_planner = true")
 	}
 	luaArgs := "{ " + strings.Join(parts, ", ") + " }"
 
-	resp, exitCode := runMeVerb("drawing_create_line", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("drawing_create_line", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

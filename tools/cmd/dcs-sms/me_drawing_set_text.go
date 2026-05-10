@@ -7,8 +7,31 @@ import (
 	"time"
 )
 
+type meDrawingSetTextOpts struct {
+	Name       string
+	Text       string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meDrawingSetTextFlags() (*flag.FlagSet, *meDrawingSetTextOpts) {
+	opts := &meDrawingSetTextOpts{}
+	fs := flag.NewFlagSet("me drawing set-text", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "drawing name (TextBox only)")
+	fs.StringVar(&opts.Text, "text", "", "new text content")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("drawing", "set-text", meDrawingSetTextCmd)
+	registerMeInfo("drawing", "set-text", cmdInfo{
+		Run:      meDrawingSetTextCmd,
+		Flags:    flagsOnly(meDrawingSetTextFlags),
+		Synopsis: "change a textbox drawing's text content",
+	})
 }
 
 // meDrawingSetTextCmd implements
@@ -18,31 +41,24 @@ func init() {
 // have no text content). To change a textbox's font / fontSize /
 // borderThickness / angle, remove + re-create with the new values.
 func meDrawingSetTextCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me drawing set-text", flag.ContinueOnError)
+	fs, opts := meDrawingSetTextFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "drawing name (TextBox only)")
-		flagText       = fs.String("text", "", "new text content")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagName == "" {
+	if opts.Name == "" {
 		fmt.Fprintln(stderr, "dcs-sms me drawing set-text: --name is required")
 		return 2
 	}
-	if *flagText == "" {
+	if opts.Text == "" {
 		fmt.Fprintln(stderr, "dcs-sms me drawing set-text: --text is required")
 		return 2
 	}
-	luaArgs := fmt.Sprintf("{ name = %q, text = %q }", *flagName, *flagText)
+	luaArgs := fmt.Sprintf("{ name = %q, text = %q }", opts.Name, opts.Text)
 
-	resp, exitCode := runMeVerb("drawing_set_text", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("drawing_set_text", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

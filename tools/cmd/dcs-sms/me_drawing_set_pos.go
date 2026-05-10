@@ -7,8 +7,33 @@ import (
 	"time"
 )
 
+type meDrawingSetPosOpts struct {
+	Name       string
+	North      float64
+	East       float64
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meDrawingSetPosFlags() (*flag.FlagSet, *meDrawingSetPosOpts) {
+	opts := &meDrawingSetPosOpts{}
+	fs := flag.NewFlagSet("me drawing set-pos", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "drawing name")
+	fs.Float64Var(&opts.North, "north", 0, "meters north of theatre origin")
+	fs.Float64Var(&opts.East, "east", 0, "meters east of theatre origin")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("drawing", "set-pos", meDrawingSetPosCmd)
+	registerMeInfo("drawing", "set-pos", cmdInfo{
+		Run:      meDrawingSetPosCmd,
+		Flags:    flagsOnly(meDrawingSetPosFlags),
+		Synopsis: "move a drawing's anchor to a new north/east coordinate",
+	})
 }
 
 // meDrawingSetPosCmd implements
@@ -19,20 +44,12 @@ func init() {
 // analytic shapes (circle / rect / oval / arrow), only the center
 // moves; the dimensions are unchanged.
 func meDrawingSetPosCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me drawing set-pos", flag.ContinueOnError)
+	fs, opts := meDrawingSetPosFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "drawing name")
-		flagNorth      = fs.Float64("north", 0, "meters north of theatre origin")
-		flagEast       = fs.Float64("east", 0, "meters east of theatre origin")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagName == "" {
+	if opts.Name == "" {
 		fmt.Fprintln(stderr, "dcs-sms me drawing set-pos: --name is required")
 		return 2
 	}
@@ -49,11 +66,11 @@ func meDrawingSetPosCmd(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "dcs-sms me drawing set-pos: --north and --east are both required")
 		return 2
 	}
-	luaArgs := fmt.Sprintf("{ name = %q, north = %g, east = %g }", *flagName, *flagNorth, *flagEast)
+	luaArgs := fmt.Sprintf("{ name = %q, north = %g, east = %g }", opts.Name, opts.North, opts.East)
 
-	resp, exitCode := runMeVerb("drawing_set_pos", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("drawing_set_pos", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }
