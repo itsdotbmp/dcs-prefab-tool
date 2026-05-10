@@ -238,3 +238,100 @@ func TestInstall_All_PartialFailureContinues(t *testing.T) {
 		t.Errorf("expected Codex to fail and the other two to succeed; got codexFailed=%v claudeOK=%v geminiOK=%v", codexFailed, claudeOK, geminiOK)
 	}
 }
+
+func TestUninstall_RemovesFilesAndEmptySkillDir(t *testing.T) {
+	home := t.TempDir()
+	_ = Install(AgentClaude, home)
+	target := filepath.Join(home, ".claude", "skills", "dcs-sms", "SKILL.md")
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("setup: expected file at %s, got err: %v", target, err)
+	}
+	results := Uninstall(AgentClaude, home)
+	if len(results[0].Errors) != 0 {
+		t.Fatalf("unexpected errors: %v", results[0].Errors)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Errorf("expected target removed, got err: %v", err)
+	}
+	// dcs-sms/ folder should be removed (empty after the SKILL.md is gone).
+	dcsmsDir := filepath.Join(home, ".claude", "skills", "dcs-sms")
+	if _, err := os.Stat(dcsmsDir); !os.IsNotExist(err) {
+		t.Errorf("expected dcs-sms dir removed, got err: %v", err)
+	}
+	// skills/ parent must still exist.
+	skillsDir := filepath.Join(home, ".claude", "skills")
+	if _, err := os.Stat(skillsDir); err != nil {
+		t.Errorf("skills/ parent should remain, got err: %v", err)
+	}
+}
+
+func TestUninstall_MissingFile_NotError(t *testing.T) {
+	home := t.TempDir()
+	results := Uninstall(AgentClaude, home)
+	if len(results[0].Errors) != 0 {
+		t.Errorf("uninstall on clean home should not error; got: %v", results[0].Errors)
+	}
+	// Path is still reported (so the caller can print "not present: X").
+	if len(results[0].Paths) != 1 {
+		t.Errorf("expected 1 reported path even when missing; got %d", len(results[0].Paths))
+	}
+}
+
+func TestUninstall_All_RemovesEverything(t *testing.T) {
+	home := t.TempDir()
+	_ = Install(AgentAll, home)
+	results := Uninstall(AgentAll, home)
+	if len(results) != 3 {
+		t.Fatalf("len(results) = %d, want 3", len(results))
+	}
+	for _, r := range results {
+		if len(r.Errors) != 0 {
+			t.Errorf("agent %q had errors: %v", r.Agent, r.Errors)
+		}
+		for _, p := range r.Paths {
+			if _, err := os.Stat(p); !os.IsNotExist(err) {
+				t.Errorf("file %s should be gone, stat err: %v", p, err)
+			}
+		}
+	}
+}
+
+func TestUninstall_DoesNotRemoveSiblingFiles(t *testing.T) {
+	home := t.TempDir()
+	_ = Install(AgentClaude, home)
+	// Drop a sibling skill into ~/.claude/skills/other-skill/SKILL.md.
+	other := filepath.Join(home, ".claude", "skills", "other-skill", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(other), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(other, []byte("other"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = Uninstall(AgentClaude, home)
+	if _, err := os.Stat(other); err != nil {
+		t.Errorf("sibling skill should be untouched, got err: %v", err)
+	}
+}
+
+func TestUninstall_Gemini_PreservesCommandsDir(t *testing.T) {
+	home := t.TempDir()
+	_ = Install(AgentGemini, home)
+	if errs := Uninstall(AgentGemini, home)[0].Errors; len(errs) != 0 {
+		t.Fatalf("unexpected errors: %v", errs)
+	}
+	// commands/ must remain even when empty — other Gemini commands may live there.
+	commandsDir := filepath.Join(home, ".gemini", "commands")
+	if _, err := os.Stat(commandsDir); err != nil {
+		t.Errorf("commands/ parent should remain, got err: %v", err)
+	}
+	// skills/ must remain too, by the same rule.
+	skillsDir := filepath.Join(home, ".gemini", "skills")
+	if _, err := os.Stat(skillsDir); err != nil {
+		t.Errorf("skills/ parent should remain, got err: %v", err)
+	}
+	// dcs-sms/ subdir under skills/ should be gone (it was empty).
+	dcsmsDir := filepath.Join(home, ".gemini", "skills", "dcs-sms")
+	if _, err := os.Stat(dcsmsDir); !os.IsNotExist(err) {
+		t.Errorf("dcs-sms/ should be removed, got err: %v", err)
+	}
+}

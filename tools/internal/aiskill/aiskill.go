@@ -113,3 +113,41 @@ func bodyFor(target string) []byte {
 	}
 	return skillMarkdown
 }
+
+// Uninstall removes the files Install wrote for one agent (or all three)
+// under home. Missing files are not errors — the call still reports them
+// in Result.Paths so the CLI can print "not present: <path>".
+//
+// After removing each target file, the immediate parent directory
+// (~/.<agent>/skills/dcs-sms/) is removed if it is now empty. The
+// grandparent (~/.<agent>/skills/) is never removed even if empty,
+// because other skills may live there.
+func Uninstall(agent Agent, home string) []Result {
+	agents := concreteAgents(agent)
+	out := make([]Result, 0, len(agents))
+	for _, a := range agents {
+		out = append(out, uninstallOne(a, home))
+	}
+	return out
+}
+
+func uninstallOne(agent Agent, home string) Result {
+	r := Result{Agent: agent}
+	for _, target := range Paths(agent, home) {
+		r.Paths = append(r.Paths, target)
+		err := os.Remove(target)
+		if err != nil && !os.IsNotExist(err) {
+			r.Errors = append(r.Errors, fmt.Errorf("%s: remove: %w", target, err))
+			continue
+		}
+		// Try to remove the dcs-sms/ dir if empty. Skip when the file is the
+		// Gemini TOML, whose immediate parent is commands/ (shared with other
+		// commands) — not a dcs-sms/ subdir we own. The grandparent (skills/
+		// or commands/) is never removed.
+		parent := filepath.Dir(target)
+		if filepath.Base(parent) == "dcs-sms" {
+			_ = os.Remove(parent) // best-effort; ignored if not empty
+		}
+	}
+	return r
+}
