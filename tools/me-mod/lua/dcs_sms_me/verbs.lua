@@ -4717,6 +4717,54 @@ function M.trigger_reorder_condition(args)
              from = args.index, to = target_idx }
 end
 
+-- trigger_reorder_action — move an action to a new 1-based position in
+-- t.actions. Same shape as trigger_reorder_condition but operates on
+-- t.actions instead of t.rules.
+function M.trigger_reorder_action(args)
+    if type(args) ~= 'table' or type(args.trigger) ~= 'string' or args.trigger == '' then
+        return { ok = false, error = 'trigger_reorder_action requires args.trigger (name)' }
+    end
+    if type(args.index) ~= 'number' or args.index < 1 then
+        return { ok = false, error = 'trigger_reorder_action requires args.index (1-based)' }
+    end
+    local _, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+
+    local t = _trigger_find_by_name(args.trigger)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.trigger .. '"' }
+    end
+    if type(t.actions) ~= 'table' or args.index > #t.actions then
+        return { ok = false,
+                 error = 'trigger has only ' .. (type(t.actions) == 'table' and #t.actions or 0)
+                         .. ' actions; cannot reorder index ' .. args.index }
+    end
+
+    local function find_index_ref(list, ref)
+        if type(ref) ~= 'number' then
+            return nil, '--before / --after expects a 1-based index (number)'
+        end
+        if ref < 1 or ref > #list then
+            return nil, '--before / --after index must be in 1..' .. #list
+                        .. ' (got ' .. tostring(ref) .. ')'
+        end
+        return ref
+    end
+
+    local target_idx, terr2 = _reorder_resolve_target(t.actions, args.index, args, find_index_ref)
+    if terr2 then return { ok = false, error = terr2 } end
+
+    if args.index == target_idx then
+        return { ok = true, moved = false, trigger = args.trigger,
+                 from = args.index, to = target_idx }
+    end
+
+    _reorder_apply(t.actions, args.index, target_idx)
+    _trigger_panel_refresh()
+    return { ok = true, moved = true, trigger = args.trigger,
+             from = args.index, to = target_idx }
+end
+
 -- group_list — return concise summaries of all groups, with optional filters.
 --
 -- args (all optional):
