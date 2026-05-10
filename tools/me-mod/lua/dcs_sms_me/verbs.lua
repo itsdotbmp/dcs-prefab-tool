@@ -4523,6 +4523,94 @@ function M.trigger_remove_action(args)
              removed_index = args.index, remaining = #t.actions }
 end
 
+-- _reorder_resolve_target — turn a position-flag args table into a final
+-- 1-based target index, computed against the post-removal list.
+--
+-- Returns target_idx, err. If err is non-nil, caller should propagate.
+--
+-- Args expected:
+--   list           — the array we'll be reordering inside (read-only here)
+--   from_idx       — 1-based source position in `list` (already validated)
+--   args           — the user-supplied args table; reads:
+--                      args.to_index   (number, 1-based final position)
+--                      args.before     (anchor reference: name OR index)
+--                      args.after      (anchor reference: name OR index)
+--                      args.to_start   (boolean — sugar for to_index = 1)
+--                      args.to_end     (boolean — sugar for to_index = #list)
+--   find_ref_idx   — function(list, ref) → idx | nil, err
+--                    Resolves the --before / --after anchor reference to a
+--                    1-based index in `list`. For triggers, the impl looks
+--                    up by name (t.comment); for conditions/actions, the
+--                    impl validates the ref is a number in 1..#list.
+--
+-- Validates exactly-one-position-flag and self-reference. Self-reference
+-- (--before/--after pointing at the source itself) collapses to a no-op
+-- target (target == from_idx) so the caller's no-op short-circuit
+-- handles it without a separate code path.
+local function _reorder_resolve_target(list, from_idx, args, find_ref_idx)
+    -- Count position flags. Exactly one must be set.
+    local set = {}
+    if args.to_index ~= nil then table.insert(set, '--to-index') end
+    if args.before   ~= nil then table.insert(set, '--before')   end
+    if args.after    ~= nil then table.insert(set, '--after')    end
+    if args.to_start == true then table.insert(set, '--to-start') end
+    if args.to_end   == true then table.insert(set, '--to-end')   end
+    if #set ~= 1 then
+        return nil, 'exactly one of --to-index / --before / --after / '
+                    .. '--to-start / --to-end is required'
+    end
+
+    local n = #list
+
+    if args.to_start == true then
+        return 1, nil
+    end
+    if args.to_end == true then
+        return n, nil
+    end
+    if args.to_index ~= nil then
+        if type(args.to_index) ~= 'number' then
+            return nil, '--to-index must be a number'
+        end
+        if args.to_index < 1 or args.to_index > n then
+            return nil, '--to-index must be in 1..' .. n
+                        .. ' (got ' .. tostring(args.to_index) .. ')'
+        end
+        return args.to_index, nil
+    end
+
+    -- --before / --after: resolve the anchor's index, then translate to a
+    -- post-removal slot.
+    local ref = args.before ~= nil and args.before or args.after
+    local x_idx, ref_err = find_ref_idx(list, ref)
+    if ref_err then return nil, ref_err end
+    if not x_idx then
+        return nil, 'reference not found: ' .. tostring(ref)
+    end
+
+    -- Self-reference → return from_idx so caller's no-op short-circuit
+    -- handles it. (--before/--after pointing at the source is a logical
+    -- no-op — same as --to-index <where-source-is>.)
+    if x_idx == from_idx then
+        return from_idx, nil
+    end
+
+    -- After removing source, items above from_idx shift down by 1.
+    local x_post_removal = (x_idx > from_idx) and (x_idx - 1) or x_idx
+    if args.before ~= nil then
+        return x_post_removal, nil
+    else
+        return x_post_removal + 1, nil
+    end
+end
+
+-- _reorder_apply — table.remove + table.insert. Caller must have already
+-- short-circuited the from_idx == target_idx case.
+local function _reorder_apply(list, from_idx, target_idx)
+    local item = table.remove(list, from_idx)
+    table.insert(list, target_idx, item)
+end
+
 -- group_list — return concise summaries of all groups, with optional filters.
 --
 -- args (all optional):
