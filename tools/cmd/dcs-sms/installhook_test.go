@@ -12,7 +12,7 @@ func TestInstallHookWritesFile(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("DCS_SMS_SAVED_GAMES", root)
 	var stdout, stderr bytes.Buffer
-	code := installHookCmd(nil, &stdout, &stderr)
+	code := installHookCmd([]string{"--no-config-save"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit %d, want 0; stderr=%s", code, stderr.String())
 	}
@@ -36,7 +36,7 @@ func TestInstallHookOverwritesExisting(t *testing.T) {
 	}
 	t.Setenv("DCS_SMS_SAVED_GAMES", root)
 	var stdout, stderr bytes.Buffer
-	code := installHookCmd(nil, &stdout, &stderr)
+	code := installHookCmd([]string{"--no-config-save"}, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
