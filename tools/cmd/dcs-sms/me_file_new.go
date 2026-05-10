@@ -7,8 +7,31 @@ import (
 	"time"
 )
 
+type meFileNewOpts struct {
+	Map        string
+	Force      bool
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meFileNewFlags() (*flag.FlagSet, *meFileNewOpts) {
+	opts := &meFileNewOpts{}
+	fs := flag.NewFlagSet("me file new", flag.ContinueOnError)
+	fs.StringVar(&opts.Map, "map", "", "theatre name (e.g. Syria, Caucasus)")
+	fs.BoolVar(&opts.Force, "force", false, "discard unsaved changes in the current mission")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("file", "new", meFileNewCmd)
+	registerMeInfo("file", "new", cmdInfo{
+		Run:      meFileNewCmd,
+		Flags:    flagsOnly(meFileNewFlags),
+		Synopsis: "create a new empty mission in the open Mission Editor",
+	})
 }
 
 // meFileNewCmd implements `dcs-sms me file new --map <theatre>`.
@@ -20,28 +43,21 @@ func init() {
 // (scheduled via ProgressBarDialog), so the response confirms dispatch, not
 // completion.
 func meFileNewCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me file new", flag.ContinueOnError)
+	fs, opts := meFileNewFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagMap        = fs.String("map", "", "theatre name (e.g. Syria, Caucasus)")
-		flagForce      = fs.Bool("force", false, "discard unsaved changes in the current mission")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagMap == "" {
+	if opts.Map == "" {
 		fmt.Fprintln(stderr, "dcs-sms me file new: --map is required")
 		return 2
 	}
 
-	luaArgs := fmt.Sprintf("{ map = %q, force = %t }", *flagMap, *flagForce)
+	luaArgs := fmt.Sprintf("{ map = %q, force = %t }", opts.Map, opts.Force)
 
-	resp, exitCode := runMeVerb("file_new", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("file_new", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

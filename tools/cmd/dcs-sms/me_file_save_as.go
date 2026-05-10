@@ -8,8 +8,31 @@ import (
 	"time"
 )
 
+type meFileSaveAsOpts struct {
+	Path       string
+	Reopen     bool
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meFileSaveAsFlags() (*flag.FlagSet, *meFileSaveAsOpts) {
+	opts := &meFileSaveAsOpts{}
+	fs := flag.NewFlagSet("me file save-as", flag.ContinueOnError)
+	fs.StringVar(&opts.Path, "path", "", "absolute path to write (.miz)")
+	fs.BoolVar(&opts.Reopen, "reopen", true, "re-open the file after save (matches DCS-native; refreshes title bar)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("file", "save-as", meFileSaveAsCmd)
+	registerMeInfo("file", "save-as", cmdInfo{
+		Run:      meFileSaveAsCmd,
+		Flags:    flagsOnly(meFileSaveAsFlags),
+		Synopsis: "save the open mission to a new .miz path",
+	})
 }
 
 // meFileSaveAsCmd implements `dcs-sms me file save-as --path <X.miz>`.
@@ -21,29 +44,22 @@ func init() {
 // (DCS-native behavior — refreshes the title bar and editor state). Pass
 // --reopen=false to skip the reload (see `me file save --help` for when).
 func meFileSaveAsCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me file save-as", flag.ContinueOnError)
+	fs, opts := meFileSaveAsFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagPath       = fs.String("path", "", "absolute path to write (.miz)")
-		flagReopen     = fs.Bool("reopen", true, "re-open the file after save (matches DCS-native; refreshes title bar)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagPath == "" {
+	if opts.Path == "" {
 		fmt.Fprintln(stderr, "dcs-sms me file save-as: --path is required")
 		return 2
 	}
 
-	pathLua := strings.ReplaceAll(*flagPath, "\\", "/")
-	luaArgs := fmt.Sprintf("{ path = %q, reopen = %t }", pathLua, *flagReopen)
+	pathLua := strings.ReplaceAll(opts.Path, "\\", "/")
+	luaArgs := fmt.Sprintf("{ path = %q, reopen = %t }", pathLua, opts.Reopen)
 
-	resp, exitCode := runMeVerb("file_save_as", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("file_save_as", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }
