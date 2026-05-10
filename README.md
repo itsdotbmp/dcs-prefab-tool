@@ -8,6 +8,16 @@
 [![Discord — Coconut Cockpit](https://img.shields.io/badge/discord-Coconut_Cockpit-5865F2?logo=discord&logoColor=white)](https://discord.gg/8tbdGY45hM)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F1F4PYTO7)
 
+<p align="center">
+  <a href="#components">Overview</a> ·
+  <a href="docs/api/">Framework</a> ·
+  <a href="docs/cli/">CLI</a> ·
+  <a href="tools/me-mod/README.md">ME-mod</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="AGENTS.md">Contributing</a> ·
+  <a href="#licensing">License</a>
+</p>
+
 DCS scripting framework, Mission Editor extension, and host-side tooling.
 
 ## Components
