@@ -20,7 +20,7 @@ type cmdInfo struct {
 	Run      commandFunc
 	Flags    func() *flag.FlagSet
 	Synopsis string
-	Examples []string
+	Examples []string // TODO(#49 doc gen): consumed by `dcs-sms doc` once Task 10 lands
 }
 
 // commands maps subcommand names to their metadata. Subcommands register
@@ -43,6 +43,18 @@ func registerInfo(name string, info cmdInfo) {
 // doc-aware registry can land incrementally per namespace.
 func register(name string, fn commandFunc) {
 	registerInfo(name, cmdInfo{Run: fn})
+}
+
+// flagsOnly adapts a flags-builder of the form `func() (*flag.FlagSet, *Opts)`
+// to the `func() *flag.FlagSet` shape that cmdInfo.Flags expects. The doc
+// generator only needs the FlagSet; the opts pointer is for the run handler.
+//
+// Use as: registerInfo("foo", cmdInfo{ ..., Flags: flagsOnly(fooFlags), ... })
+func flagsOnly[T any](b func() (*flag.FlagSet, T)) func() *flag.FlagSet {
+	return func() *flag.FlagSet {
+		fs, _ := b()
+		return fs
+	}
 }
 
 // dispatch routes args[0] (subcommand name) to its handler. Pure function

@@ -46,7 +46,7 @@ func execFlags() (*flag.FlagSet, *execOpts) {
 func init() {
 	registerInfo("exec", cmdInfo{
 		Run:      execCmd,
-		Flags:    func() *flag.FlagSet { fs, _ := execFlags(); return fs },
+		Flags:    flagsOnly(execFlags),
 		Synopsis: "execute a Lua snippet (use --target mission|gui|auto, default auto)",
 	})
 }

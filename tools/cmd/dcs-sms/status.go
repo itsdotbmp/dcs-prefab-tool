@@ -27,7 +27,7 @@ func statusFlags() (*flag.FlagSet, *statusOpts) {
 func init() {
 	registerInfo("status", cmdInfo{
 		Run:      statusCmd,
-		Flags:    func() *flag.FlagSet { fs, _ := statusFlags(); return fs },
+		Flags:    flagsOnly(statusFlags),
 		Synopsis: "report whether the hook is alive and a mission is loaded",
 	})
 }
