@@ -3614,16 +3614,20 @@ end
 -- _trigger_build_alias_cache — populate _trigger_alias_cache by walking ED's
 -- three descriptor arrays: me_predicates.rulesDescr (conditions, c_*),
 -- me_trigrules.actionsDescr (actions, a_*), and me_trigrules.triggersDescr
--- (trigger types). All three are 1-indexed arrays of {name=..., fields=...}.
+-- (trigger types). actionsDescr and triggersDescr are pure 1-indexed arrays.
+-- rulesDescr is mostly a 1-indexed array but ALSO carries pseudo-predicates
+-- under string keys (currently just `["or"]` — see me_predicates.lua:1555,
+-- "special predicates have individual key"); pairs() picks both up.
 local function _trigger_build_alias_cache()
     local Trigger = require('me_trigrules')
     local Predicates = require('me_predicates')
     local cache = {}
 
-    -- Conditions: me_predicates.rulesDescr is an indexed array of
-    -- { name = "c_*", fields = {...} } entries.
+    -- Conditions: me_predicates.rulesDescr is mostly { name = "c_*", ...}
+    -- entries, plus pseudo-predicates like ["or"] keyed by their literal
+    -- name. Walk with pairs() so we pick up both shapes.
     if type(Predicates.rulesDescr) == 'table' then
-        for _, descr in ipairs(Predicates.rulesDescr) do
+        for _, descr in pairs(Predicates.rulesDescr) do
             if type(descr) == 'table' and type(descr.name) == 'string' then
                 local entry = { canonical = descr.name, kind = 'condition', descr = descr }
                 cache[descr.name] = entry
@@ -4212,7 +4216,9 @@ function M.trigger_list_predicates(args)
     end
 
     if type(Predicates.rulesDescr) == 'table' then
-        for _, descr in ipairs(Predicates.rulesDescr) do
+        -- pairs() (not ipairs) so pseudo-predicates under string keys
+        -- (currently just ["or"]) are surfaced too.
+        for _, descr in pairs(Predicates.rulesDescr) do
             if type(descr) == 'table' and type(descr.name) == 'string' then
                 collect(descr.name)
             end
@@ -4660,6 +4666,111 @@ function M.trigger_reorder(args)
     return { ok = true, moved = true, from = from_idx, to = target_idx }
 end
 
+-- trigger_reorder_condition — move a condition to a new 1-based position
+-- in t.rules.
+--
+-- Args:
+--   args.trigger   (string, required) — parent trigger name
+--   args.index     (number, required) — source condition's 1-based index
+--   args.to_index  (number) | args.before (number index)
+--   args.after     (number) | args.to_start (true) | args.to_end (true)
+--                                                 — exactly one position
+--
+-- Returns { ok = true, moved = bool, trigger = "T", from = N, to = M }.
+function M.trigger_reorder_condition(args)
+    if type(args) ~= 'table' or type(args.trigger) ~= 'string' or args.trigger == '' then
+        return { ok = false, error = 'trigger_reorder_condition requires args.trigger (name)' }
+    end
+    if type(args.index) ~= 'number' or args.index < 1 then
+        return { ok = false, error = 'trigger_reorder_condition requires args.index (1-based)' }
+    end
+    local _, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+
+    local t = _trigger_find_by_name(args.trigger)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.trigger .. '"' }
+    end
+    if type(t.rules) ~= 'table' or args.index > #t.rules then
+        return { ok = false,
+                 error = 'trigger has only ' .. (type(t.rules) == 'table' and #t.rules or 0)
+                         .. ' conditions; cannot reorder index ' .. args.index }
+    end
+
+    -- Anchor for --before/--after is a 1-based index into t.rules.
+    local function find_index_ref(list, ref)
+        if type(ref) ~= 'number' then
+            return nil, '--before / --after expects a 1-based index (number)'
+        end
+        if ref < 1 or ref > #list then
+            return nil, '--before / --after index must be in 1..' .. #list
+                        .. ' (got ' .. tostring(ref) .. ')'
+        end
+        return ref
+    end
+
+    local target_idx, terr2 = _reorder_resolve_target(t.rules, args.index, args, find_index_ref)
+    if terr2 then return { ok = false, error = terr2 } end
+
+    if args.index == target_idx then
+        return { ok = true, moved = false, trigger = args.trigger,
+                 from = args.index, to = target_idx }
+    end
+
+    _reorder_apply(t.rules, args.index, target_idx)
+    _trigger_panel_refresh()
+    return { ok = true, moved = true, trigger = args.trigger,
+             from = args.index, to = target_idx }
+end
+
+-- trigger_reorder_action — move an action to a new 1-based position in
+-- t.actions. Same shape as trigger_reorder_condition but operates on
+-- t.actions instead of t.rules.
+function M.trigger_reorder_action(args)
+    if type(args) ~= 'table' or type(args.trigger) ~= 'string' or args.trigger == '' then
+        return { ok = false, error = 'trigger_reorder_action requires args.trigger (name)' }
+    end
+    if type(args.index) ~= 'number' or args.index < 1 then
+        return { ok = false, error = 'trigger_reorder_action requires args.index (1-based)' }
+    end
+    local _, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+
+    local t = _trigger_find_by_name(args.trigger)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.trigger .. '"' }
+    end
+    if type(t.actions) ~= 'table' or args.index > #t.actions then
+        return { ok = false,
+                 error = 'trigger has only ' .. (type(t.actions) == 'table' and #t.actions or 0)
+                         .. ' actions; cannot reorder index ' .. args.index }
+    end
+
+    local function find_index_ref(list, ref)
+        if type(ref) ~= 'number' then
+            return nil, '--before / --after expects a 1-based index (number)'
+        end
+        if ref < 1 or ref > #list then
+            return nil, '--before / --after index must be in 1..' .. #list
+                        .. ' (got ' .. tostring(ref) .. ')'
+        end
+        return ref
+    end
+
+    local target_idx, terr2 = _reorder_resolve_target(t.actions, args.index, args, find_index_ref)
+    if terr2 then return { ok = false, error = terr2 } end
+
+    if args.index == target_idx then
+        return { ok = true, moved = false, trigger = args.trigger,
+                 from = args.index, to = target_idx }
+    end
+
+    _reorder_apply(t.actions, args.index, target_idx)
+    _trigger_panel_refresh()
+    return { ok = true, moved = true, trigger = args.trigger,
+             from = args.index, to = target_idx }
+end
+
 -- group_list — return concise summaries of all groups, with optional filters.
 --
 -- args (all optional):
@@ -4898,6 +5009,95 @@ function M.zone_get(args)
             points_relative = pts_rel,
             vertices_absolute = (tnum == 2) and pts_abs or nil,
         },
+    }
+end
+
+-- =============================================================================
+-- Camera (ME map view)
+--
+-- ED's camera lives in MapWindow. setCamera takes 2D world meters (x = north,
+-- y = east) — same units as Terrain.convertLatLonToMeters returns and the
+-- same field names as Mission.AirdromeController exposes on each airdrome.
+-- setScale takes meters-per-screen-unit; lower = more zoomed in. Order
+-- matters: when changing scale and panning at once, set scale first or the
+-- camera position snaps oddly at the old scale.
+
+local function _camera_resolve_airdrome(needle)
+    if type(needle) ~= 'string' or needle == '' then return nil end
+    local ok, AC = pcall(require, 'Mission.AirdromeController')
+    if not ok or not AC or type(AC.getAirdromes) ~= 'function' then return nil end
+    local got_ok, airdromes = pcall(AC.getAirdromes)
+    if not got_ok then return nil end
+    local n_low = needle:lower()
+    for _, ad in ipairs(airdromes or {}) do
+        if ad.getName then
+            local name = ad:getName()
+            if name and name:lower() == n_low then
+                return { name = name, x = ad.x, y = ad.y }
+            end
+        end
+    end
+    for _, ad in ipairs(airdromes or {}) do
+        if ad.getName then
+            local name = ad:getName()
+            if name and name:lower():find(n_low, 1, true) then
+                return { name = name, x = ad.x, y = ad.y }
+            end
+        end
+    end
+    return nil
+end
+
+function M.camera_focus(args)
+    args = args or {}
+    if not _G.MapWindow or not _G.Terrain then
+        return { ok = false, error = "ME map view not initialized (open the Mission Editor first)" }
+    end
+
+    local x, y, lat, lon, name
+    if args.name ~= nil then
+        local ad = _camera_resolve_airdrome(args.name)
+        if not ad then
+            return { ok = false, error = string.format("no airdrome found matching %q", tostring(args.name)) }
+        end
+        name, x, y = ad.name, ad.x, ad.y
+        lat, lon = Terrain.convertMetersToLatLon(x, y)
+    elseif args.lat ~= nil and args.lon ~= nil then
+        lat, lon = args.lat, args.lon
+        x, y = Terrain.convertLatLonToMeters(lat, lon)
+    elseif args.x ~= nil and args.y ~= nil then
+        x, y = args.x, args.y
+        lat, lon = Terrain.convertMetersToLatLon(x, y)
+    else
+        return { ok = false, error = "must provide --name, --lat/--lon, or --x/--y" }
+    end
+
+    if args.scale ~= nil then
+        MapWindow.setScale(args.scale)
+    end
+    MapWindow.setCamera(x, y)
+
+    local result = {
+        ok = true,
+        x = x, y = y,
+        lat = lat, lon = lon,
+        scale = MapWindow.getScale(),
+    }
+    if name then result.name = name end
+    return result
+end
+
+function M.camera_get(args)
+    if not _G.MapWindow or not _G.Terrain then
+        return { ok = false, error = "ME map view not initialized" }
+    end
+    local x, y = MapWindow.getCenterMap(0, 0)
+    local lat, lon = Terrain.convertMetersToLatLon(x, y)
+    return {
+        ok = true,
+        x = x, y = y,
+        lat = lat, lon = lon,
+        scale = MapWindow.getScale(),
     }
 end
 

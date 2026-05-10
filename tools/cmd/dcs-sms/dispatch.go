@@ -91,6 +91,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  exec          execute a Lua snippet (use --target mission|gui|auto, default auto)")
 	fmt.Fprintln(w, "  me            Mission Editor commands (run `dcs-sms me --help` for the verb list)")
 	fmt.Fprintln(w, "  status        report whether the hook is alive and a mission is loaded")
+	fmt.Fprintln(w, "  screenshot    capture the DCS window to a PNG (Windows only)")
 	fmt.Fprintln(w, "  tail-log      read recent lines from dcs.log")
 	fmt.Fprintln(w, "  install-hook  install/update the Lua hook in Saved Games/DCS*/Scripts/Hooks/")
 	fmt.Fprintln(w, "  install-me-mod   install/update the Mission Editor mod into <DCS install>/MissionEditor/")
