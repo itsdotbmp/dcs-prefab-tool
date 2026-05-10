@@ -191,7 +191,7 @@ func renderIndex(pages []docPage) string {
 		b.WriteString("| Command | Description |\n")
 		b.WriteString("|---|---|\n")
 		for _, p := range gp {
-			fmt.Fprintf(&b, "| [`%s`](%s.md) | %s |\n", p.Name, p.Slug, p.Synopsis)
+			fmt.Fprintf(&b, "| [`%s`](%s.md) | %s |\n", p.Name, p.Slug, escapePipe(p.Synopsis))
 		}
 		b.WriteString("\n")
 	}
