@@ -5256,6 +5256,128 @@ function M.airbase_list(args)
     return { ok = true, count = #rows, airbases = rows }
 end
 
+-- ED's coalition strings are lowercase, with "neutrals" plural:
+--   CoalitionController.blueCoalitionName()    -> "blue"
+--   CoalitionController.redCoalitionName()     -> "red"
+--   CoalitionController.neutralCoalitionName() -> "neutrals"
+-- We normalise user input ("red"/"blue"/"neutral"/"neutrals") to that form.
+local function _coalition_canonical(input)
+    if type(input) ~= 'string' then return nil end
+    local s = input:lower()
+    if s == 'red' then return 'red' end
+    if s == 'blue' then return 'blue' end
+    if s == 'neutral' or s == 'neutrals' then return 'neutrals' end
+    return nil
+end
+
+function M.airbase_set_coalition(args)
+    args = args or {}
+    if type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = "--name is required" }
+    end
+    local coal = _coalition_canonical(args.coalition)
+    if not coal then
+        return { ok = false, error = "--coalition must be red, blue, or neutral" }
+    end
+    local ad = _airbase_find_by_name(args.name)
+    if not ad then
+        return { ok = false, error = string.format("no airbase matching %q", args.name) }
+    end
+    local airdrome_number = ad.getAirdromeNumber and ad:getAirdromeNumber() or nil
+    if not airdrome_number then
+        return { ok = false, error = "airbase has no airdrome_number — cannot set coalition" }
+    end
+
+    local wo = require('dcs_sms_me.warehouse_ops')
+    local entry = wo.extract(airdrome_number)
+    if not entry then
+        return { ok = false, error = "no warehouse entry for airdrome " .. airdrome_number .. " (mission may not be loaded)" }
+    end
+    entry.coalition = coal
+    local ok, err = wo.apply(airdrome_number, entry)
+    if not ok then
+        return { ok = false, error = err or "warehouse_ops.apply failed" }
+    end
+
+    return {
+        ok = true,
+        name = ad:getName(),
+        airdrome_number = airdrome_number,
+        coalition = coal,
+    }
+end
+
+local function _resolve_unit_id(name_or_id)
+    if type(name_or_id) == 'number' then return name_or_id end
+    if type(name_or_id) ~= 'string' or name_or_id == '' then return nil end
+    -- Try numeric string first
+    local n = tonumber(name_or_id)
+    if n then return n end
+    local mm = require('me_mission')
+    if not mm or not mm.unit_by_name then return nil end
+    local u = mm.unit_by_name[name_or_id]
+    if u and type(u.unitId) == 'number' then return u.unitId end
+    return nil
+end
+
+function M.resources_get(args)
+    args = args or {}
+    local has_airbase = type(args.airbase) == 'string' and args.airbase ~= ''
+    local has_unit = args.unit ~= nil and args.unit ~= ''
+    if has_airbase == has_unit then
+        return { ok = false, error = "exactly one of --airbase or --unit is required" }
+    end
+
+    local mm = require('me_mission')
+    if not mm or not mm.mission or not mm.mission.AirportsEquipment then
+        return { ok = false, error = "mission not loaded — open one in the Mission Editor first" }
+    end
+
+    if has_airbase then
+        local ad = _airbase_find_by_name(args.airbase)
+        if not ad then
+            return { ok = false, error = string.format("no airbase matching %q", args.airbase) }
+        end
+        local airdrome_number = ad.getAirdromeNumber and ad:getAirdromeNumber() or nil
+        if not airdrome_number then
+            return { ok = false, error = "airbase has no airdrome_number" }
+        end
+        local wo = require('dcs_sms_me.warehouse_ops')
+        local entry = wo.extract(airdrome_number)
+        if not entry then
+            return { ok = false, error = "no warehouse entry for airdrome " .. airdrome_number }
+        end
+        return {
+            ok = true,
+            target = 'airbase',
+            name = ad:getName(),
+            airdrome_number = airdrome_number,
+            warehouse = entry,
+        }
+    end
+
+    local unit_id = _resolve_unit_id(args.unit)
+    if not unit_id then
+        return { ok = false, error = string.format("no unit matching %q", tostring(args.unit)) }
+    end
+    local warehouses = mm.mission.AirportsEquipment.warehouses or {}
+    local entry = warehouses[unit_id]
+    local unit_name
+    if mm.unit_by_id and mm.unit_by_id[unit_id] then unit_name = mm.unit_by_id[unit_id].name end
+    if not entry then
+        return { ok = false, error = string.format("no warehouse entry for unit %s (id=%d) — only ships/structures with cargo carry warehouses", unit_name or '?', unit_id) }
+    end
+    -- Deep-copy via warehouse_ops helper
+    local wo = require('dcs_sms_me.warehouse_ops')
+    return {
+        ok = true,
+        target = 'unit',
+        name = unit_name,
+        unit_id = unit_id,
+        warehouse = wo._deep_copy(entry),
+    }
+end
+
 function M.airbase_get(args)
     args = args or {}
     if type(args.name) ~= 'string' or args.name == '' then

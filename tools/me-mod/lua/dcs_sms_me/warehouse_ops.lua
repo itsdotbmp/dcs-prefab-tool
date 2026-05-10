@@ -92,10 +92,18 @@ function M.apply(airdrome_number, warehouse_entry)
     module_mission.mission.AirportsEquipment.airports[airdrome_number] = copy
 
     if AirdromeController and CoalitionController and copy.coalition then
+        -- ED's coalition strings are lowercase ("blue"/"red"/"neutrals"), as
+        -- returned by CoalitionController.{blue,red,neutral}CoalitionName().
+        -- Earlier versions of this map keyed on uppercase singular
+        -- ("BLUE"/"RED"/"NEUTRAL"), so the lookup always returned nil and the
+        -- AirdromeController push silently no-op'd — the warehouse table got
+        -- the new coalition but the live map display didn't refresh until the
+        -- mission was saved + reopened. Keying on the lowercase strings ED
+        -- actually emits fixes that.
         local controller_name = ({
-            BLUE    = CoalitionController.blueCoalitionName    and CoalitionController.blueCoalitionName(),
-            RED     = CoalitionController.redCoalitionName     and CoalitionController.redCoalitionName(),
-            NEUTRAL = CoalitionController.neutralCoalitionName and CoalitionController.neutralCoalitionName(),
+            blue     = CoalitionController.blueCoalitionName    and CoalitionController.blueCoalitionName(),
+            red      = CoalitionController.redCoalitionName     and CoalitionController.redCoalitionName(),
+            neutrals = CoalitionController.neutralCoalitionName and CoalitionController.neutralCoalitionName(),
         })[copy.coalition]
         if controller_name and AirdromeController.setAirdromeCoalition and AirdromeController.getAirdromeId then
             local id = AirdromeController.getAirdromeId(airdrome_number)
