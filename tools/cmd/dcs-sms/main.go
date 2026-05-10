@@ -10,7 +10,7 @@ import (
 // `-ldflags="-X main.version=$VERSION"` (see release-me-mod.yml).
 // Local `go build` keeps the -dev suffix as a "running an
 // unreleased build" signal.
-var version = "0.1.0-dev"
+var version = "0.1.1-dev"
 
 func main() {
 	args := os.Args[1:]

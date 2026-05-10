@@ -83,6 +83,18 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### Unreleased
+
+**Added**
+- `dcs-sms install-ai-skill --agent=claude|codex|gemini|all` and matching
+  `uninstall-ai-skill` subcommands. Drops a short `SKILL.md` (and a Gemini
+  slash-command TOML) into the user's AI agent config dir so Claude Code,
+  Codex CLI, and Gemini CLI all know `dcs-sms.exe` is on PATH and how to
+  discover its commands. After install, `/dcs-sms` works as a slash command
+  on Claude and Gemini; on Codex use `$dcs-sms` or the `/skills` picker.
+- Interactive menu option 5 wires up the same install/uninstall flow with
+  agent + action sub-prompts.
+
 ### 0.6.0 — 2026-05-09
 
 **Added**
