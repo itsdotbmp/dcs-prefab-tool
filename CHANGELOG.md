@@ -113,6 +113,8 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 - `me trigger reorder-action` — move an action to a new position in a trigger's `actions` list.
 - `me trigger add-condition --predicate or` — pseudo-predicate that connects two surrounding conditions with logical OR. ED's panel exposes this via the OR button between rules; the bridge now resolves it through `add-condition`. Discoverable via `me trigger list-predicates` / `describe-predicate or`.
 - `dcs-sms screenshot [--out PATH] [--title SUBSTR]` — capture the running DCS window to a PNG via `PrintWindow + PW_RENDERFULLCONTENT`. Works in windowed, borderless windowed, and (verified) true exclusive fullscreen. Default output is `%TEMP%/dcs-sms-screenshot.png`. Windows-only.
+- `me camera focus { --name N | --lat L --lon L | --x X --y Y } [--scale S]` — pan the ME map to a point, optionally setting zoom (meters per screen unit) at the same time. `--name` resolves against `Mission.AirdromeController.getAirdromes()` (case-insensitive, exact match preferred, substring fallback). Coords use DCS world meters (x = north, y = east), same convention as the airdrome controller and the `Terrain.convertLatLonToMeters` return values.
+- `me camera get` — return the current map center as `{ x, y, lat, lon, scale }`.
 
 All three reorder verbs accept the same five mutually-exclusive position flags: `--to-index N`, `--before X`, `--after X`, `--to-start`, `--to-end`. For `me trigger reorder`, `X` is a trigger name; for `reorder-condition` / `reorder-action`, `X` is a 1-based index into the parent trigger's list. Self-targeting (e.g. `--before T` where `T` is the source itself, or `--to-index <where-source-already-is>`) is an idempotent no-op (`moved: false`), not an error.
 

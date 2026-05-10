@@ -5012,4 +5012,93 @@ function M.zone_get(args)
     }
 end
 
+-- =============================================================================
+-- Camera (ME map view)
+--
+-- ED's camera lives in MapWindow. setCamera takes 2D world meters (x = north,
+-- y = east) — same units as Terrain.convertLatLonToMeters returns and the
+-- same field names as Mission.AirdromeController exposes on each airdrome.
+-- setScale takes meters-per-screen-unit; lower = more zoomed in. Order
+-- matters: when changing scale and panning at once, set scale first or the
+-- camera position snaps oddly at the old scale.
+
+local function _camera_resolve_airdrome(needle)
+    if type(needle) ~= 'string' or needle == '' then return nil end
+    local ok, AC = pcall(require, 'Mission.AirdromeController')
+    if not ok or not AC or type(AC.getAirdromes) ~= 'function' then return nil end
+    local got_ok, airdromes = pcall(AC.getAirdromes)
+    if not got_ok then return nil end
+    local n_low = needle:lower()
+    for _, ad in ipairs(airdromes or {}) do
+        if ad.getName then
+            local name = ad:getName()
+            if name and name:lower() == n_low then
+                return { name = name, x = ad.x, y = ad.y }
+            end
+        end
+    end
+    for _, ad in ipairs(airdromes or {}) do
+        if ad.getName then
+            local name = ad:getName()
+            if name and name:lower():find(n_low, 1, true) then
+                return { name = name, x = ad.x, y = ad.y }
+            end
+        end
+    end
+    return nil
+end
+
+function M.camera_focus(args)
+    args = args or {}
+    if not _G.MapWindow or not _G.Terrain then
+        return { ok = false, error = "ME map view not initialized (open the Mission Editor first)" }
+    end
+
+    local x, y, lat, lon, name
+    if args.name ~= nil then
+        local ad = _camera_resolve_airdrome(args.name)
+        if not ad then
+            return { ok = false, error = string.format("no airdrome found matching %q", tostring(args.name)) }
+        end
+        name, x, y = ad.name, ad.x, ad.y
+        lat, lon = Terrain.convertMetersToLatLon(x, y)
+    elseif args.lat ~= nil and args.lon ~= nil then
+        lat, lon = args.lat, args.lon
+        x, y = Terrain.convertLatLonToMeters(lat, lon)
+    elseif args.x ~= nil and args.y ~= nil then
+        x, y = args.x, args.y
+        lat, lon = Terrain.convertMetersToLatLon(x, y)
+    else
+        return { ok = false, error = "must provide --name, --lat/--lon, or --x/--y" }
+    end
+
+    if args.scale ~= nil then
+        MapWindow.setScale(args.scale)
+    end
+    MapWindow.setCamera(x, y)
+
+    local result = {
+        ok = true,
+        x = x, y = y,
+        lat = lat, lon = lon,
+        scale = MapWindow.getScale(),
+    }
+    if name then result.name = name end
+    return result
+end
+
+function M.camera_get(args)
+    if not _G.MapWindow or not _G.Terrain then
+        return { ok = false, error = "ME map view not initialized" }
+    end
+    local x, y = MapWindow.getCenterMap(0, 0)
+    local lat, lon = Terrain.convertMetersToLatLon(x, y)
+    return {
+        ok = true,
+        x = x, y = y,
+        lat = lat, lon = lon,
+        scale = MapWindow.getScale(),
+    }
+end
+
 return M
