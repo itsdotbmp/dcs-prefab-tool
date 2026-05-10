@@ -58,7 +58,22 @@ Order matters because later mods can override earlier ones (e.g. `--clear --airc
    - `--clear-aircrafts` — zero every `aircrafts.{planes,helicopters}[NAME].initialAmount`. Don't touch unlimitedAircrafts.
    - `--clear-fuel` — set every fuel sub-table's `InitFuel = 0`. Don't touch unlimitedFuel.
    - `--clear-munitions` — zero every `weapons[N].initialAmount`. Don't touch unlimitedMunitions.
-   - `--unlimited-aircrafts` / `--unlimited-fuel` / `--unlimited-munitions` — flip the matching flag to true.
+   - `--unlimited-aircrafts` / `--unlimited-fuel` / `--unlimited-munitions` — set the matching flag to true.
+
+   **Unsetting unlimited per category**: use Go's standard bool-flag `=false` syntax —
+   `--unlimited-aircrafts=false`. Same applies to the top-level `--unlimited=false` (turns
+   off all three) and to `--clear=false` (which is a no-op, since `--clear` is just the
+   trigger to apply the reset; passing it false means "don't apply"). This matrix gives
+   complete coverage of every checkbox state ED's Resource Manager exposes:
+
+   | Goal | Flag |
+   |---|---|
+   | Inventory → 0, all unlimited → off | `--clear` |
+   | Inventory → 0, leave unlimited alone | `--clear-aircrafts` `--clear-fuel` `--clear-munitions` (any combination) |
+   | All unlimited → on | `--unlimited` |
+   | Per-category unlimited on | `--unlimited-aircrafts` (etc.) |
+   | Per-category unlimited off (without clearing inventory) | `--unlimited-aircrafts=false` (etc.) |
+   | All unlimited → off (without clearing inventory) | `--unlimited=false` |
 
 3. **Operating levels** (replenishment minimum stock, 0–100 integer percent)
    - `--operating-level-air N`
