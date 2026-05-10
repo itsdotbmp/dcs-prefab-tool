@@ -7,8 +7,33 @@ import (
 	"time"
 )
 
+type meZoneSetRadiusOpts struct {
+	Name       string
+	ID         int
+	Radius     float64
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meZoneSetRadiusFlags() (*flag.FlagSet, *meZoneSetRadiusOpts) {
+	opts := &meZoneSetRadiusOpts{}
+	fs := flag.NewFlagSet("me zone set-radius", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "zone name (mutually exclusive with --id)")
+	fs.IntVar(&opts.ID, "id", 0, "zone id (mutually exclusive with --name)")
+	fs.Float64Var(&opts.Radius, "radius", 0, "radius in meters")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("zone", "set-radius", meZoneSetRadiusCmd)
+	registerMeInfo("zone", "set-radius", cmdInfo{
+		Run:      meZoneSetRadiusCmd,
+		Flags:    flagsOnly(meZoneSetRadiusFlags),
+		Synopsis: "change a zone's radius in meters",
+	})
 }
 
 // meZoneSetRadiusCmd implements `dcs-sms me zone set-radius --name|--id <X> --radius <m>`.
@@ -18,41 +43,33 @@ func init() {
 // defined by --vertices, not --radius). Wraps
 // Mission.TriggerZoneData.setTriggerZoneRadius.
 func meZoneSetRadiusCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me zone set-radius", flag.ContinueOnError)
+	fs, opts := meZoneSetRadiusFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "zone name (mutually exclusive with --id)")
-		flagID         = fs.Int("id", 0, "zone id (mutually exclusive with --name)")
-		flagRadius     = fs.Float64("radius", 0, "radius in meters")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	hasName := *flagName != ""
-	hasID := *flagID != 0
+	hasName := opts.Name != ""
+	hasID := opts.ID != 0
 	if hasName == hasID {
 		fmt.Fprintln(stderr, "dcs-sms me zone set-radius: exactly one of --name or --id is required")
 		return 2
 	}
-	if *flagRadius <= 0 {
+	if opts.Radius <= 0 {
 		fmt.Fprintln(stderr, "dcs-sms me zone set-radius: --radius is required (> 0)")
 		return 2
 	}
 
 	var idClause string
 	if hasName {
-		idClause = fmt.Sprintf("name = %q", *flagName)
+		idClause = fmt.Sprintf("name = %q", opts.Name)
 	} else {
-		idClause = fmt.Sprintf("id = %d", *flagID)
+		idClause = fmt.Sprintf("id = %d", opts.ID)
 	}
-	luaArgs := fmt.Sprintf("{ %s, radius = %g }", idClause, *flagRadius)
+	luaArgs := fmt.Sprintf("{ %s, radius = %g }", idClause, opts.Radius)
 
-	resp, exitCode := runMeVerb("zone_set_radius", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("zone_set_radius", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

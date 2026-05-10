@@ -8,37 +8,53 @@ import (
 	"time"
 )
 
+type meZoneListOpts struct {
+	Shape      string
+	Name       string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meZoneListFlags() (*flag.FlagSet, *meZoneListOpts) {
+	opts := &meZoneListOpts{}
+	fs := flag.NewFlagSet("me zone list", flag.ContinueOnError)
+	fs.StringVar(&opts.Shape, "shape", "", "filter by shape: circle | quad")
+	fs.StringVar(&opts.Name, "name", "", "filter by zone-name substring (case-insensitive)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("zone", "list", meZoneListCmd)
+	registerMeInfo("zone", "list", cmdInfo{
+		Run:      meZoneListCmd,
+		Flags:    flagsOnly(meZoneListFlags),
+		Synopsis: "list all zones in the open mission",
+	})
 }
 
 // meZoneListCmd implements `dcs-sms me zone list [--shape --name]`.
 func meZoneListCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me zone list", flag.ContinueOnError)
+	fs, opts := meZoneListFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagShape      = fs.String("shape", "", "filter by shape: circle | quad")
-		flagName       = fs.String("name", "", "filter by zone-name substring (case-insensitive)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
 	var parts []string
-	if *flagShape != "" {
-		parts = append(parts, fmt.Sprintf("shape = %q", strings.ToLower(*flagShape)))
+	if opts.Shape != "" {
+		parts = append(parts, fmt.Sprintf("shape = %q", strings.ToLower(opts.Shape)))
 	}
-	if *flagName != "" {
-		parts = append(parts, fmt.Sprintf("name = %q", *flagName))
+	if opts.Name != "" {
+		parts = append(parts, fmt.Sprintf("name = %q", opts.Name))
 	}
 	luaArgs := "{ " + strings.Join(parts, ", ") + " }"
 
-	resp, exitCode := runMeVerb("zone_list", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("zone_list", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

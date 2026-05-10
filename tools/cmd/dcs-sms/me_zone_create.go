@@ -9,8 +9,46 @@ import (
 	"time"
 )
 
+type meZoneCreateOpts struct {
+	Type       string
+	Name       string
+	North      float64
+	East       float64
+	Radius     float64
+	Vertices   string
+	Color      string
+	Hidden     bool
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meZoneCreateFlags() (*flag.FlagSet, *meZoneCreateOpts) {
+	opts := &meZoneCreateOpts{}
+	fs := flag.NewFlagSet("me zone create", flag.ContinueOnError)
+	fs.StringVar(&opts.Type, "type", "", "shape: circle | quad")
+	fs.StringVar(&opts.Name, "name", "", "zone name (uniquified by ME if duplicate)")
+	fs.Float64Var(&opts.North, "north", 0, "circle: meters north of theatre origin (north positive)")
+	fs.Float64Var(&opts.East, "east", 0, "circle: meters east of theatre origin (east positive)")
+	fs.Float64Var(&opts.Radius, "radius", 0, "circle: radius in meters; quad: optional icon radius")
+	fs.StringVar(&opts.Vertices, "vertices", "",
+		"quad: 4 corners as \"n1,e1;n2,e2;n3,e3;n4,e4\" (>= 3 corners actually allowed)")
+	fs.StringVar(&opts.Color, "color", "",
+		"color: name (red/green/blue/yellow/cyan/magenta/white/black/orange/purple), "+
+			"hex \"#rrggbb\" (alpha 0.15), or \"#rrggbbaa\"; default = translucent white")
+	fs.BoolVar(&opts.Hidden, "hidden", false, "hide the zone in the ME view")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("zone", "create", meZoneCreateCmd)
+	registerMeInfo("zone", "create", cmdInfo{
+		Run:      meZoneCreateCmd,
+		Flags:    flagsOnly(meZoneCreateFlags),
+		Synopsis: "create a circular or quadrilateral zone in the open mission",
+	})
 }
 
 // meZoneCreateCmd implements `dcs-sms me zone create --type circle|quad ...`.
@@ -23,33 +61,17 @@ func init() {
 // (see top of verbs.lua for rationale). Circle takes --north / --east /
 // --radius; quad takes --vertices "n1,e1;n2,e2;n3,e3;n4,e4".
 func meZoneCreateCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me zone create", flag.ContinueOnError)
+	fs, opts := meZoneCreateFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagType       = fs.String("type", "", "shape: circle | quad")
-		flagName       = fs.String("name", "", "zone name (uniquified by ME if duplicate)")
-		flagNorth      = fs.Float64("north", 0, "circle: meters north of theatre origin (north positive)")
-		flagEast       = fs.Float64("east", 0, "circle: meters east of theatre origin (east positive)")
-		flagRadius     = fs.Float64("radius", 0, "circle: radius in meters; quad: optional icon radius")
-		flagVertices   = fs.String("vertices", "",
-			"quad: 4 corners as \"n1,e1;n2,e2;n3,e3;n4,e4\" (>= 3 corners actually allowed)")
-		flagColor      = fs.String("color", "",
-			"color: name (red/green/blue/yellow/cyan/magenta/white/black/orange/purple), "+
-				"hex \"#rrggbb\" (alpha 0.15), or \"#rrggbbaa\"; default = translucent white")
-		flagHidden     = fs.Bool("hidden", false, "hide the zone in the ME view")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagName == "" {
+	if opts.Name == "" {
 		fmt.Fprintln(stderr, "dcs-sms me zone create: --name is required")
 		return 2
 	}
 
-	colorLua, err := parseColorToLua(*flagColor)
+	colorLua, err := parseColorToLua(opts.Color)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms me zone create:", err)
 		return 2
@@ -59,28 +81,28 @@ func meZoneCreateCmd(args []string, stdout, stderr io.Writer) int {
 		colorClause = ", color = " + colorLua
 	}
 
-	switch strings.ToLower(*flagType) {
+	switch strings.ToLower(opts.Type) {
 	case "circle":
-		if *flagRadius <= 0 {
+		if opts.Radius <= 0 {
 			fmt.Fprintln(stderr, "dcs-sms me zone create --type circle: --radius is required (> 0)")
 			return 2
 		}
 		luaArgs := fmt.Sprintf(
 			"{ name = %q, north = %g, east = %g, radius = %g, hidden = %t%s }",
-			*flagName, *flagNorth, *flagEast, *flagRadius, *flagHidden, colorClause,
+			opts.Name, opts.North, opts.East, opts.Radius, opts.Hidden, colorClause,
 		)
-		resp, exitCode := runMeVerb("zone_create_circle", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+		resp, exitCode := runMeVerb("zone_create_circle", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 		if exitCode != 0 {
 			return exitCode
 		}
-		return emitMeResponse(resp, *flagPretty, stdout)
+		return emitMeResponse(resp, opts.Pretty, stdout)
 
 	case "quad":
-		if *flagVertices == "" {
+		if opts.Vertices == "" {
 			fmt.Fprintln(stderr, "dcs-sms me zone create --type quad: --vertices is required (\"n1,e1;n2,e2;n3,e3;n4,e4\")")
 			return 2
 		}
-		verticesLua, err := parseVerticesToLua(*flagVertices)
+		verticesLua, err := parseVerticesToLua(opts.Vertices)
 		if err != nil {
 			fmt.Fprintln(stderr, "dcs-sms me zone create --type quad:", err)
 			return 2
@@ -88,19 +110,19 @@ func meZoneCreateCmd(args []string, stdout, stderr io.Writer) int {
 		// --radius is optional for quad; pass 0 → verb computes default.
 		luaArgs := fmt.Sprintf(
 			"{ name = %q, vertices = %s, radius = %g, hidden = %t%s }",
-			*flagName, verticesLua, *flagRadius, *flagHidden, colorClause,
+			opts.Name, verticesLua, opts.Radius, opts.Hidden, colorClause,
 		)
-		resp, exitCode := runMeVerb("zone_create_quad", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+		resp, exitCode := runMeVerb("zone_create_quad", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 		if exitCode != 0 {
 			return exitCode
 		}
-		return emitMeResponse(resp, *flagPretty, stdout)
+		return emitMeResponse(resp, opts.Pretty, stdout)
 
 	case "":
 		fmt.Fprintln(stderr, "dcs-sms me zone create: --type is required (circle | quad)")
 		return 2
 	default:
-		fmt.Fprintf(stderr, "dcs-sms me zone create: unknown --type %q (expected circle or quad)\n", *flagType)
+		fmt.Fprintf(stderr, "dcs-sms me zone create: unknown --type %q (expected circle or quad)\n", opts.Type)
 		return 2
 	}
 }

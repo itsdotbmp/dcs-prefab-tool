@@ -7,8 +7,33 @@ import (
 	"time"
 )
 
+type meZoneSetNameOpts struct {
+	Name       string
+	ID         int
+	NewName    string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meZoneSetNameFlags() (*flag.FlagSet, *meZoneSetNameOpts) {
+	opts := &meZoneSetNameOpts{}
+	fs := flag.NewFlagSet("me zone set-name", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "zone name (mutually exclusive with --id)")
+	fs.IntVar(&opts.ID, "id", 0, "zone id (mutually exclusive with --name)")
+	fs.StringVar(&opts.NewName, "new-name", "", "new zone name")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("zone", "set-name", meZoneSetNameCmd)
+	registerMeInfo("zone", "set-name", cmdInfo{
+		Run:      meZoneSetNameCmd,
+		Flags:    flagsOnly(meZoneSetNameFlags),
+		Synopsis: "rename a zone",
+	})
 }
 
 // meZoneSetNameCmd implements `dcs-sms me zone set-name --name|--id <X> --new-name <Y>`.
@@ -22,41 +47,33 @@ func init() {
 // (e.g. "X #001"). The verb returns the final stored name so callers can see
 // what was applied.
 func meZoneSetNameCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me zone set-name", flag.ContinueOnError)
+	fs, opts := meZoneSetNameFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "zone name (mutually exclusive with --id)")
-		flagID         = fs.Int("id", 0, "zone id (mutually exclusive with --name)")
-		flagNewName    = fs.String("new-name", "", "new zone name")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	hasName := *flagName != ""
-	hasID := *flagID != 0
+	hasName := opts.Name != ""
+	hasID := opts.ID != 0
 	if hasName == hasID {
 		fmt.Fprintln(stderr, "dcs-sms me zone set-name: exactly one of --name or --id is required")
 		return 2
 	}
-	if *flagNewName == "" {
+	if opts.NewName == "" {
 		fmt.Fprintln(stderr, "dcs-sms me zone set-name: --new-name is required")
 		return 2
 	}
 
 	var idClause string
 	if hasName {
-		idClause = fmt.Sprintf("name = %q", *flagName)
+		idClause = fmt.Sprintf("name = %q", opts.Name)
 	} else {
-		idClause = fmt.Sprintf("id = %d", *flagID)
+		idClause = fmt.Sprintf("id = %d", opts.ID)
 	}
-	luaArgs := fmt.Sprintf("{ %s, new_name = %q }", idClause, *flagNewName)
+	luaArgs := fmt.Sprintf("{ %s, new_name = %q }", idClause, opts.NewName)
 
-	resp, exitCode := runMeVerb("zone_set_name", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("zone_set_name", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }
