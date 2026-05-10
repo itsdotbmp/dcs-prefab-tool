@@ -7,8 +7,33 @@ import (
 	"time"
 )
 
+type meUnitSetLiveryOpts struct {
+	Name       string
+	ID         int
+	Livery     string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meUnitSetLiveryFlags() (*flag.FlagSet, *meUnitSetLiveryOpts) {
+	opts := &meUnitSetLiveryOpts{}
+	fs := flag.NewFlagSet("me unit set-livery", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "unit name (mutually exclusive with --id)")
+	fs.IntVar(&opts.ID, "id", 0, "unit id (mutually exclusive with --name)")
+	fs.StringVar(&opts.Livery, "livery", "", "livery id (airframe-specific; empty = default)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("unit", "set-livery", meUnitSetLiveryCmd)
+	registerMeInfo("unit", "set-livery", cmdInfo{
+		Run:      meUnitSetLiveryCmd,
+		Flags:    flagsOnly(meUnitSetLiveryFlags),
+		Synopsis: "set a unit's livery id",
+	})
 }
 
 // meUnitSetLiveryCmd implements `dcs-sms me unit set-livery --name|--id <X> --livery <L>`.
@@ -18,21 +43,13 @@ func init() {
 // "" means default. The ME does not validate the value — an unknown livery
 // just falls back to default at runtime.
 func meUnitSetLiveryCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me unit set-livery", flag.ContinueOnError)
+	fs, opts := meUnitSetLiveryFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "unit name (mutually exclusive with --id)")
-		flagID         = fs.Int("id", 0, "unit id (mutually exclusive with --name)")
-		flagLivery     = fs.String("livery", "", "livery id (airframe-specific; empty = default)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	hasName := *flagName != ""
-	hasID := *flagID != 0
+	hasName := opts.Name != ""
+	hasID := opts.ID != 0
 	if hasName == hasID {
 		fmt.Fprintln(stderr, "dcs-sms me unit set-livery: exactly one of --name or --id is required")
 		return 2
@@ -51,15 +68,15 @@ func meUnitSetLiveryCmd(args []string, stdout, stderr io.Writer) int {
 
 	var idClause string
 	if hasName {
-		idClause = fmt.Sprintf("name = %q", *flagName)
+		idClause = fmt.Sprintf("name = %q", opts.Name)
 	} else {
-		idClause = fmt.Sprintf("id = %d", *flagID)
+		idClause = fmt.Sprintf("id = %d", opts.ID)
 	}
-	luaArgs := fmt.Sprintf("{ %s, livery = %q }", idClause, *flagLivery)
+	luaArgs := fmt.Sprintf("{ %s, livery = %q }", idClause, opts.Livery)
 
-	resp, exitCode := runMeVerb("unit_set_livery", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("unit_set_livery", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

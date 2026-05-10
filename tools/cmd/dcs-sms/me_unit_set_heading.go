@@ -7,8 +7,34 @@ import (
 	"time"
 )
 
+type meUnitSetHeadingOpts struct {
+	Name       string
+	ID         int
+	Heading    float64
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meUnitSetHeadingFlags() (*flag.FlagSet, *meUnitSetHeadingOpts) {
+	opts := &meUnitSetHeadingOpts{}
+	fs := flag.NewFlagSet("me unit set-heading", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "unit name (mutually exclusive with --id)")
+	fs.IntVar(&opts.ID, "id", 0, "unit id (mutually exclusive with --name)")
+	fs.Float64Var(&opts.Heading, "heading", 0,
+		"heading in degrees (0 = north, clockwise positive)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("unit", "set-heading", meUnitSetHeadingCmd)
+	registerMeInfo("unit", "set-heading", cmdInfo{
+		Run:      meUnitSetHeadingCmd,
+		Flags:    flagsOnly(meUnitSetHeadingFlags),
+		Synopsis: "set a unit's heading in degrees",
+	})
 }
 
 // meUnitSetHeadingCmd implements
@@ -21,22 +47,13 @@ func init() {
 // Updates both u.heading and u.psi — they're stored separately but the ME
 // keeps them in sync; we mirror that.
 func meUnitSetHeadingCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me unit set-heading", flag.ContinueOnError)
+	fs, opts := meUnitSetHeadingFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "unit name (mutually exclusive with --id)")
-		flagID         = fs.Int("id", 0, "unit id (mutually exclusive with --name)")
-		flagHeading    = fs.Float64("heading", 0,
-			"heading in degrees (0 = north, clockwise positive)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	hasName := *flagName != ""
-	hasID := *flagID != 0
+	hasName := opts.Name != ""
+	hasID := opts.ID != 0
 	if hasName == hasID {
 		fmt.Fprintln(stderr, "dcs-sms me unit set-heading: exactly one of --name or --id is required")
 		return 2
@@ -54,15 +71,15 @@ func meUnitSetHeadingCmd(args []string, stdout, stderr io.Writer) int {
 
 	var idClause string
 	if hasName {
-		idClause = fmt.Sprintf("name = %q", *flagName)
+		idClause = fmt.Sprintf("name = %q", opts.Name)
 	} else {
-		idClause = fmt.Sprintf("id = %d", *flagID)
+		idClause = fmt.Sprintf("id = %d", opts.ID)
 	}
-	luaArgs := fmt.Sprintf("{ %s, heading_deg = %g }", idClause, *flagHeading)
+	luaArgs := fmt.Sprintf("{ %s, heading_deg = %g }", idClause, opts.Heading)
 
-	resp, exitCode := runMeVerb("unit_set_heading", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("unit_set_heading", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

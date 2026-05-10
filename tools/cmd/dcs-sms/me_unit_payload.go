@@ -7,8 +7,39 @@ import (
 	"time"
 )
 
+// meUnitPayloadOpts mirrors the flags exposed by the dominant `set` sub-verb.
+// It exists so the doc generator can introspect a representative FlagSet for
+// the `me unit payload` entry — the run handler itself dispatches to the
+// per-sub-verb implementations below, each of which builds its own FlagSet.
+type meUnitPayloadOpts struct {
+	Name       string
+	ID         int
+	Pylon      int
+	Weapon     string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meUnitPayloadFlags() (*flag.FlagSet, *meUnitPayloadOpts) {
+	opts := &meUnitPayloadOpts{}
+	fs := flag.NewFlagSet("me unit payload", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "unit name (mutually exclusive with --id)")
+	fs.IntVar(&opts.ID, "id", 0, "unit id (mutually exclusive with --name)")
+	fs.IntVar(&opts.Pylon, "pylon", 0, "pylon number (per-airframe, see DB.unit_by_type[type].Pylons)")
+	fs.StringVar(&opts.Weapon, "weapon", "", "weapon CLSID (e.g. \"{GUID}\") or display name (set sub-verb only)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("unit", "payload", meUnitPayloadCmd)
+	registerMeInfo("unit", "payload", cmdInfo{
+		Run:      meUnitPayloadCmd,
+		Flags:    flagsOnly(meUnitPayloadFlags),
+		Synopsis: "manage a unit's per-pylon weapon payload (sub-verbs: set, clear)",
+	})
 }
 
 // meUnitPayloadCmd implements `dcs-sms me unit payload <set|clear> [flags]`.

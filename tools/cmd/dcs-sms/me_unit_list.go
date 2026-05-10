@@ -8,53 +8,73 @@ import (
 	"time"
 )
 
+type meUnitListOpts struct {
+	Side       string
+	Country    string
+	Category   string
+	Group      string
+	Name       string
+	Type       string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meUnitListFlags() (*flag.FlagSet, *meUnitListOpts) {
+	opts := &meUnitListOpts{}
+	fs := flag.NewFlagSet("me unit list", flag.ContinueOnError)
+	fs.StringVar(&opts.Side, "side", "", "filter by side: red | blue | neutrals")
+	fs.StringVar(&opts.Country, "country", "", "filter by country (case-insensitive exact match)")
+	fs.StringVar(&opts.Category, "category", "", "filter by category: plane | helicopter | vehicle | ship | static")
+	fs.StringVar(&opts.Group, "group", "", "filter by group name (exact match)")
+	fs.StringVar(&opts.Name, "name", "", "filter by unit-name substring (case-insensitive)")
+	fs.StringVar(&opts.Type, "type", "", "filter by airframe / unit type (exact, e.g. F-16C_50)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("unit", "list", meUnitListCmd)
+	registerMeInfo("unit", "list", cmdInfo{
+		Run:      meUnitListCmd,
+		Flags:    flagsOnly(meUnitListFlags),
+		Synopsis: "list all units in the open mission",
+	})
 }
 
 // meUnitListCmd implements `dcs-sms me unit list [filters]`.
 func meUnitListCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me unit list", flag.ContinueOnError)
+	fs, opts := meUnitListFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagSide       = fs.String("side", "", "filter by side: red | blue | neutrals")
-		flagCountry    = fs.String("country", "", "filter by country (case-insensitive exact match)")
-		flagCategory   = fs.String("category", "", "filter by category: plane | helicopter | vehicle | ship | static")
-		flagGroup      = fs.String("group", "", "filter by group name (exact match)")
-		flagName       = fs.String("name", "", "filter by unit-name substring (case-insensitive)")
-		flagType       = fs.String("type", "", "filter by airframe / unit type (exact, e.g. F-16C_50)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
 	var parts []string
-	if *flagSide != "" {
-		parts = append(parts, fmt.Sprintf("side = %q", strings.ToLower(*flagSide)))
+	if opts.Side != "" {
+		parts = append(parts, fmt.Sprintf("side = %q", strings.ToLower(opts.Side)))
 	}
-	if *flagCountry != "" {
-		parts = append(parts, fmt.Sprintf("country = %q", *flagCountry))
+	if opts.Country != "" {
+		parts = append(parts, fmt.Sprintf("country = %q", opts.Country))
 	}
-	if *flagCategory != "" {
-		parts = append(parts, fmt.Sprintf("category = %q", strings.ToLower(*flagCategory)))
+	if opts.Category != "" {
+		parts = append(parts, fmt.Sprintf("category = %q", strings.ToLower(opts.Category)))
 	}
-	if *flagGroup != "" {
-		parts = append(parts, fmt.Sprintf("group = %q", *flagGroup))
+	if opts.Group != "" {
+		parts = append(parts, fmt.Sprintf("group = %q", opts.Group))
 	}
-	if *flagName != "" {
-		parts = append(parts, fmt.Sprintf("name = %q", *flagName))
+	if opts.Name != "" {
+		parts = append(parts, fmt.Sprintf("name = %q", opts.Name))
 	}
-	if *flagType != "" {
-		parts = append(parts, fmt.Sprintf("type = %q", *flagType))
+	if opts.Type != "" {
+		parts = append(parts, fmt.Sprintf("type = %q", opts.Type))
 	}
 	luaArgs := "{ " + strings.Join(parts, ", ") + " }"
 
-	resp, exitCode := runMeVerb("unit_list", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("unit_list", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }
