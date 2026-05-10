@@ -15,23 +15,38 @@ import (
 	memod "github.com/nielsvaes/dcs-sms/tools/me-mod/lua"
 )
 
+type installMeModOpts struct {
+	DCSPath string
+	NoSave  bool
+}
+
+func installMeModFlags() (*flag.FlagSet, *installMeModOpts) {
+	opts := &installMeModOpts{}
+	fs := flag.NewFlagSet("install-me-mod", flag.ContinueOnError)
+	fs.StringVar(&opts.DCSPath, "dcs-path", "", "override DCS install path")
+	fs.BoolVar(&opts.NoSave, "no-config-save", false, "do not persist --dcs-path to config")
+	return fs, opts
+}
+
 func init() {
-	register("install-me-mod", installMeModCmd)
+	registerInfo("install-me-mod", cmdInfo{
+		Run:      installMeModCmd,
+		Flags:    flagsOnly(installMeModFlags),
+		Synopsis: "install/update the Mission Editor mod into <DCS install>/MissionEditor/",
+	})
 }
 
 const meModBackupSuffix = ".dcs-sms.bak"
 
 func installMeModCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("install-me-mod", flag.ContinueOnError)
+	fs, opts := installMeModFlags()
 	fs.SetOutput(stderr)
-	flagDCSPath := fs.String("dcs-path", "", "override DCS install path")
-	flagNoSave := fs.Bool("no-config-save", false, "do not persist --dcs-path to config")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
 	cfg, _ := dcspath.DefaultConfigPath()
-	install, err := dcspath.DiscoverInstall(*flagDCSPath, cfg)
+	install, err := dcspath.DiscoverInstall(opts.DCSPath, cfg)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms install-me-mod:", err)
 		return 3
@@ -90,12 +105,12 @@ func installMeModCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	// Step 3: cache --dcs-path to config (unless --no-config-save).
-	if *flagDCSPath != "" && !*flagNoSave {
+	if opts.DCSPath != "" && !opts.NoSave {
 		if cfg != "" {
-			if err := dcspath.SaveInstallConfig(cfg, *flagDCSPath); err != nil {
+			if err := dcspath.SaveInstallConfig(cfg, opts.DCSPath); err != nil {
 				fmt.Fprintln(stderr, "dcs-sms install-me-mod: warning: could not save config:", err)
 			} else {
-				fmt.Fprintf(stdout, "saved dcs_install = %q to %s\n", *flagDCSPath, cfg)
+				fmt.Fprintf(stdout, "saved dcs_install = %q to %s\n", opts.DCSPath, cfg)
 			}
 		}
 	}
