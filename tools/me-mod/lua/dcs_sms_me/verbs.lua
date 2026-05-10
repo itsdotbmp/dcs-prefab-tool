@@ -4660,6 +4660,63 @@ function M.trigger_reorder(args)
     return { ok = true, moved = true, from = from_idx, to = target_idx }
 end
 
+-- trigger_reorder_condition — move a condition to a new 1-based position
+-- in t.rules.
+--
+-- Args:
+--   args.trigger   (string, required) — parent trigger name
+--   args.index     (number, required) — source condition's 1-based index
+--   args.to_index  (number) | args.before (number index)
+--   args.after     (number) | args.to_start (true) | args.to_end (true)
+--                                                 — exactly one position
+--
+-- Returns { ok = true, moved = bool, trigger = "T", from = N, to = M }.
+function M.trigger_reorder_condition(args)
+    if type(args) ~= 'table' or type(args.trigger) ~= 'string' or args.trigger == '' then
+        return { ok = false, error = 'trigger_reorder_condition requires args.trigger (name)' }
+    end
+    if type(args.index) ~= 'number' or args.index < 1 then
+        return { ok = false, error = 'trigger_reorder_condition requires args.index (1-based)' }
+    end
+    local _, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+
+    local t = _trigger_find_by_name(args.trigger)
+    if not t then
+        return { ok = false, error = 'no trigger named "' .. args.trigger .. '"' }
+    end
+    if type(t.rules) ~= 'table' or args.index > #t.rules then
+        return { ok = false,
+                 error = 'trigger has only ' .. (type(t.rules) == 'table' and #t.rules or 0)
+                         .. ' conditions; cannot reorder index ' .. args.index }
+    end
+
+    -- Anchor for --before/--after is a 1-based index into t.rules.
+    local function find_index_ref(list, ref)
+        if type(ref) ~= 'number' then
+            return nil, '--before / --after expects a 1-based index (number)'
+        end
+        if ref < 1 or ref > #list then
+            return nil, '--before / --after index must be in 1..' .. #list
+                        .. ' (got ' .. tostring(ref) .. ')'
+        end
+        return ref
+    end
+
+    local target_idx, terr2 = _reorder_resolve_target(t.rules, args.index, args, find_index_ref)
+    if terr2 then return { ok = false, error = terr2 } end
+
+    if args.index == target_idx then
+        return { ok = true, moved = false, trigger = args.trigger,
+                 from = args.index, to = target_idx }
+    end
+
+    _reorder_apply(t.rules, args.index, target_idx)
+    _trigger_panel_refresh()
+    return { ok = true, moved = true, trigger = args.trigger,
+             from = args.index, to = target_idx }
+end
+
 -- group_list — return concise summaries of all groups, with optional filters.
 --
 -- args (all optional):
