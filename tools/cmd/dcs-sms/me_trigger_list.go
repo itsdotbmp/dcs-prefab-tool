@@ -6,8 +6,27 @@ import (
 	"time"
 )
 
+type meTriggerListOpts struct {
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meTriggerListFlags() (*flag.FlagSet, *meTriggerListOpts) {
+	opts := &meTriggerListOpts{}
+	fs := flag.NewFlagSet("me trigger list", flag.ContinueOnError)
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("trigger", "list", meTriggerListCmd)
+	registerMeInfo("trigger", "list", cmdInfo{
+		Run:      meTriggerListCmd,
+		Flags:    flagsOnly(meTriggerListFlags),
+		Synopsis: "list all triggers in the open mission",
+	})
 }
 
 // meTriggerListCmd implements `dcs-sms me trigger list`.
@@ -16,19 +35,14 @@ func init() {
 // count, action count, event filter. For full trigger detail use
 // `me trigger get --name X`.
 func meTriggerListCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me trigger list", flag.ContinueOnError)
+	fs, opts := meTriggerListFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	resp, exitCode := runMeVerb("trigger_list", "{}", *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("trigger_list", "{}", opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

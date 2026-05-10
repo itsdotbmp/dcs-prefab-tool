@@ -7,8 +7,31 @@ import (
 	"time"
 )
 
+type meTriggerAddActionOpts struct {
+	Trigger    string
+	Predicate  string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meTriggerAddActionFlags() (*flag.FlagSet, *meTriggerAddActionOpts) {
+	opts := &meTriggerAddActionOpts{}
+	fs := flag.NewFlagSet("me trigger add-action", flag.ContinueOnError)
+	fs.StringVar(&opts.Trigger, "trigger", "", "trigger name")
+	fs.StringVar(&opts.Predicate, "predicate", "", "action predicate (a_*) or alias")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("trigger", "add-action", meTriggerAddActionCmd)
+	registerMeInfo("trigger", "add-action", cmdInfo{
+		Run:      meTriggerAddActionCmd,
+		Flags:    flagsOnly(meTriggerAddActionFlags),
+		Synopsis: "append an action to an existing trigger",
+	})
 }
 
 // meTriggerAddActionCmd implements
@@ -18,23 +41,16 @@ func init() {
 // (a_set_flag) or alias (set-flag). Field values are positional key=value
 // pairs after the known flags.
 func meTriggerAddActionCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me trigger add-action", flag.ContinueOnError)
+	fs, opts := meTriggerAddActionFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagTrigger    = fs.String("trigger", "", "trigger name")
-		flagPredicate  = fs.String("predicate", "", "action predicate (a_*) or alias")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagTrigger == "" {
+	if opts.Trigger == "" {
 		fmt.Fprintln(stderr, "dcs-sms me trigger add-action: --trigger is required")
 		return 2
 	}
-	if *flagPredicate == "" {
+	if opts.Predicate == "" {
 		fmt.Fprintln(stderr, "dcs-sms me trigger add-action: --predicate is required")
 		return 2
 	}
@@ -45,10 +61,10 @@ func meTriggerAddActionCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	luaArgs := fmt.Sprintf(
 		"{ trigger = %q, predicate = %q, fields = %s }",
-		*flagTrigger, *flagPredicate, buildLuaFieldsExpr(fields))
-	resp, exitCode := runMeVerb("trigger_add_action", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+		opts.Trigger, opts.Predicate, buildLuaFieldsExpr(fields))
+	resp, exitCode := runMeVerb("trigger_add_action", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

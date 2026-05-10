@@ -8,8 +8,39 @@ import (
 	"time"
 )
 
+type meTriggerReorderOpts struct {
+	Name       string
+	Before     string
+	After      string
+	ToIndex    int
+	ToStart    bool
+	ToEnd      bool
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meTriggerReorderFlags() (*flag.FlagSet, *meTriggerReorderOpts) {
+	opts := &meTriggerReorderOpts{}
+	fs := flag.NewFlagSet("me trigger reorder", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "trigger name to move (the comment field)")
+	fs.StringVar(&opts.Before, "before", "", "anchor: move source to just before this trigger name")
+	fs.StringVar(&opts.After, "after", "", "anchor: move source to just after this trigger name")
+	fs.IntVar(&opts.ToIndex, "to-index", 0, "1-based final position in mission.trigrules")
+	fs.BoolVar(&opts.ToStart, "to-start", false, "sugar for --to-index 1")
+	fs.BoolVar(&opts.ToEnd, "to-end", false, "sugar for --to-index #trigrules")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("trigger", "reorder", meTriggerReorderCmd)
+	registerMeInfo("trigger", "reorder", cmdInfo{
+		Run:      meTriggerReorderCmd,
+		Flags:    flagsOnly(meTriggerReorderFlags),
+		Synopsis: "reorder triggers in the open mission",
+	})
 }
 
 // meTriggerReorderCmd implements
@@ -21,42 +52,31 @@ func init() {
 // Moves a trigger to a new position in mission.trigrules. Exactly one
 // position flag must be provided.
 func meTriggerReorderCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me trigger reorder", flag.ContinueOnError)
+	fs, opts := meTriggerReorderFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "trigger name to move (the comment field)")
-		flagBefore     = fs.String("before", "", "anchor: move source to just before this trigger name")
-		flagAfter      = fs.String("after", "", "anchor: move source to just after this trigger name")
-		flagToIndex    = fs.Int("to-index", 0, "1-based final position in mission.trigrules")
-		flagToStart    = fs.Bool("to-start", false, "sugar for --to-index 1")
-		flagToEnd      = fs.Bool("to-end", false, "sugar for --to-index #trigrules")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagName == "" {
+	if opts.Name == "" {
 		fmt.Fprintln(stderr, "dcs-sms me trigger reorder: --name is required")
 		return 2
 	}
 
 	// Mutual exclusion: exactly one position flag.
 	set := 0
-	if *flagBefore != "" {
+	if opts.Before != "" {
 		set++
 	}
-	if *flagAfter != "" {
+	if opts.After != "" {
 		set++
 	}
-	if *flagToIndex != 0 {
+	if opts.ToIndex != 0 {
 		set++
 	}
-	if *flagToStart {
+	if opts.ToStart {
 		set++
 	}
-	if *flagToEnd {
+	if opts.ToEnd {
 		set++
 	}
 	if set != 1 {
@@ -67,27 +87,27 @@ func meTriggerReorderCmd(args []string, stdout, stderr io.Writer) int {
 
 	// Build the Lua args literal.
 	var b strings.Builder
-	fmt.Fprintf(&b, "{ name = %q", *flagName)
-	if *flagBefore != "" {
-		fmt.Fprintf(&b, ", before = %q", *flagBefore)
+	fmt.Fprintf(&b, "{ name = %q", opts.Name)
+	if opts.Before != "" {
+		fmt.Fprintf(&b, ", before = %q", opts.Before)
 	}
-	if *flagAfter != "" {
-		fmt.Fprintf(&b, ", after = %q", *flagAfter)
+	if opts.After != "" {
+		fmt.Fprintf(&b, ", after = %q", opts.After)
 	}
-	if *flagToIndex != 0 {
-		fmt.Fprintf(&b, ", to_index = %d", *flagToIndex)
+	if opts.ToIndex != 0 {
+		fmt.Fprintf(&b, ", to_index = %d", opts.ToIndex)
 	}
-	if *flagToStart {
+	if opts.ToStart {
 		b.WriteString(", to_start = true")
 	}
-	if *flagToEnd {
+	if opts.ToEnd {
 		b.WriteString(", to_end = true")
 	}
 	b.WriteString(" }")
 
-	resp, exitCode := runMeVerb("trigger_reorder", b.String(), *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("trigger_reorder", b.String(), opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

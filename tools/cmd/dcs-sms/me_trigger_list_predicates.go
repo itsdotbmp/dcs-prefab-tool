@@ -7,8 +7,31 @@ import (
 	"time"
 )
 
+type meTriggerListPredicatesOpts struct {
+	Kind       string
+	Search     string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meTriggerListPredicatesFlags() (*flag.FlagSet, *meTriggerListPredicatesOpts) {
+	opts := &meTriggerListPredicatesOpts{}
+	fs := flag.NewFlagSet("me trigger list-predicates", flag.ContinueOnError)
+	fs.StringVar(&opts.Kind, "kind", "", "filter: condition|action|trigger")
+	fs.StringVar(&opts.Search, "search", "", "substring to match against name or alias")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("trigger", "list-predicates", meTriggerListPredicatesCmd)
+	registerMeInfo("trigger", "list-predicates", cmdInfo{
+		Run:      meTriggerListPredicatesCmd,
+		Flags:    flagsOnly(meTriggerListPredicatesFlags),
+		Synopsis: "list available trigger predicates (filter by kind / search)",
+	})
 }
 
 // meTriggerListPredicatesCmd implements
@@ -19,28 +42,21 @@ func init() {
 // triggersDescr at runtime. Always current to the user's installed DCS,
 // including any modded predicates.
 func meTriggerListPredicatesCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me trigger list-predicates", flag.ContinueOnError)
+	fs, opts := meTriggerListPredicatesFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagKind       = fs.String("kind", "", "filter: condition|action|trigger")
-		flagSearch     = fs.String("search", "", "substring to match against name or alias")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	switch *flagKind {
+	switch opts.Kind {
 	case "", "condition", "action", "trigger":
 	default:
 		fmt.Fprintln(stderr, `dcs-sms me trigger list-predicates: --kind must be condition|action|trigger`)
 		return 2
 	}
-	luaArgs := fmt.Sprintf("{ kind = %q, search = %q }", *flagKind, *flagSearch)
-	resp, exitCode := runMeVerb("trigger_list_predicates", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	luaArgs := fmt.Sprintf("{ kind = %q, search = %q }", opts.Kind, opts.Search)
+	resp, exitCode := runMeVerb("trigger_list_predicates", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

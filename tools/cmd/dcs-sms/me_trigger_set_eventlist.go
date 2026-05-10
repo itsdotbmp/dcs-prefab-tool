@@ -7,8 +7,31 @@ import (
 	"time"
 )
 
+type meTriggerSetEventlistOpts struct {
+	Name       string
+	Event      string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meTriggerSetEventlistFlags() (*flag.FlagSet, *meTriggerSetEventlistOpts) {
+	opts := &meTriggerSetEventlistOpts{}
+	fs := flag.NewFlagSet("me trigger set-eventlist", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "trigger name")
+	fs.StringVar(&opts.Event, "event", "", "event id (empty to clear)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("trigger", "set-eventlist", meTriggerSetEventlistCmd)
+	registerMeInfo("trigger", "set-eventlist", cmdInfo{
+		Run:      meTriggerSetEventlistCmd,
+		Flags:    flagsOnly(meTriggerSetEventlistFlags),
+		Synopsis: "set the event filter list for an event-driven trigger",
+	})
 }
 
 // meTriggerSetEventlistCmd implements
@@ -16,26 +39,19 @@ func init() {
 //
 // Sets the trigger's event filter. Pass --event "" or omit it to clear.
 func meTriggerSetEventlistCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me trigger set-eventlist", flag.ContinueOnError)
+	fs, opts := meTriggerSetEventlistFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "trigger name")
-		flagEvent      = fs.String("event", "", "event id (empty to clear)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagName == "" {
+	if opts.Name == "" {
 		fmt.Fprintln(stderr, "dcs-sms me trigger set-eventlist: --name is required")
 		return 2
 	}
-	luaArgs := fmt.Sprintf("{ name = %q, event = %q }", *flagName, *flagEvent)
-	resp, exitCode := runMeVerb("trigger_set_eventlist", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	luaArgs := fmt.Sprintf("{ name = %q, event = %q }", opts.Name, opts.Event)
+	resp, exitCode := runMeVerb("trigger_set_eventlist", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }
