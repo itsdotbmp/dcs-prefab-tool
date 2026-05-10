@@ -136,6 +136,41 @@ Reverses the install — removes the patch block, deletes the modules directory,
 dcs-sms.exe uninstall-me-mod
 ```
 
+### AI agent skills — teach Claude / Codex / Gemini about the CLI
+
+#### `install-ai-skill`
+
+Drops a small "skill" file into your AI agent's user-level config directory so
+the agent learns that `dcs-sms.exe` is on PATH and how to drive DCS via it.
+Three agents are supported:
+
+- **Claude Code** → `~/.claude/skills/dcs-sms/SKILL.md`
+- **OpenAI Codex CLI** → `~/.agents/skills/dcs-sms/SKILL.md`
+- **Google Gemini CLI** → `~/.gemini/commands/dcs-sms.toml` + `~/.gemini/skills/dcs-sms/SKILL.md`
+
+```sh
+dcs-sms.exe install-ai-skill --agent=claude    # one agent
+dcs-sms.exe install-ai-skill --agent=all       # all three at once
+dcs-sms.exe uninstall-ai-skill --agent=gemini  # remove
+```
+
+The skill is short on purpose — it tells the agent the CLI exists and points
+it at `--help` for self-discovery. After install, `/dcs-sms` works as a slash
+command on Claude and Gemini; on Codex use `$dcs-sms` or the `/skills`
+picker. The agents also auto-activate the skill when you mention DCS work in
+plain English.
+
+The interactive menu (double-click `dcs-sms.exe`) exposes the same
+operation as option 5.
+
+#### `uninstall-ai-skill`
+
+Reverses the install for the chosen agent (or all of them with `--agent=all`).
+
+```sh
+dcs-sms.exe uninstall-ai-skill --agent=claude
+```
+
 ### Framework data — for contributors
 
 #### `gen-units`

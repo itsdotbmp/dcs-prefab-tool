@@ -99,6 +99,8 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  install-hook  install/update the Lua hook in Saved Games/DCS*/Scripts/Hooks/")
 	fmt.Fprintln(w, "  install-me-mod   install/update the Mission Editor mod into <DCS install>/MissionEditor/")
 	fmt.Fprintln(w, "  uninstall-me-mod remove the Mission Editor mod (revert MissionEditor.lua, delete modules)")
+	fmt.Fprintln(w, "  install-ai-skill   write a 'dcs-sms' skill into ~/.claude / ~/.agents / ~/.gemini")
+	fmt.Fprintln(w, "  uninstall-ai-skill remove the 'dcs-sms' skill from one or all AI agent config dirs")
 	fmt.Fprintln(w, "  gen-units     regenerate framework/constants/{units,statics}.lua from dcs-lua-datamine")
 	fmt.Fprintln(w, "  update        download the latest dcs-sms.exe from GitHub and replace this binary")
 	fmt.Fprintln(w, "  doc           regenerate docs/cli/ — per-command markdown reference + index")

@@ -109,9 +109,10 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 > Note: 0.6.0 was released on `main` with the interactive menu (see below).
 > The me-execution-bridge work that was being staged as 0.6.0 is rolled
-> forward to 0.7.0. Bullets cover both the bridge.lua / External Execution
-> toggle (originally 0.5.0-track on this branch) and the trigger reorder /
-> screenshot / camera / airbase / resources additions.
+> forward to 0.7.0. Bullets cover the bridge.lua / External Execution
+> toggle (originally 0.5.0-track on this branch), the trigger reorder /
+> screenshot / camera / airbase / resources additions, and the AI agent
+> skill installer.
 
 **Added**
 - `bridge.lua` — an inbox poller running in the ME's Lua state, driven by `UpdateManager.add`. Handles `target=gui` execution requests from the `dcs-sms.exe` CLI: runs the user's Lua snippet directly via `loadstring + xpcall`, captures `print` output, returns results through the standard file-mailbox protocol. Writes its own heartbeat to `<SavedGames>/DCS/dcs-sms/state/me.json`.
@@ -129,13 +130,12 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 - `me resources get { --airbase N | --unit ID }` — read a warehouse / resources entry. Airbase mode reads `mission.AirportsEquipment.airports[airdrome_number]`; unit mode reads `mission.AirportsEquipment.warehouses[unitId]` and accepts a unit name (resolved via `mission.unit_by_name`) or numeric `unitId`. Returns the full entry: coalition, unlimited\* flags, OperatingLevel\_\*, fuel sub-tables (jet_fuel/gasoline/diesel/methanol_mixture), aircrafts (planes/helicopters keyed by display name), weapons (numerically indexed, each with wsType + initialAmount).
 - `me resources set { --airbase N | --unit ID } [mods]` — atomic warehouse mutation. Mods (any combination): `--clear` / `--unlimited` (top-level reset / set-all-unlimited; bool flags also accept `=false` to invert), per-category `--clear-aircrafts` / `--clear-fuel` / `--clear-munitions` and `--unlimited-aircrafts` / `--unlimited-fuel` / `--unlimited-munitions`, replenishment levels `--operating-level-air` / `--operating-level-fuel` / `--operating-level-eqp` (0..100 percent), and repeatable per-item flags `--fuel TYPE=N` (jet_fuel/gasoline/diesel/methanol_mixture, 0..100), `--aircraft "DISPLAY NAME"=N` (exact key match), `--weapon "FRAGMENT"=N` (substring match on weapon displayName via the new `dcs_sms_me/weapons_db` index, or full CLSID in `{...}` form for the rare ambiguous case). Atomic: validates all mods (resolves names, type-checks fuels) before any mutation; ambiguous weapon fragment fails the whole call.
 - `dcs_sms_me/weapons_db.lua` — new internal module; lazy index of ED's `DB.weapon_by_CLSID` keyed by lowercase displayName + CLSID. Exposes `find_by_name(needle)` returning `{found, ambiguous, candidates, entry}` and `find_by_clsid(clsid)`. Used by `me resources set` for `--weapon` resolution; available to future verbs that need wsType ↔ display-name mapping.
-
-**Fixed**
-- `dcs_sms_me/warehouse_ops.lua` — coalition-string mapping in `apply()` was keyed on `BLUE`/`RED`/`NEUTRAL` (uppercase singular), but ED emits lowercase strings (`blue`/`red`/`neutrals`) via `CoalitionController.*CoalitionName()`. The lookup never matched, so the AirdromeController push silently no-op'd: the warehouse table updated, but the live map display only refreshed after save + reopen. Now keyed on the canonical lowercase strings; map redraws immediately.
+- `dcs-sms install-ai-skill --agent=claude|codex|gemini|all` and matching `uninstall-ai-skill` subcommands. Drops a short `SKILL.md` (and a Gemini slash-command TOML) into the user's AI agent config dir so Claude Code, Codex CLI, and Gemini CLI all know `dcs-sms.exe` is on PATH and how to discover its commands. After install, `/dcs-sms` works as a slash command on Claude and Gemini; on Codex use `$dcs-sms` or the `/skills` picker. Interactive menu option 5 wires up the same install/uninstall flow with agent + action sub-prompts.
 
 All three reorder verbs accept the same five mutually-exclusive position flags: `--to-index N`, `--before X`, `--after X`, `--to-start`, `--to-end`. For `me trigger reorder`, `X` is a trigger name; for `reorder-condition` / `reorder-action`, `X` is a 1-based index into the parent trigger's list. Self-targeting (e.g. `--before T` where `T` is the source itself, or `--to-index <where-source-already-is>`) is an idempotent no-op (`moved: false`), not an error.
 
 **Fixed**
+- `dcs_sms_me/warehouse_ops.lua` — coalition-string mapping in `apply()` was keyed on `BLUE`/`RED`/`NEUTRAL` (uppercase singular), but ED emits lowercase strings (`blue`/`red`/`neutrals`) via `CoalitionController.*CoalitionName()`. The lookup never matched, so the AirdromeController push silently no-op'd: the warehouse table updated, but the live map display only refreshed after save + reopen. Now keyed on the canonical lowercase strings; map redraws immediately.
 - Trigger ref fields (unit / vehicle / aircarrier / drawObject combos) now resolve names to numeric ids before storage. Previously, `me trigger add-condition --predicate unit-altitude-lower unit=b1-1 ...` stored `entry.unit = "b1-1"` (a string), which the ME panel's combo couldn't match — and a subsequent panel interaction would nil the field via the bound `onChange` callback. Closes [#45](https://github.com/nielsvaes/dcs-sms/issues/45).
 
 ### 0.6.0 — 2026-05-09

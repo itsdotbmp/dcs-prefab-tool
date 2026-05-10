@@ -12,13 +12,15 @@ import (
 	"github.com/nielsvaes/dcs-sms/tools/internal/dcspath"
 )
 
-// menuActions holds the three subcommand handlers the menu invokes.
-// Exposed as a struct so tests can stub them without touching real DCS
-// install paths or network resources.
+// menuActions holds the subcommand handlers the menu invokes. Exposed as
+// a struct so tests can stub them without touching real DCS install paths
+// or AI-agent config dirs.
 type menuActions struct {
-	install   commandFunc
-	uninstall commandFunc
-	update    commandFunc
+	install          commandFunc
+	uninstall        commandFunc
+	update           commandFunc
+	installAISkill   commandFunc
+	uninstallAISkill commandFunc
 }
 
 // menuDeps bundles every external dependency the menu needs.
@@ -31,9 +33,11 @@ func defaultMenuDeps() menuDeps {
 	cfg, _ := dcspath.DefaultConfigPath()
 	return menuDeps{
 		actions: menuActions{
-			install:   installMeModCmd,
-			uninstall: uninstallMeModCmd,
-			update:    updateCmd,
+			install:          installMeModCmd,
+			uninstall:        uninstallMeModCmd,
+			update:           updateCmd,
+			installAISkill:   installAISkillCmd,
+			uninstallAISkill: uninstallAISkillCmd,
 		},
 		configPath: cfg,
 	}
@@ -54,7 +58,7 @@ func runInteractiveMenuWith(stdin io.Reader, stdout, stderr io.Writer, deps menu
 
 	for {
 		printMenuBanner(stdout, deps)
-		fmt.Fprint(stdout, "Choose [1/2/3/4/q]: ")
+		fmt.Fprint(stdout, "Choose [1/2/3/4/5/q]: ")
 		line, err := reader.ReadString('\n')
 		if err != nil && line == "" {
 			fmt.Fprintln(stderr, "dcs-sms: no input received")
@@ -72,6 +76,12 @@ func runInteractiveMenuWith(stdin io.Reader, stdout, stderr io.Writer, deps menu
 			return runActionAndPause(reader, stdout, stderr, deps.actions.update)
 		case "4":
 			promptAndSaveDCSPath(reader, stdout, stderr, deps.configPath)
+			invalidStreak = 0
+			continue
+		case "5":
+			if code, didAct := runAISkillSubMenu(reader, stdout, stderr, deps); didAct {
+				return code
+			}
 			invalidStreak = 0
 			continue
 		default:
@@ -103,6 +113,7 @@ func printMenuBanner(w io.Writer, deps menuDeps) {
 	fmt.Fprintln(w, "  2. Uninstall DCS-SMS Mission Editor mod")
 	fmt.Fprintln(w, "  3. Update dcs-sms.exe")
 	fmt.Fprintln(w, "  4. Set DCS install path manually")
+	fmt.Fprintln(w, "  5. Install AI agent skill (Claude / Codex / Gemini)")
 	fmt.Fprintln(w, "  q. Quit")
 	fmt.Fprintln(w)
 }
@@ -172,4 +183,96 @@ func validateDCSInstallRoot(path string) error {
 		return fmt.Errorf("MissionEditor.lua not found at %s — is this really the DCS install root?", meFile)
 	}
 	return nil
+}
+
+// runAISkillSubMenu drives option 5: pick an agent, then pick install or
+// uninstall. Returns (exitCode, true) if an action was invoked (caller
+// should propagate the exit code and exit the binary, matching the
+// post-action behavior of options 1/2/3). Returns (0, false) if the user
+// cancelled at any sub-prompt or hit three invalid inputs in a row —
+// caller should redraw the main menu.
+func runAISkillSubMenu(reader *bufio.Reader, stdout, stderr io.Writer, deps menuDeps) (int, bool) {
+	const maxInvalid = 3
+
+	// 1. Agent picker.
+	var agentSlug string
+	invalidStreak := 0
+	for {
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, "Which agent?")
+		fmt.Fprintln(stdout, "  a. Claude Code  (~/.claude/skills/dcs-sms/)")
+		fmt.Fprintln(stdout, "  b. Codex CLI    (~/.agents/skills/dcs-sms/)")
+		fmt.Fprintln(stdout, "  c. Gemini CLI   (~/.gemini/commands/dcs-sms.toml + ~/.gemini/skills/dcs-sms/)")
+		fmt.Fprintln(stdout, "  d. All three")
+		fmt.Fprintln(stdout, "  q. Cancel")
+		fmt.Fprintln(stdout)
+		fmt.Fprint(stdout, "Choose [a/b/c/d/q]: ")
+		line, err := reader.ReadString('\n')
+		if err != nil && line == "" {
+			return 0, false
+		}
+		choice := strings.ToLower(strings.TrimSpace(line))
+		switch choice {
+		case "q", "quit", "cancel":
+			return 0, false
+		case "a":
+			agentSlug = "claude"
+		case "b":
+			agentSlug = "codex"
+		case "c":
+			agentSlug = "gemini"
+		case "d":
+			agentSlug = "all"
+		default:
+			invalidStreak++
+			if invalidStreak >= maxInvalid {
+				fmt.Fprintln(stdout, "Returning to main menu.")
+				return 0, false
+			}
+			fmt.Fprintf(stdout, "Unknown choice %q.\n", choice)
+			continue
+		}
+		break
+	}
+
+	// 2. Install-or-uninstall picker.
+	var action commandFunc
+	invalidStreak = 0
+	for {
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, "Install or Uninstall?")
+		fmt.Fprintln(stdout, "  i. Install (overwrite if present)")
+		fmt.Fprintln(stdout, "  u. Uninstall")
+		fmt.Fprintln(stdout, "  q. Cancel")
+		fmt.Fprintln(stdout)
+		fmt.Fprint(stdout, "Choose [i/u/q]: ")
+		line, err := reader.ReadString('\n')
+		if err != nil && line == "" {
+			return 0, false
+		}
+		choice := strings.ToLower(strings.TrimSpace(line))
+		switch choice {
+		case "q", "quit", "cancel":
+			return 0, false
+		case "i":
+			action = deps.actions.installAISkill
+		case "u":
+			action = deps.actions.uninstallAISkill
+		default:
+			invalidStreak++
+			if invalidStreak >= maxInvalid {
+				fmt.Fprintln(stdout, "Returning to main menu.")
+				return 0, false
+			}
+			fmt.Fprintf(stdout, "Unknown choice %q.\n", choice)
+			continue
+		}
+		break
+	}
+
+	// 3. Run the chosen action with --agent <slug> and pause for Enter.
+	code := runActionAndPause(reader, stdout, stderr, func(_ []string, stdout, stderr io.Writer) int {
+		return action([]string{"--agent", agentSlug}, stdout, stderr)
+	})
+	return code, true
 }
