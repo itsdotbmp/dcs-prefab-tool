@@ -4611,6 +4611,55 @@ local function _reorder_apply(list, from_idx, target_idx)
     table.insert(list, target_idx, item)
 end
 
+-- trigger_reorder — move a trigger to a new 1-based position in
+-- mission.trigrules.
+--
+-- Args:
+--   args.name      (string, required) — trigger to move (matched against
+--                                       t.comment)
+--   args.to_index  (number) | args.before (string trigger name)
+--   args.after     (string)  | args.to_start (true) | args.to_end (true)
+--                                       — exactly one position flag
+--
+-- Returns { ok = true, moved = bool, from = N, to = M }. moved=false is a
+-- no-op (source already at target); not an error.
+function M.trigger_reorder(args)
+    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
+        return { ok = false, error = 'trigger_reorder requires args.name (string)' }
+    end
+    local trigrules, terr = _trigger_ensure_trigrules()
+    if terr then return { ok = false, error = terr } end
+
+    local _, from_idx = _trigger_find_by_name(args.name)
+    if not from_idx then
+        return { ok = false, error = 'no trigger named "' .. args.name .. '"' }
+    end
+
+    -- Anchor lookup for --before/--after: ref is a trigger name; map it
+    -- to the trigger's 1-based index in mission.trigrules. nil = not
+    -- found.
+    local function find_trigger_ref(list, ref)
+        if type(ref) ~= 'string' then
+            return nil, '--before / --after expects a trigger name (string)'
+        end
+        for i, t in ipairs(list) do
+            if type(t) == 'table' and t.comment == ref then return i end
+        end
+        return nil, 'no trigger named "' .. ref .. '"'
+    end
+
+    local target_idx, terr2 = _reorder_resolve_target(trigrules, from_idx, args, find_trigger_ref)
+    if terr2 then return { ok = false, error = terr2 } end
+
+    if from_idx == target_idx then
+        return { ok = true, moved = false, from = from_idx, to = target_idx }
+    end
+
+    _reorder_apply(trigrules, from_idx, target_idx)
+    _trigger_panel_refresh()
+    return { ok = true, moved = true, from = from_idx, to = target_idx }
+end
+
 -- group_list — return concise summaries of all groups, with optional filters.
 --
 -- args (all optional):
