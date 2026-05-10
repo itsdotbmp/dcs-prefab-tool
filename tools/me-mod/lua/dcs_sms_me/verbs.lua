@@ -3752,22 +3752,46 @@ local function _trigger_default_name()
 end
 
 -- _trigger_field_combo_kind — classify a field's reference kind by its
--- comboFunc slot. Returns "group" / "unit" / "zone" / "coalition" /
--- "airdrome" / "event" / nil (literal field, no resolution).
+-- comboFunc slot, with a fallback by descriptor-table identity. Returns
+-- "group" / "unit" / "zone" / "coalition" / "airdrome" / "event" / "draw"
+-- / nil (literal field, no resolution).
 --
--- Listers are scattered across both me_trigrules (action/trigger fields)
--- and me_predicates (condition fields), so we check both modules. Multiple
--- variants (groupsLister, groupsStaticLister, groupsAHLister, ...) all
--- classify under one umbrella kind.
+-- Two-tier detection:
+--   1. If the field IS one of the shared selector tables exported by
+--      me_predicates (UNIT_SELECTOR / VEHICLE_SELECTOR / AIRCARRIER_SELECTOR
+--      / DRAW_SELECTOR), classify by table identity. This is required
+--      because their comboFunc (unitsLister, drawObjectsLister, ...) is
+--      LOCAL in me_predicates.lua and can't be reached from outside the
+--      module — so the comboFunc-based check below would silently miss
+--      them, leaving entry.<field> as the unresolved name string instead
+--      of the numeric id the panel/save expect (issue #45).
+--   2. Otherwise compare comboFunc against the listers that ARE exported.
 local function _trigger_field_combo_kind(field_descr)
     if type(field_descr) ~= 'table' or field_descr.type ~= 'combo' then
         return nil
     end
-    local fn = field_descr.comboFunc
-    if type(fn) ~= 'function' then return nil end
 
     local Trigger = require('me_trigrules')
     local Predicates = require('me_predicates')
+
+    -- Tier 1: shared selector descriptors. The predicate's `fields` array
+    -- references these tables BY VALUE (e.g. me_predicates rulesDescr has
+    -- `fields = { UNIT_SELECTOR, ... }`), so identity comparison is
+    -- reliable.
+    if field_descr == Predicates.UNIT_SELECTOR
+            or field_descr == Predicates.VEHICLE_SELECTOR
+            or field_descr == Predicates.AIRCARRIER_SELECTOR then
+        return 'unit'
+    end
+    if field_descr == Predicates.DRAW_SELECTOR then
+        return 'draw'
+    end
+
+    -- Tier 2: comboFunc identity. Most listers are exported on the module
+    -- table; the few that aren't (unitsLister and friends) are handled by
+    -- tier 1 above.
+    local fn = field_descr.comboFunc
+    if type(fn) ~= 'function' then return nil end
 
     -- Group references — multiple variants (generic, static, air-helicopter,
     -- vehicle, vehicle-static, etc) all classify as "group".
@@ -3780,10 +3804,6 @@ local function _trigger_field_combo_kind(field_descr)
             or fn == Predicates.groupsLister then
         return 'group'
     end
-
-    -- Unit references. unitsLister is local in me_predicates (not exported)
-    -- so we can't always compare by reference; expose what we can.
-    if fn == Predicates.unitsLister then return 'unit' end
 
     -- Zone references.
     if fn == Predicates.zonesLister then return 'zone' end
@@ -3815,7 +3835,9 @@ end
 -- return the integer id. For coalition, pass through. For other kinds,
 -- pass through. Returns resolved_value, err.
 local function _trigger_resolve_ref(kind, value)
-    if kind == 'coalition' or kind == 'event' or kind == nil then
+    -- 'draw' targets are draw-object names (strings); the panel's combo
+    -- stores them as-is, so no name→id resolution is needed.
+    if kind == 'coalition' or kind == 'event' or kind == 'draw' or kind == nil then
         return value, nil
     end
     -- integer-or-numeric-string → treat as id
