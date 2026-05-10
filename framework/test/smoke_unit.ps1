@@ -148,8 +148,7 @@ if g then g:destroy() end
 "@
     Invoke-Smoke -Code $cleanupCode | Out-Null
 
-    Write-Host ""
-    Write-Host "ALL smoke_unit checks passed."
+    Write-SmokeSummary
 } finally {
     Clear-SmokeFixtures -Names $fixtures
 }

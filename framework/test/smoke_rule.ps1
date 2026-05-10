@@ -287,5 +287,4 @@ Expect-LogContains -Label 'log: action threw'        -Pattern 'boom from smoke_t
 Expect-LogContains -Label 'log: manual fire'         -Pattern 'manual fire'                       -Grep '\[sms.rule\]'
 Expect-LogContains -Label 'log: name collision'      -Pattern "replacing existing rule 'smoke_collide'" -Grep '\[sms.rule\]'
 
-Write-Host ""
-Write-Host "ALL smoke_rule checks passed."
+Write-SmokeSummary

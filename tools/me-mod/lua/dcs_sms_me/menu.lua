@@ -76,7 +76,7 @@ local function add_top_level_menu()
     item.func = function()
         log.write('sms.me', log.INFO, 'DCS-SMS > Prefab Manager menu clicked')
         local ok_t, terr = pcall(function()
-            local win = require('dcs_sms_me.window')
+            local win = require('dcs_sms_me.prefab_manager')
             win.toggle()
         end)
         if not ok_t then
@@ -197,7 +197,7 @@ local function patch_menubar_hideME()
     local orig_hideME = mb.hideME
     mb.hideME = function(...)
         pcall(function()
-            local w = package.loaded['dcs_sms_me.window']
+            local w = package.loaded['dcs_sms_me.prefab_manager']
             if w and w.hide then w.hide() end
         end)
         return orig_hideME(...)

@@ -10,6 +10,40 @@ For installation instructions and feature overview, see [`tools/me-mod/README.md
 2. Open **DCS-SMS → Prefab Manager**. Window appears with all panels (Save / Library / Action / Status).
 3. Open **DCS-SMS → About**. Dialog appears centered with the Coconut Cockpit logo, version string, and project URLs. Close button dismisses it.
 
+## SMSWindow + Prefab Manager refactor (added 0.5.0)
+
+Verify the refactor preserved Prefab Manager behaviour exactly:
+
+- [ ] Open ME with a fresh mission; click `DCS-SMS > Prefab Manager`. Window
+      opens at top-right of screen, size matches pre-refactor (~720×460),
+      title bar reads `Coconut Cockpit · DCS-SMS — Prefab Manager v0.5.0`.
+- [ ] Drag a window edge to resize. Footer separator + status text stay
+      glued to the bottom; grid stretches to fill the new content area.
+- [ ] Drag a window edge inward past the minimum (~540 wide). Window
+      snaps back to the minimum size.
+- [ ] Click the close `[X]` in the title bar. Window hides; click the
+      menu entry again — window reopens with state preserved (no widget
+      reconstruction).
+- [ ] In a fresh mission, save a prefab. Footer flashes green
+      ("Saved <name>...") and reverts to empty after ~5s.
+- [ ] Try to save with an empty name. Footer flashes yellow
+      (warning); reverts after ~5s.
+- [ ] Trigger an error (e.g. delete a file the mod is trying to open).
+      Footer flashes red. Reverts after ~5s.
+- [ ] Click "Place at click" on a saved prefab. Footer goes green and
+      stays green ("PLACING ... CLICK ON MAP") until you click the map
+      or press Escape — does NOT auto-revert.
+- [ ] Press `Ctrl+Z` after placing a prefab. Last placement is undone
+      and the footer flashes a green "Undo successful." message.
+- [ ] Press `Ctrl+Z` with no placement to undo. Footer flashes a
+      yellow "Nothing to undo." message.
+- [ ] Click `File > New`. Prefab Manager auto-closes. Reopen via the
+      menu — works.
+- [ ] Click `File > Open` (load an existing mission). Prefab Manager
+      auto-closes. Reopen via menu — works.
+- [ ] `Ctrl+Shift+R` dev reload still works. Window closes, reload
+      logged, window reopens with fresh code.
+
 ## Save flow
 
 3. Place one A-10C in the ME. Select it. Type `test_jet` in the name field. Click **Save**. Verify file at `Saved Games\DCS\dcs-sms\prefabs\test_jet.lua` and the library refreshes to show it.

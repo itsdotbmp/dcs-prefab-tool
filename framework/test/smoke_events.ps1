@@ -41,6 +41,7 @@ try {
     Invoke-Smoke -File 'sms.lua'          | Out-Null
     Invoke-Smoke -File 'log.lua'          | Out-Null
     Invoke-Smoke -File 'utils.lua'        | Out-Null
+    Invoke-Smoke -File 'constants.lua'    | Out-Null
     Invoke-Smoke -File 'group.lua'        | Out-Null
     Invoke-Smoke -File 'unit.lua'         | Out-Null
     Invoke-Smoke -File 'area.lua'         | Out-Null
@@ -158,11 +159,11 @@ sms.events.emit("err_test")
 
     # Spawn a single-unit ground group, capture the resolved name (sms.spawn
     # auto-suffixes on collision so concurrent agents don't break us).
-    Invoke-Smoke -Code @'
+    Invoke-Smoke -Code @"
 _G._sms_events_smoke = {dead_evt = nil, target_name = nil, group_name = nil}
 local g = sms.group.create({
   name = "smoke_evt_target",
-  position = {x = -50000, y = 0, z = -50000},
+  position = {x = $SmokeAnchorX, y = 0, z = $SmokeAnchorZ},
   country = sms.K.countries.USA,
   category = sms.K.category.GROUND,
   units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
@@ -171,7 +172,7 @@ if g then
   _G._sms_events_smoke.group_name = g:get_name()
   _G._sms_events_smoke.target_name = g:get_units()[1]:get_name()
 end
-'@ | Out-Null
+"@ | Out-Null
     Expect-True -Label 'spawned target unit captured' `
         -Code 'return type(_G._sms_events_smoke.target_name) == "string" and _G._sms_events_smoke.target_name ~= ""'
 
@@ -196,8 +197,15 @@ if u then
 end
 '@ | Out-Null
 
-    # Wait for sim time to deliver the event.
-    Start-Sleep -Seconds 2
+    # Poll for sim time to deliver the event. A fixed sleep is fragile —
+    # DCS throttles the sim when the window is minimized / unfocused, so a
+    # 2-second wall-clock wait can be far less than 2 seconds of sim time.
+    # Poll up to 20 x 500ms = 10s.
+    for ($i = 1; $i -le 20; $i++) {
+        $r = Invoke-Smoke -Code 'return _G._sms_events_smoke.dead_evt ~= nil'
+        if ($r.return_value -eq $true) { break }
+        Start-Sleep -Milliseconds 500
+    }
 
     Expect-True -Label 'DEAD event received' `
         -Code 'return _G._sms_events_smoke.dead_evt ~= nil'
@@ -223,11 +231,11 @@ if g then pcall(g.destroy, g) end
     # Spawn a throwaway group just to get a real handle. Position is far from
     # origin AND from the Task 4 round-trip spawn to avoid any collision with
     # the concurrent sms.static agent.
-    Invoke-Smoke -Code @'
+    Invoke-Smoke -Code @"
 _G._sms_events_smoke = {sugar_group_name = nil}
 _G._sms_events_smoke.g = sms.group.create({
   name = "smoke_evt_sugar_grp",
-  position = {x = -49000, y = 0, z = -49000},
+  position = {x = $($SmokeAnchorX + 1000), y = 0, z = $($SmokeAnchorZ + 1000)},
   country = sms.K.countries.USA,
   category = sms.K.category.GROUND,
   units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
@@ -235,7 +243,7 @@ _G._sms_events_smoke.g = sms.group.create({
 if _G._sms_events_smoke.g then
   _G._sms_events_smoke.sugar_group_name = _G._sms_events_smoke.g:get_name()
 end
-'@ | Out-Null
+"@ | Out-Null
     Expect-True -Label 'g:connect on MISSION_START rejected (returns nil)' `
         -Code 'return _G._sms_events_smoke.g:connect(sms.events.MISSION_START, function() end) == nil'
     Expect-True -Label 'u:connect on MISSION_START rejected (returns nil)' `
@@ -291,11 +299,11 @@ if g then pcall(g.destroy, g) end
 '@ | Out-Null
 
     Write-Host "==> sms.unit.destroy(u, {emit_event=true}) fires DEAD via the bus"
-    Invoke-Smoke -Code @'
+    Invoke-Smoke -Code @"
 _G._sms_destroy_smoke = {fired = 0, target = nil, group_name = nil}
 local g = sms.group.create({
   name = "smoke_destroy_target",
-  position = {x = -48500, y = 0, z = -48500},
+  position = {x = $($SmokeAnchorX + 1500), y = 0, z = $($SmokeAnchorZ + 1500)},
   country = sms.K.countries.USA,
   category = sms.K.category.GROUND,
   units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
@@ -310,7 +318,7 @@ sms.events.connect(sms.events.DEAD, function(evt)
   end
 end)
 sms.unit.destroy(sms.unit(_G._sms_destroy_smoke.target), {emit_event = true})
-'@ | Out-Null
+"@ | Out-Null
     Expect-EqNumber -Label 'destroy(emit_event=true) fired DEAD subscriber once' `
         -Code 'return _G._sms_destroy_smoke.fired' -Expected 1
     Invoke-Smoke -Code @'
@@ -319,11 +327,11 @@ if g then pcall(g.destroy, g) end
 '@ | Out-Null
 
     Write-Host "==> sms.unit.destroy(u) without opts does NOT fire DEAD"
-    Invoke-Smoke -Code @'
+    Invoke-Smoke -Code @"
 _G._sms_destroy_silent = {fired = 0, target = nil, group_name = nil}
 local g = sms.group.create({
   name = "smoke_silent_destroy",
-  position = {x = -47500, y = 0, z = -47500},
+  position = {x = $($SmokeAnchorX + 2500), y = 0, z = $($SmokeAnchorZ + 2500)},
   country = sms.K.countries.USA,
   category = sms.K.category.GROUND,
   units = {{ type = "M-1 Abrams", offset = {x = 0, y = 0, z = 0} }},
@@ -338,7 +346,7 @@ sms.events.connect(sms.events.DEAD, function(evt)
   end
 end)
 sms.unit.destroy(sms.unit(_G._sms_destroy_silent.target))  -- no opts
-'@ | Out-Null
+"@ | Out-Null
     Expect-EqNumber -Label 'destroy() without opts did NOT fire DEAD' `
         -Code 'return _G._sms_destroy_silent.fired' -Expected 0
     Invoke-Smoke -Code @'
@@ -347,11 +355,11 @@ if g then pcall(g.destroy, g) end
 '@ | Out-Null
 
     Write-Host "==> g:connect(DEAD) fires only when group is fully dead"
-    Invoke-Smoke -Code @'
+    Invoke-Smoke -Code @"
 _G._sms_grp_dead = {fired = 0, group_name = nil, units = {}}
 local g = sms.group.create({
   name = "smoke_grp_dead",
-  position = {x = -46500, y = 0, z = -46500},
+  position = {x = $($SmokeAnchorX + 3500), y = 0, z = $($SmokeAnchorZ + 3500)},
   country = sms.K.countries.USA,
   category = sms.K.category.GROUND,
   units = {
@@ -370,7 +378,7 @@ if g then
 end
 -- Kill the first unit. Group still has one alive — callback should NOT fire.
 sms.unit.destroy(sms.unit(_G._sms_grp_dead.units[1]), {emit_event = true})
-'@ | Out-Null
+"@ | Out-Null
     # The fully-dead check is deferred one sim frame, so wait briefly for the
     # timer to fire before asserting state.
     Start-Sleep -Seconds 1
@@ -395,8 +403,7 @@ if g then pcall(g.destroy, g) end
     Expect-LogContains -Label 'log: disconnect non-handle'    -Pattern 'disconnect: argument must be a Connection handle' -Grep '\[sms.events\]'
     Expect-LogContains -Label 'log: subscriber raised'        -Pattern "subscriber for 'err_test' raised"               -Grep '\[sms.events\]'
 
-    Write-Host ""
-    Write-Host "ALL smoke_events checks passed."
+    Write-SmokeSummary
 } finally {
     Clear-SmokeFixtures -Names $fixtures
 }

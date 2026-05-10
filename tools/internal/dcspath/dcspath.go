@@ -273,3 +273,63 @@ func encodeTomlString(s string) string {
 	out.WriteByte('"')
 	return out.String()
 }
+
+// SanitizeUserPath cleans a user-pasted path. It strips a matching
+// surrounding pair of quotes (ASCII " or ', or smart "…" U+201C/U+201D /
+// '…' U+2018/U+2019), then strips a single stray leading or trailing
+// quote (lazy paste like `"D:\path`), then runs filepath.Clean. Empty or
+// whitespace-only input returns "".
+//
+// Nested mid-string quotes are preserved — only the outermost matched
+// pair (or one stray edge quote) is removed.
+func SanitizeUserPath(s string) string {
+	s = strings.TrimSpace(s)
+	s = stripMatchedQuotes(s)
+	s = stripStrayQuote(s)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	return filepath.Clean(s)
+}
+
+func stripMatchedQuotes(s string) string {
+	rs := []rune(s)
+	if len(rs) < 2 {
+		return s
+	}
+	pairs := [][2]rune{
+		{'"', '"'},
+		{'\'', '\''},
+		{'“', '”'},
+		{'‘', '’'},
+	}
+	for _, p := range pairs {
+		if rs[0] == p[0] && rs[len(rs)-1] == p[1] {
+			return string(rs[1 : len(rs)-1])
+		}
+	}
+	return s
+}
+
+func stripStrayQuote(s string) string {
+	rs := []rune(s)
+	if len(rs) == 0 {
+		return s
+	}
+	if isQuoteRune(rs[0]) {
+		rs = rs[1:]
+	}
+	if len(rs) > 0 && isQuoteRune(rs[len(rs)-1]) {
+		rs = rs[:len(rs)-1]
+	}
+	return string(rs)
+}
+
+func isQuoteRune(r rune) bool {
+	switch r {
+	case '"', '\'', '“', '”', '‘', '’':
+		return true
+	}
+	return false
+}

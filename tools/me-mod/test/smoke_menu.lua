@@ -16,7 +16,7 @@ end
 package.preload['Skin']   = function() return { windowSkin = function() return {} end } end
 package.preload['dxgui']  = function() return { GetWindowSize = function() return 1920, 1080 end } end
 package.preload['me_menubar'] = function() return {} end
-package.preload['dcs_sms_me.window'] = function() return { toggle = function() end } end
+package.preload['dcs_sms_me.prefab_manager'] = function() return { toggle = function() end } end
 
 -- DCS globals that modules expect
 log = { write = function() end, INFO = 0, WARNING = 1, ERROR = 2 }

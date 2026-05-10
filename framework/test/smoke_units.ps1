@@ -43,5 +43,4 @@ Expect-Nil -Label 'origin_of unknown' -Code "return sms.K.units.origin_of('defin
 Expect-Nil -Label 'origin_of nil'     -Code 'return sms.K.units.origin_of(nil)'
 Expect-Nil -Label 'origin_of number'  -Code 'return sms.K.units.origin_of(42)'
 
-Write-Host ""
-Write-Host "ALL smoke_units checks passed."
+Write-SmokeSummary

@@ -57,11 +57,14 @@ func flagsOnly[T any](b func() (*flag.FlagSet, T)) func() *flag.FlagSet {
 	}
 }
 
-// dispatch routes args[0] (subcommand name) to its handler. Pure function
-// (returns exit code, writes to provided writers) so it's trivially
-// testable without touching os.Exit / os.Stdout.
-func dispatch(args []string, stdout, stderr io.Writer) int {
+// dispatch routes args[0] (subcommand name) to its handler. With no args,
+// behavior depends on `interactive`: a real terminal gets the menu; a
+// piped/scripted stdin gets today's "print usage + exit 2" behavior.
+func dispatch(args []string, stdin io.Reader, stdout, stderr io.Writer, interactive bool) int {
 	if len(args) == 0 {
+		if interactive {
+			return runInteractiveMenu(stdin, stdout, stderr)
+		}
 		printUsage(stderr)
 		return 2
 	}
@@ -101,4 +104,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  doc           regenerate docs/cli/ — per-command markdown reference + index")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Run `dcs-sms <command> --help` for command-specific flags.")
+	fmt.Fprintln(w, "")
+	fmt.Fprintln(w, "Tip: double-click dcs-sms.exe (or run with no arguments from a real terminal)")
+	fmt.Fprintln(w, "for an interactive install/uninstall/update menu.")
 }

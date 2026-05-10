@@ -1,4 +1,4 @@
--- window.lua — Prefab Manager.
+-- prefab_manager.lua — Prefab Manager.
 --
 -- Single window, all panels visible. Constructed lazily on first show().
 -- All callbacks are pcall-guarded so dxgui or DCS-API failures degrade to
@@ -54,6 +54,7 @@ local UpdateManager;   do local ok, mod = pcall(require, 'UpdateManager');   if 
 local MsgWindow;       do local ok, mod = pcall(require, 'MsgWindow');       if ok then MsgWindow       = mod end end
 
 local prefab_ops = require('dcs_sms_me.prefab_ops')
+local sms_window     = require('dcs_sms_me.sms_window')
 local undo       = require('dcs_sms_me.undo')
 local dtc_skins  = require('dcs_sms_me.dtc_skins')
 local marquee_hook  = require('dcs_sms_me.marquee_hook')
@@ -61,11 +62,6 @@ local new_mission_hook = require('dcs_sms_me.new_mission_hook')
 local airbase_detect = require('dcs_sms_me.airbase_detect')
 local warehouse_ops = require('dcs_sms_me.warehouse_ops')
 local version       = require('dcs_sms_me.version')
-
--- Window title shown in the title bar in normal (non-place-pending) mode.
--- Single source of truth so the placement-mode title and the post-place
--- restore both pull the version from the same place.
-local WINDOW_TITLE = 'Coconut Cockpit · DCS-SMS — Prefab Manager v' .. tostring(version)
 
 -- Apply a skin by name. Resolves in this order:
 --   * 'dtc_button' / 'dtc_grid' / 'dtc_grid_header' → DTC-dialog-style skins
@@ -102,6 +98,7 @@ end
 local M = {}
 
 local W = {
+    sms_window = nil,  -- the SMSWindow instance owning the chrome
     -- dxgui handles
     window     = nil,
     name_input = nil,
@@ -117,7 +114,6 @@ local W = {
     rotation_unit  = nil,        -- fallback "°" Static (no Dial/SpinBox path)
     sep1           = nil,
     sep2           = nil,
-    sep3           = nil,
     rotation_input = nil,        -- legacy TextBox; only used when Dial/SpinBox unavailable
     rotation_dial  = nil,
     rotation_spin  = nil,
@@ -133,7 +129,6 @@ local W = {
     rename_btn = nil,
     delete_btn = nil,
     undo_btn   = nil,
-    status     = nil,
 
     -- runtime state
     rows           = {},        -- last scan_dir result (post-sort), source of truth
@@ -148,9 +143,6 @@ local W = {
     filter_input   = nil,        -- TextBox widget for the filter
     pending_airbases = nil,    -- set by marquee callback; consumed by on_save_click
     marquee_subscribed = false,-- one-shot guard so Ctrl+Shift+R reloads don't multi-subscribe
-    new_mission_subscribed = false,
-    status_expires_at = nil,   -- os.time() at which set_status output should auto-clear
-    status_tick_registered = false,
 }
 
 -- Column definitions for the prefab grid. Module-level so refresh_list and the
@@ -170,48 +162,35 @@ local function find_col(key)
     for i, c in ipairs(COLS) do if c.key == key then return c, i end end
 end
 
--- How long a status message stays up before tick_status_clear wipes it. We
--- pause the timer while the user is in place-pending mode (yellow status).
-local STATUS_CLEAR_AFTER_SEC = 6
-
--- Severity → status-bar skin. nil/'info' = staticSkin_ME (white default).
--- 'warning' = yellow, 'error' = red, 'placement' = green (used by the
--- place-pending mode, which also drops the auto-clear timer below).
-local SEVERITY_SKIN = {
-    info      = 'staticSkin_ME',
-    warning   = 'dtc_status_yellow',
-    error     = 'dtc_status_red',
-    placement = 'dtc_status_green',
+-- Status-bar shim. The SMSWindow base owns the live Static; we forward
+-- to its :flash_status (auto-reverts after 5s, matching the previous
+-- tick_status_clear behaviour) or :set_status (sticky) based on context.
+-- The 'placement' severity is mapped to 'success' (green) for the new
+-- API — the only call site that uses it (the PLACING/CLICK-ON-MAP
+-- prompt) goes through set_status_sticky below so it persists across
+-- the placement.
+local SEVERITY_REMAP = {
+    placement = 'success',
 }
 
-local function set_status(text, severity)
-    local skin_name = SEVERITY_SKIN[severity] or SEVERITY_SKIN.info
-    pcall(function()
-        if W.status then
-            try_skin(W.status, skin_name)
-            if W.status.setText then W.status:setText(tostring(text or '')) end
-        end
-    end)
-    -- Reset the auto-clear timer on every new message so the user gets the
-    -- full window to read whatever just happened.
-    W.status_expires_at = os.time() + STATUS_CLEAR_AFTER_SEC
+local function map_severity(sev)
+    if sev == nil then return 'info' end
+    return SEVERITY_REMAP[sev] or sev
 end
 
--- Per-frame tick registered with UpdateManager. Clears the status bar once
--- the timeout has elapsed. Skips while place_pending is true so the
--- "Click on map…" yellow prompt stays visible during placement.
--- Returns false so UpdateManager keeps calling us for future messages.
-local function tick_status_clear()
-    if W.place_pending then return false end
-    if not W.status_expires_at then return false end
-    if os.time() < W.status_expires_at then return false end
-    pcall(function()
-        if W.status and W.status.setText then W.status:setText('') end
-    end)
-    W.status_expires_at = nil
-    return false
+local function set_status(text, severity)
+    if not W.sms_window then return end
+    W.sms_window:flash_status(tostring(text or ''), map_severity(severity))
 end
-M._set_status = set_status  -- exposed for later tasks
+
+-- Sticky variant for the place-pending prompt — stays until placement
+-- completes or is cancelled. The original code used set_status with the
+-- 'placement' severity and the tick_status_clear had a `place_pending`
+-- skip; this is the cleaner equivalent.
+local function set_status_sticky(text, severity)
+    if not W.sms_window then return end
+    W.sms_window:set_status(tostring(text or ''), map_severity(severity))
+end
 
 -- Build a Static cell widget for a Grid cell. Inline helper so the cell
 -- skin and the optional tooltip are applied consistently.
@@ -780,7 +759,7 @@ local function enter_place_pending(prefab_name, prefab_table, rotation_deg)
     -- Green status text reinforces place-pending mode visually, alongside
     -- the title-bar arrows and the "Cancel" button label. set_status('placement')
     -- swaps the skin; no need for a separate try_skin call here.
-    set_status('PLACING "' .. prefab_name .. '" — CLICK ON THE MAP (Esc cancels)', 'placement')
+    set_status_sticky('PLACING "' .. prefab_name .. '" — CLICK ON THE MAP (Esc cancels)', 'success')
 
     -- Cursor-following bbox preview: a yellow polygon-rectangle sized to
     -- the prefab's AABB. Mirrors me_draw_panel's polygonRect drag-create
@@ -924,16 +903,26 @@ exit_place_pending = function()
     W.place_pending = false
     W.place_pending_name = nil
     pcall(function()
-        if W.window and W.window.setText then W.window:setText(WINDOW_TITLE) end
+        if W.window and W.window.setText then
+            W.window:setText(sms_window.compose_title('Prefab Manager', version))
+        end
     end)
     pcall(function()
         if W.place_click_btn and W.place_click_btn.setText then W.place_click_btn:setText('Place at click') end
     end)
-    -- No explicit skin reset here — set_status itself handles the swap
-    -- per severity, so the next message after exit_place_pending will set
-    -- the right colour. Leaving the green skin briefly while the place
-    -- result is set is fine; if no follow-up message fires (rare), the
-    -- empty status bar after the auto-clear is invisible regardless.
+    -- Clear the sticky 'PLACING ...' baseline that enter_place_pending set
+    -- via set_status_sticky. Without this, the success/cancel flash that
+    -- preceded this call (set_status() above) would auto-revert to the
+    -- now-stale PLACING message after its 5-second timeout — the user sees
+    -- "Place: ..." for 5s, then it jumps back to the green PLACING text.
+    -- clear_sticky_status() only updates the baseline; it doesn't touch
+    -- the active flash, so the success/cancel message remains visible for
+    -- its full duration before reverting to an empty footer.
+    pcall(function()
+        if W.sms_window and W.sms_window.clear_sticky_status then
+            W.sms_window:clear_sticky_status()
+        end
+    end)
     -- Tear down the bbox preview overlay before restoring map state so the
     -- yellow rectangle doesn't briefly persist after Esc / click.
     pcall(function()
@@ -1358,8 +1347,6 @@ local function relayout(w, h)
     local sep2_y   = h - 165
     local row4_y   = h - 154
     local row5_y   = h - 124
-    local sep3_y   = h - 77
-    local status_y = h - 73
 
     -- Grid stretches between the top band and row 3. grid_y reflects the
     -- pushed-down search row above (sep1 also got the 10/10 padding).
@@ -1407,8 +1394,6 @@ local function relayout(w, h)
     set(W.place_origin_btn, w - 336, row5_y + 10, 200, 22)
     set(W.place_click_btn,  w - 132, row5_y + 10, 122, 22)
 
-    set(W.sep3, 10, sep3_y, w - 20, 1)
-    set(W.status, 10, status_y, w - 20, 22)
 end
 
 function M.show()
@@ -1473,24 +1458,6 @@ function M.show()
         W.marquee_subscribed = true
     end
 
-    -- Subscribe to File > New so the prefab manager auto-closes alongside
-    -- the ME's own panels (coords_info, flightPlans, multiTemplate,
-    -- managerDTC) when the user starts a new mission. Same reload-safety
-    -- pattern as the marquee subscriber: reset the persistent list, then
-    -- attach this window's M.hide as the live subscriber.
-    if not W.new_mission_subscribed then
-        pcall(function() new_mission_hook.reset_subscribers() end)
-        new_mission_hook.subscribe(function() M.hide() end)
-        W.new_mission_subscribed = true
-    end
-
-    -- Register the status-bar auto-clear tick. UpdateManager fires every
-    -- frame; tick_status_clear is a no-op until a status message ages out.
-    if UpdateManager and not W.status_tick_registered then
-        pcall(function() UpdateManager.add(tick_status_clear) end)
-        W.status_tick_registered = true
-    end
-
     if W.window then
         -- Re-populate so a mission-change between hides surfaces the new
         -- country list; existing selection is preserved if still valid.
@@ -1499,33 +1466,39 @@ function M.show()
         return
     end
     local ok, err = pcall(function()
-        local screen_w, _ = Gui.GetWindowSize()
-        -- Layout (top → bottom):
-        --   y=8   Name row:    "Name:" + name_input + Fixed-location check + Save
-        --   y=51  Search row:  filter_input full-width (count → hint text)
-        --   y=77  Grid:        h=178, ends y=255
-        --   y=263 Action row:  Reload | Undo | gap | Rename | Delete
-        --   y=306 Country row: "Place as country:" + combo + Combat toggle
-        --   y=336 Rotation:    spin+dial gizmo + Place-at-original + Place-at-click (43px tall)
-        --   y=387 Status
-        -- Title bar (~30) + bottom border (~12) sit outside, so window
-        -- total height = content y-extent + ~42 → 460.
         local w, h = 720, 460
-        local x = screen_w - w - 20
-        local y = 80
 
-        W.window = Window.new(x, y, w, h, WINDOW_TITLE)
-        W.window:setSkin((Skin.windowSkinME and Skin.windowSkinME()) or Skin.windowSkin())
-        W.window:setVisible(true)
-        W.window:setDraggable(true)
-        W.window:setResizable(true)
-        W.window:setZOrder(190)
+        W.sms_window = sms_window.new({
+            title    = 'Prefab Manager',
+            size     = { w = w, h = h },
+            min_size = { w = MIN_W, h = MIN_H },
+            -- on_undo: route Ctrl+Z to the existing on_undo_click closure
+            -- so the post-undo grid refresh / status messages stay intact.
+            on_undo  = function() on_undo_click() end,
+            -- on_resize: forward the resize to the existing relayout
+            -- closure (which expects the outer window size, not the
+            -- SMSWindow content rect) and re-render the grid since
+            -- column-width changes can leave cells at stale positions.
+            -- Uses :raw():getSize() to read the dxgui Window's outer
+            -- dimensions directly rather than reconstructing them from
+            -- the content-rect arguments.
+            on_resize = function(swin)
+                pcall(function()
+                    local cw, ch = swin:raw():getSize()
+                    relayout(cw, ch)
+                    render_grid()
+                end)
+            end,
+        })
+        if not W.sms_window then
+            log.write('sms.me', log.ERROR, 'window construction failed: SMSWindow.new returned nil')
+            return
+        end
+        W.window = W.sms_window:raw()  -- back-compat alias
 
-        -- Esc cancels place-pending; Ctrl-Z undoes the last place.
-        -- DCS Window exposes addHotKeyCallback (key-name strings like
-        -- "escape", "Ctrl+Z") — addKeyDownCallback exists only on
-        -- input widgets like EditBox, not on Window. Same pattern as
-        -- me_menubar uses for Ctrl+S, delete, etc.
+        -- Window-specific hotkeys: Escape cancels place-pending, Ctrl+Shift+R
+        -- triggers the dev-loop reload. Ctrl+Z is wired by SMSWindow via
+        -- the on_undo opts callback above.
         if W.window.addHotKeyCallback then
             pcall(function()
                 W.window:addHotKeyCallback('escape', function()
@@ -1534,13 +1507,6 @@ function M.show()
                     exit_place_pending()
                 end)
             end)
-            pcall(function()
-                W.window:addHotKeyCallback('Ctrl+Z', function()
-                    on_undo_click()
-                end)
-            end)
-            -- Dev reload: drop all dcs_sms_me modules from package.loaded
-            -- and re-bootstrap. Saves a full DCS restart while iterating.
             pcall(function()
                 W.window:addHotKeyCallback('Ctrl+Shift+R', function()
                     M.reload()
@@ -1839,45 +1805,14 @@ function M.show()
         W.place_click_btn:addChangeCallback(on_place_click)
         W.window:insertWidget(W.place_click_btn)
 
-        W.sep3 = Static.new()
-        try_skin(W.sep3, 'dtc_separator')
-        W.window:insertWidget(W.sep3)
-
-        W.status = Static.new()
-        W.status:setText('Ready.')
-        try_skin(W.status, 'staticSkin_ME')
-        W.window:insertWidget(W.status)
-
-        -- Initial layout pass + size callback for resize support. dxgui has
-        -- no setMinSize, so the callback clamps via setBounds when the user
-        -- shrinks past MIN_W/MIN_H — that re-fires the callback with the
-        -- clamped size, which is fine.
         relayout(w, h)
-        if W.window.addSizeCallback then
-            pcall(function()
-                W.window:addSizeCallback(function()
-                    pcall(function()
-                        local cw, ch = W.window:getSize()
-                        if cw < MIN_W or ch < MIN_H then
-                            local px, py = W.window:getBounds()
-                            W.window:setBounds(px, py, math.max(cw, MIN_W), math.max(ch, MIN_H))
-                            return
-                        end
-                        relayout(cw, ch)
-                        -- Grid cells sometimes render at stale positions
-                        -- after a column-width change; render_grid is cheap
-                        -- (in-memory only, no disk rescan) and fixes that.
-                        render_grid()
-                    end)
-                end)
-            end)
-        end
 
         refresh_list()
         populate_country_combo()
     end)
     if not ok then
         log.write('sms.me', log.ERROR, 'window construction failed: ' .. tostring(err))
+        W.sms_window = nil
         W.window = nil
         return
     end
@@ -1885,16 +1820,23 @@ function M.show()
 end
 
 function M.hide()
-    pcall(function()
-        if W.window and W.window.setVisible then W.window:setVisible(false) end
-    end)
+    -- Route through W.sms_window:hide() so opts.on_close fires (no consumer
+    -- uses it today, but the menu.lua hideME patch calls M.hide() externally
+    -- and any future cleanup hook should run from that path too). Falls back
+    -- to a direct dxgui call if the handle is missing — defensive only; in
+    -- practice if W.sms_window is nil we never opened the window.
+    if W.sms_window then
+        W.sms_window:hide()
+    else
+        pcall(function()
+            if W.window and W.window.setVisible then W.window:setVisible(false) end
+        end)
+    end
 end
 
 function M.toggle()
-    if W.window then
-        local visible = false
-        pcall(function() if W.window.isVisible then visible = W.window:isVisible() end end)
-        if visible then M.hide() else pcall(function() W.window:setVisible(true) end) end
+    if W.sms_window then
+        W.sms_window:toggle()
     else
         M.show()
     end
@@ -1914,7 +1856,7 @@ end
 -- Dev-loop helper: dispose, clear package.loaded for our modules, then
 -- re-require the bootstrap. Lets you iterate on Lua without restarting
 -- DCS. Works cleanly because the Customize-menu item's click callback
--- (set in menu.lua) does `require('dcs_sms_me.window')` AT CLICK TIME,
+-- (set in menu.lua) does `require('dcs_sms_me.prefab_manager')` AT CLICK TIME,
 -- not at registration — so once package.loaded is cleared, the menu
 -- entry naturally picks up the new code on the next click. The menu
 -- widget itself is in the dxgui scene and outlives the require, and
@@ -1945,10 +1887,10 @@ function M.reload()
 
     -- Show the freshly reloaded window. We have to go through the new
     -- module — our M is the OLD one; the just-required init.lua already
-    -- reset package.loaded['dcs_sms_me.window'], so a fresh require picks
+    -- reset package.loaded['dcs_sms_me.prefab_manager'], so a fresh require picks
     -- up the new code.
     pcall(function()
-        local fresh = require('dcs_sms_me.window')
+        local fresh = require('dcs_sms_me.prefab_manager')
         if fresh and fresh.show then fresh.show() end
     end)
     return true

@@ -42,7 +42,7 @@ package.preload['dcs_sms_me.dtc_skins']  = function()
 end
 package.preload['dcs_sms_me.undo']       = function() return { has_record = function() return false end, undo = function() return false end, capture_pre = function() end, record = function() end } end
 
-local window = require('dcs_sms_me.window')
+local window = require('dcs_sms_me.prefab_manager')
 local filter_rows = window._filter_rows
 assert(filter_rows, 'window._filter_rows not exposed')
 

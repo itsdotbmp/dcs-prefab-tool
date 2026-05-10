@@ -328,5 +328,4 @@ finally {
     Clear-SmokeFixtures -Names $fixtures
 }
 
-Write-Host ""
-Write-Host "ALL smoke_weapon checks passed."
+Write-SmokeSummary

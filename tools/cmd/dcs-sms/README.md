@@ -14,6 +14,16 @@ Single Go-built binary that installs both the framework hook and the ME-mod, exe
 
 Anyone using either the framework or the ME-mod. Both rely on `dcs-sms.exe` as the install / interaction tool.
 
+## Just want to install the ME-mod?
+
+**Double-click `dcs-sms.exe`.** A small menu opens with Install / Uninstall / Update / Set DCS path. Type `1` and press Enter to install.
+
+<p align="center">
+  <img src="../../../assets/dcs-sms-doubleclick.png" alt="dcs-sms.exe interactive menu — DCS install path line plus four numbered options" width="780">
+</p>
+
+The CLI subcommands below are for everything else (the bridge, `gen-units`, scripted use), and remain the way to drive `dcs-sms.exe` from a terminal or CI.
+
 ## Install
 
 **Recommended:** download `dcs-sms.exe` from the latest [Release](https://github.com/nielsvaes/dcs-sms/releases). The binary is self-contained — no Go toolchain needed at runtime.

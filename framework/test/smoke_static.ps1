@@ -43,6 +43,7 @@ try {
     Invoke-Smoke -File 'sms.lua'          | Out-Null
     Invoke-Smoke -File 'log.lua'          | Out-Null
     Invoke-Smoke -File 'utils.lua'        | Out-Null
+    Invoke-Smoke -File 'constants.lua'    | Out-Null
     Invoke-Smoke -File 'group.lua'        | Out-Null
     Invoke-Smoke -File 'unit.lua'         | Out-Null
     Invoke-Smoke -File 'area.lua'         | Out-Null
@@ -685,8 +686,7 @@ return s:get_position() == nil
     Expect-LogContains -Label 'log: unknown country' `
         -Pattern 'unknown country' -Grep '\[sms.static\]' -Since '60s'
 
-    Write-Host ""
-    Write-Host "ALL smoke_static checks passed."
+    Write-SmokeSummary
 }
 finally {
     Clear-SmokeFixtures -Names $fixtures

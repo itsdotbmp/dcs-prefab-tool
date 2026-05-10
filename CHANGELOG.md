@@ -105,9 +105,17 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
-### [0.6.0] — 2026-05-10
+### [0.7.0] — Unreleased
+
+> Note: 0.6.0 was released on `main` with the interactive menu (see below).
+> The me-execution-bridge work that was being staged as 0.6.0 is rolled
+> forward to 0.7.0. Bullets cover both the bridge.lua / External Execution
+> toggle (originally 0.5.0-track on this branch) and the trigger reorder /
+> screenshot / camera / airbase / resources additions.
 
 **Added**
+- `bridge.lua` — an inbox poller running in the ME's Lua state, driven by `UpdateManager.add`. Handles `target=gui` execution requests from the `dcs-sms.exe` CLI: runs the user's Lua snippet directly via `loadstring + xpcall`, captures `print` output, returns results through the standard file-mailbox protocol. Writes its own heartbeat to `<SavedGames>/DCS/dcs-sms/state/me.json`.
+- "External execution: ON/OFF" item under the DCS-SMS top menu. Flipping it on enables the bridge's `target=gui` path so external tools (the `dcs-sms exec --target gui` CLI, Claude, etc.) can run Lua against the editable mission table from outside DCS. Default off at every DCS launch (session-only; no persistence).
 - `me trigger reorder` — move a trigger to a new position in `mission.trigrules` (by name).
 - `me trigger reorder-condition` — move a condition to a new position in a trigger's `rules` list.
 - `me trigger reorder-action` — move an action to a new position in a trigger's `actions` list.
@@ -130,11 +138,52 @@ All three reorder verbs accept the same five mutually-exclusive position flags: 
 **Fixed**
 - Trigger ref fields (unit / vehicle / aircarrier / drawObject combos) now resolve names to numeric ids before storage. Previously, `me trigger add-condition --predicate unit-altitude-lower unit=b1-1 ...` stored `entry.unit = "b1-1"` (a string), which the ME panel's combo couldn't match — and a subsequent panel interaction would nil the field via the bound `onChange` callback. Closes [#45](https://github.com/nielsvaes/dcs-sms/issues/45).
 
-### [0.5.0] — 2026-05-08
+### 0.6.0 — 2026-05-09
 
 **Added**
-- `bridge.lua` — an inbox poller running in the ME's Lua state, driven by `UpdateManager.add`. Handles `target=gui` execution requests from the `dcs-sms.exe` CLI: runs the user's Lua snippet directly via `loadstring + xpcall`, captures `print` output, returns results through the standard file-mailbox protocol. Writes its own heartbeat to `<SavedGames>/DCS/dcs-sms/state/me.json`.
-- "External execution: ON/OFF" item under the DCS-SMS top menu. Flipping it on enables the bridge's `target=gui` path so external tools (the `dcs-sms exec --target gui` CLI, Claude, etc.) can run Lua against the editable mission table from outside DCS. Default off at every DCS launch (session-only; no persistence).
+- **Interactive menu** for `dcs-sms.exe`. Double-clicking the binary (or
+  running it with no arguments from a real terminal) now opens a numbered
+  menu with Install / Uninstall / Update options, plus an option to set
+  a custom DCS install path. Pasted paths are sanitized — surrounding
+  ASCII / smart quotes are stripped so `"D:\Program Files\…"` works
+  without manual editing. All existing CLI invocations
+  (`dcs-sms.exe install-me-mod`, etc.) are unchanged; the menu only
+  triggers when `stdin` is a TTY.
+- **`dcspath.SanitizeUserPath`** helper for any future callers that
+  accept paths from user input.
+
+Spec: `docs/superpowers/specs/2026-05-09-dcs-sms-interactive-menu-design.md`.
+
+### 0.5.0 — 2026-05-08
+
+> **Note:** This release is an internal refactor. No user-facing behavior
+> changes — the Prefab Manager looks and works the same as 0.4.2. The
+> changes below are scaffolding for future tool windows (Group Tools,
+> etc.) so they can share consistent chrome instead of each re-implementing
+> the title bar / footer / hotkeys / resize handling.
+
+- **`sms_window` factory** introduced for ME-mod tool windows
+  (`tools/me-mod/lua/dcs_sms_me/sms_window.lua`). Owns the title-bar
+  branding, footer separator + colored status Static, close-on-File>New
+  hook, Ctrl+Z hotkey, and the resize-clamp + footer-reposition
+  plumbing that every tool window needs. Lightweight handle / factory
+  pattern (composition only, no inheritance) — see the spec's
+  Decisions section for the rationale.
+- **Prefab Manager refactored** onto `SMSWindow` via composition. File
+  renamed `window.lua` → `prefab_manager.lua` (blame preserved via
+  `git mv`). Net diff in the file: ~80 lines removed (duplicated
+  chrome plumbing), ~30 lines added (SMSWindow.new opts + status shim).
+- **Status bar gains `flash_status`** semantics. `set_status` is now
+  sticky; `flash_status(text, severity, [timeout])` overlays for N
+  seconds (default 5) then auto-reverts to the sticky baseline.
+- **Severity vocabulary unified.** Standard set: `info` (gray),
+  `success` (green), `warning` (yellow), `error` (red). The Prefab
+  Manager's previous `'placement'` severity is mapped to `success`.
+- Group Tools migration onto `SMSWindow` is **deferred** until the
+  Group Tools branch (`worktree-me-mod-group-tools-bulk-rename`)
+  ships or is reconciled.
+
+Spec: `docs/superpowers/specs/2026-05-08-me-sms-window-base-class.md`.
 
 ### [0.4.2] — 2026-05-07
 

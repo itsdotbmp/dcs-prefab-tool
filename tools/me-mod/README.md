@@ -12,10 +12,9 @@
 > **🚀 Quick start:**
 >
 > 1. [**Download `dcs-sms.exe`**](https://github.com/nielsvaes/dcs-sms/releases/latest/download/dcs-sms.exe) — save it anywhere (Downloads is fine).
-> 2. Open a **CMD** or **PowerShell** terminal in that folder. (Don't know how? In File Explorer click the address bar, type `cmd`, press Enter.)
-> 3. Run: `dcs-sms.exe install-me-mod`
-> 4. **Fully quit DCS** (not just the Mission Editor) and start it again.
-> 5. Open the Mission Editor — **DCS-SMS** will appear in the top menu bar.
+> 2. **Double-click `dcs-sms.exe`** — a small menu opens. Pick **1** to install. (Prefer the command line? Open a CMD/PowerShell in that folder and run `dcs-sms.exe install-me-mod` — same result.)
+> 3. **Fully quit DCS** (not just the Mission Editor) and start it again.
+> 4. Open the Mission Editor — **DCS-SMS** will appear in the top menu bar.
 >
 > Hit a snag? Jump to [Troubleshooting](#troubleshooting).
 
@@ -58,7 +57,15 @@ You design DCS missions in the Mission Editor and want to reuse pieces of one mi
 
 ## Install
 
-`dcs-sms.exe` is a command-line tool, not a GUI installer — double-clicking it won't do anything useful. Save it anywhere convenient (Downloads, Desktop, `C:\Tools`, wherever — the .exe doesn't write anything to that folder; it just needs to be where you can run it from). Then open a **CMD** or **PowerShell** terminal in that folder and run:
+Save `dcs-sms.exe` anywhere convenient (Downloads, Desktop, `C:\Tools`, wherever — the .exe doesn't write anything to that folder; it just needs to be where you can run it from). Then **double-click it**. A console window opens with a small menu — type `1` and press Enter to install:
+
+<p align="center">
+  <img src="../../assets/dcs-sms-doubleclick.png" alt="dcs-sms.exe interactive menu — 'DCS install: ...' line plus four numbered options (Install / Uninstall / Update / Set DCS install path) and 'q. Quit'" width="780">
+</p>
+
+The menu shows the auto-detected DCS install path at the top. If it says **"not detected"**, type `4` first to paste the full path to your DCS install folder (the menu will strip surrounding quotes for you, so `"D:\Program Files\Eagle Dynamics\DCS World"` from Explorer's address-bar copy works as-is).
+
+**Prefer the command line?** Open a **CMD** or **PowerShell** terminal in the folder where you saved `dcs-sms.exe` and run:
 
 ```powershell
 dcs-sms.exe install-me-mod
@@ -66,7 +73,7 @@ dcs-sms.exe install-me-mod
 
 > 💡 Easiest way to open a terminal in a specific folder: in File Explorer, click the address bar, type `cmd`, and press Enter. The terminal opens with that folder as the working directory.
 
-A successful run looks like this:
+A successful CLI run looks like this:
 
 <p align="center">
   <img src="../../assets/cmd.png" alt="dcs-sms.exe install-me-mod running in a CMD window — output shows 'copied', 'patched', 'Install complete. Restart DCS.'" width="780">
@@ -148,6 +155,9 @@ Removes the patch block from `MissionEditor.lua` (surgically, by markers; falls 
 `dcs-sms.exe` is unsigned, so Windows treats it as suspicious by default. You'll see this in two places:
 
 - **On download** — Edge / Chrome may warn that the file "might be dangerous" or block it. Click **Keep** (Edge) or the **^** menu → **Keep anyway** (Chrome).
+
+<img width="562" height="337" alt="image" src="https://github.com/user-attachments/assets/5ddc331e-b57f-40df-9477-1a019a2b069e" />
+
 - **On first run** — Windows may show a blue dialog titled **"Windows protected your PC"**. Click **More info** (small text in the dialog) → **Run anyway**.
 
 You only have to do this once per binary. Subsequent runs of the same .exe go through silently.
@@ -156,9 +166,12 @@ If your environment refuses to let you bypass this at all (locked-down corporate
 
 ### I ran the .exe and nothing happened
 
-Most likely you double-clicked it. `dcs-sms.exe` is a command-line tool — double-clicking briefly opens and closes a terminal window with the help text and you don't see any output.
+Two possibilities:
 
-Open a terminal *in the folder where you saved the .exe* (File Explorer → click the address bar → type `cmd` → Enter), then run `dcs-sms.exe install-me-mod` from there. The output stays visible until you close the terminal.
+- **The terminal window closed before you read it.** If you double-clicked and the menu flashed by, it's because something inside the menu (an error, or you typed something it didn't expect) returned and the window closed before you could see it. Run it again — the menu prints "Press Enter to exit..." after every action so you can read what happened.
+- **Windows blocked the .exe entirely.** SmartScreen may have killed the process before the menu could open. See [Windows SmartScreen says "Windows protected your PC"](#windows-smartscreen-says-windows-protected-your-pc) above.
+
+If you'd rather avoid the menu altogether: open a terminal *in the folder where you saved the .exe* (File Explorer → click the address bar → type `cmd` → Enter), then run `dcs-sms.exe install-me-mod` from there. Output stays visible until you close the terminal.
 
 ### Install said "Install complete" but DCS-SMS isn't in the Mission Editor menu
 
@@ -179,6 +192,99 @@ The path is cached to `%AppData%\dcs-sms\config.toml` for next time, so you only
 ### Something else broke
 
 Check `<Saved Games>\DCS\Logs\dcs.log` for any `[sms.me]` lines around the time of the issue, then [open a bug report](https://github.com/nielsvaes/dcs-sms/issues/new?template=bug_report.yml) — paste the relevant log lines and the version number from the Prefab Manager title bar.
+
+## sms_window — shared chrome for tool windows
+
+`sms_window` is a lightweight handle/factory used by every ME-mod tool
+window — the Prefab Manager rides on it; future tool windows will too. It
+owns:
+
+- A branded title bar reading `Coconut Cockpit · DCS-SMS — <name> v<version>`.
+- A footer band: 1px separator + a colored status Static at the bottom.
+- A close button (`[X]`) that hides (doesn't destroy) the window.
+- Auto-hide when the user starts a new mission (`File > New` / `File > Open`).
+- A `Ctrl+Z` hotkey wired to the project-wide `undo` bus.
+- Resize support with min-size clamp and footer reposition.
+
+A new tool window holds the handle on its own state and passes opts
+callbacks for behaviors it wants to customize:
+
+```lua
+local sms_window = require('dcs_sms_me.sms_window')
+
+local W = {
+    sms_window = nil,  -- the handle
+    -- ... my widget refs (W.btn, W.list, ...)
+}
+
+local function on_undo_click()
+    -- custom undo behavior, or compose with the default:
+    sms_window.default_on_undo(W.sms_window)
+    -- ...post-undo refresh...
+end
+
+local function relayout(_, x, y, w, h)
+    -- reposition widgets within the content rect
+end
+
+local function build_body()
+    local raw = W.sms_window:raw()
+    -- insert widgets via raw:insertWidget(...)
+    -- query the initial content rect via W.sms_window:get_content_bounds()
+end
+
+local M = {}
+
+function M.show()
+    if W.sms_window then W.sms_window:show(); return end
+    W.sms_window = sms_window.new({
+        title     = 'My Tool',
+        size      = { w = 400, h = 300 },
+        min_size  = { w = 320, h = 200 },
+        on_undo   = on_undo_click,                      -- optional
+        on_resize = function(swin, x, y, w, h)          -- optional
+            relayout(swin, x, y, w, h)
+        end,
+        -- on_close = function(swin) ... end             -- optional cleanup hook
+    })
+    if not W.sms_window then return end
+    build_body()
+    W.sms_window:show()
+end
+
+function M.hide()    if W.sms_window then W.sms_window:hide() end end
+function M.toggle()  if W.sms_window then W.sms_window:toggle() else M.show() end end
+
+return M
+```
+
+Show / hide / toggle, the footer status bar, the resize-clamp, and the
+File-New auto-close all come for free.
+
+The status bar (on the handle, not the module):
+
+- `handle:set_status(text, severity)` — sticky; replaces footer until the
+  next call.
+- `handle:flash_status(text, severity, [timeout])` — overlays for N
+  seconds (default 5), then reverts to the last sticky baseline.
+- `handle:clear_sticky_status()` — clears the sticky baseline without
+  affecting any active flash. Use this when leaving a "mode" whose entry
+  set a sticky banner; the success/cancel flash that follows then reverts
+  to an empty footer rather than back to the stale mode banner.
+
+Severities: `'info'` (gray), `'success'` (green), `'warning'` (yellow),
+`'error'` (red).
+
+Module helpers (call on the module, not the handle):
+
+- `sms_window.compose_title(title, version) -> string` — build the
+  branded title string. Useful if you need to temporarily change the
+  title (e.g. during a placement mode) and then restore it.
+- `sms_window.default_on_undo(handle)` — the default Ctrl+Z handler.
+  Compose with this from your own `opts.on_undo` if you want "default
+  behavior + custom refresh".
+
+Design: `docs/superpowers/specs/2026-05-08-me-sms-window-base-class.md`.
 
 ## Prefab Manager
 

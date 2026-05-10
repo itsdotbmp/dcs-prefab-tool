@@ -8,7 +8,7 @@ import (
 
 func TestDispatchVersion(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := dispatch([]string{"--version"}, &stdout, &stderr)
+	code := dispatch([]string{"--version"}, nil, &stdout, &stderr, false)
 	if code != 0 {
 		t.Errorf("exit code %d, want 0", code)
 	}
@@ -19,7 +19,7 @@ func TestDispatchVersion(t *testing.T) {
 
 func TestDispatchUnknownCommand(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := dispatch([]string{"snurfle"}, &stdout, &stderr)
+	code := dispatch([]string{"snurfle"}, nil, &stdout, &stderr, false)
 	if code == 0 {
 		t.Error("expected non-zero exit for unknown command")
 	}
@@ -28,13 +28,24 @@ func TestDispatchUnknownCommand(t *testing.T) {
 	}
 }
 
-func TestDispatchNoArgsShowsHelp(t *testing.T) {
+func TestDispatchNoArgsNonInteractiveShowsHelp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := dispatch(nil, &stdout, &stderr)
+	code := dispatch(nil, nil, &stdout, &stderr, false)
 	if code == 0 {
-		t.Error("expected non-zero exit when no command given")
+		t.Error("expected non-zero exit when no command given and not interactive")
 	}
 	if !strings.Contains(stderr.String(), "Usage") {
 		t.Errorf("expected usage banner in stderr, got %q", stderr.String())
+	}
+}
+
+func TestDispatchNoArgsInteractiveShowsMenu(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := dispatch(nil, strings.NewReader("q\n"), &stdout, &stderr, true)
+	if code != 0 {
+		t.Errorf("exit code %d, want 0", code)
+	}
+	if !strings.Contains(stdout.String(), "DCS-SMS") {
+		t.Errorf("expected menu banner in stdout, got %q", stdout.String())
 	}
 }
