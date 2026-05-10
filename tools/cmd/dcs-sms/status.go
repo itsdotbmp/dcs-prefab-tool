@@ -11,8 +11,25 @@ import (
 	"github.com/nielsvaes/dcs-sms/tools/internal/hookstatus"
 )
 
+type statusOpts struct {
+	JSON       bool
+	SavedGames string
+}
+
+func statusFlags() (*flag.FlagSet, *statusOpts) {
+	opts := &statusOpts{}
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs.BoolVar(&opts.JSON, "json", false, "emit machine-readable JSON")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	register("status", statusCmd)
+	registerInfo("status", cmdInfo{
+		Run:      statusCmd,
+		Flags:    func() *flag.FlagSet { fs, _ := statusFlags(); return fs },
+		Synopsis: "report whether the hook is alive and a mission is loaded",
+	})
 }
 
 // statusCmd prints the hook's current state. Exit codes:
@@ -22,15 +39,13 @@ func init() {
 //	3 — hook file missing or unreadable (DCS not running, or wrong --saved-games)
 //	4 — heartbeat present but stale (DCS may be paused/hung)
 func statusCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs, opts := statusFlags()
 	fs.SetOutput(stderr)
-	flagJSON := fs.Bool("json", false, "emit machine-readable JSON")
-	flagSavedGames := fs.String("saved-games", "", "override Saved Games path")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	root, err := resolveRoot(*flagSavedGames)
+	root, err := resolveRoot(opts.SavedGames)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms status:", err)
 		return 3
@@ -43,7 +58,7 @@ func statusCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	fresh := hookstatus.IsFresh(st, 2*time.Second, time.Now())
 
-	if *flagJSON {
+	if opts.JSON {
 		out := map[string]any{
 			"hook_version":       st.HookVersion,
 			"state":              st.State,
