@@ -9,7 +9,40 @@ import (
 )
 
 func init() {
-	registerMe("trigger", "reorder-action", meTriggerReorderActionCmd)
+	registerMeInfo("trigger", "reorder-action", cmdInfo{
+		Run:      meTriggerReorderActionCmd,
+		Flags:    flagsOnly(meTriggerReorderActionFlags),
+		Synopsis: "move an action to a new index in a trigger's action list",
+	})
+}
+
+type meTriggerReorderActionOpts struct {
+	Trigger    string
+	Index      int
+	Before     int
+	After      int
+	ToIndex    int
+	ToStart    bool
+	ToEnd      bool
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meTriggerReorderActionFlags() (*flag.FlagSet, *meTriggerReorderActionOpts) {
+	opts := &meTriggerReorderActionOpts{}
+	fs := flag.NewFlagSet("me trigger reorder-action", flag.ContinueOnError)
+	fs.StringVar(&opts.Trigger, "trigger", "", "parent trigger name")
+	fs.IntVar(&opts.Index, "index", 0, "1-based source action index in t.actions")
+	fs.IntVar(&opts.Before, "before", 0, "anchor: move source to just before this 1-based action index")
+	fs.IntVar(&opts.After, "after", 0, "anchor: move source to just after this 1-based action index")
+	fs.IntVar(&opts.ToIndex, "to-index", 0, "1-based final position in t.actions")
+	fs.BoolVar(&opts.ToStart, "to-start", false, "sugar for --to-index 1")
+	fs.BoolVar(&opts.ToEnd, "to-end", false, "sugar for --to-index #actions")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
 }
 
 // meTriggerReorderActionCmd implements
@@ -21,46 +54,34 @@ func init() {
 // (--before / --after) are 1-based indices into t.actions. Exactly one
 // position flag must be provided.
 func meTriggerReorderActionCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me trigger reorder-action", flag.ContinueOnError)
+	fs, opts := meTriggerReorderActionFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagTrigger    = fs.String("trigger", "", "parent trigger name")
-		flagIndex      = fs.Int("index", 0, "1-based source action index in t.actions")
-		flagBefore     = fs.Int("before", 0, "anchor: move source to just before this 1-based action index")
-		flagAfter      = fs.Int("after", 0, "anchor: move source to just after this 1-based action index")
-		flagToIndex    = fs.Int("to-index", 0, "1-based final position in t.actions")
-		flagToStart    = fs.Bool("to-start", false, "sugar for --to-index 1")
-		flagToEnd      = fs.Bool("to-end", false, "sugar for --to-index #actions")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagTrigger == "" {
+	if opts.Trigger == "" {
 		fmt.Fprintln(stderr, "dcs-sms me trigger reorder-action: --trigger is required")
 		return 2
 	}
-	if *flagIndex < 1 {
+	if opts.Index < 1 {
 		fmt.Fprintln(stderr, "dcs-sms me trigger reorder-action: --index (>= 1) is required")
 		return 2
 	}
 
 	set := 0
-	if *flagBefore != 0 {
+	if opts.Before != 0 {
 		set++
 	}
-	if *flagAfter != 0 {
+	if opts.After != 0 {
 		set++
 	}
-	if *flagToIndex != 0 {
+	if opts.ToIndex != 0 {
 		set++
 	}
-	if *flagToStart {
+	if opts.ToStart {
 		set++
 	}
-	if *flagToEnd {
+	if opts.ToEnd {
 		set++
 	}
 	if set != 1 {
@@ -70,27 +91,27 @@ func meTriggerReorderActionCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "{ trigger = %q, index = %d", *flagTrigger, *flagIndex)
-	if *flagBefore != 0 {
-		fmt.Fprintf(&b, ", before = %d", *flagBefore)
+	fmt.Fprintf(&b, "{ trigger = %q, index = %d", opts.Trigger, opts.Index)
+	if opts.Before != 0 {
+		fmt.Fprintf(&b, ", before = %d", opts.Before)
 	}
-	if *flagAfter != 0 {
-		fmt.Fprintf(&b, ", after = %d", *flagAfter)
+	if opts.After != 0 {
+		fmt.Fprintf(&b, ", after = %d", opts.After)
 	}
-	if *flagToIndex != 0 {
-		fmt.Fprintf(&b, ", to_index = %d", *flagToIndex)
+	if opts.ToIndex != 0 {
+		fmt.Fprintf(&b, ", to_index = %d", opts.ToIndex)
 	}
-	if *flagToStart {
+	if opts.ToStart {
 		b.WriteString(", to_start = true")
 	}
-	if *flagToEnd {
+	if opts.ToEnd {
 		b.WriteString(", to_end = true")
 	}
 	b.WriteString(" }")
 
-	resp, exitCode := runMeVerb("trigger_reorder_action", b.String(), *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("trigger_reorder_action", b.String(), opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

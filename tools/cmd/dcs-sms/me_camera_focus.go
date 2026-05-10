@@ -9,7 +9,38 @@ import (
 )
 
 func init() {
-	registerMe("camera", "focus", meCameraFocusCmd)
+	registerMeInfo("camera", "focus", cmdInfo{
+		Run:      meCameraFocusCmd,
+		Flags:    flagsOnly(meCameraFocusFlags),
+		Synopsis: "focus the ME camera on a coordinate / lat-lon / airdrome name",
+	})
+}
+
+type meCameraFocusOpts struct {
+	Name       string
+	Lat        float64
+	Lon        float64
+	X          float64
+	Y          float64
+	Scale      float64
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meCameraFocusFlags() (*flag.FlagSet, *meCameraFocusOpts) {
+	opts := &meCameraFocusOpts{}
+	fs := flag.NewFlagSet("me camera focus", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "airdrome name (case-insensitive, substring)")
+	fs.Float64Var(&opts.Lat, "lat", 0, "latitude (decimal degrees)")
+	fs.Float64Var(&opts.Lon, "lon", 0, "longitude (decimal degrees)")
+	fs.Float64Var(&opts.X, "x", 0, "DCS world meters, north axis")
+	fs.Float64Var(&opts.Y, "y", 0, "DCS world meters, east axis")
+	fs.Float64Var(&opts.Scale, "scale", 0, "map scale (meters per screen unit; 0 = keep current)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
 }
 
 // meCameraFocusCmd implements
@@ -25,19 +56,8 @@ func init() {
 // --scale (meters per screen unit) is optional; if given, applied before the
 // camera move.
 func meCameraFocusCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me camera focus", flag.ContinueOnError)
+	fs, opts := meCameraFocusFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "airdrome name (case-insensitive, substring)")
-		flagLat        = fs.Float64("lat", 0, "latitude (decimal degrees)")
-		flagLon        = fs.Float64("lon", 0, "longitude (decimal degrees)")
-		flagX          = fs.Float64("x", 0, "DCS world meters, north axis")
-		flagY          = fs.Float64("y", 0, "DCS world meters, east axis")
-		flagScale      = fs.Float64("scale", 0, "map scale (meters per screen unit; 0 = keep current)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -55,7 +75,7 @@ func meCameraFocusCmd(args []string, stdout, stderr io.Writer) int {
 		}
 	})
 
-	modeName := *flagName != ""
+	modeName := opts.Name != ""
 	modeLatLon := hasLat || hasLon
 	modeXY := hasX || hasY
 	set := 0
@@ -93,22 +113,22 @@ func meCameraFocusCmd(args []string, stdout, stderr io.Writer) int {
 		first = false
 	}
 	if modeName {
-		add(fmt.Sprintf("name = %q", *flagName))
+		add(fmt.Sprintf("name = %q", opts.Name))
 	}
 	if modeLatLon {
-		add(fmt.Sprintf("lat = %g, lon = %g", *flagLat, *flagLon))
+		add(fmt.Sprintf("lat = %g, lon = %g", opts.Lat, opts.Lon))
 	}
 	if modeXY {
-		add(fmt.Sprintf("x = %g, y = %g", *flagX, *flagY))
+		add(fmt.Sprintf("x = %g, y = %g", opts.X, opts.Y))
 	}
-	if *flagScale != 0 {
-		add(fmt.Sprintf("scale = %g", *flagScale))
+	if opts.Scale != 0 {
+		add(fmt.Sprintf("scale = %g", opts.Scale))
 	}
 	b.WriteString(" }")
 
-	resp, exitCode := runMeVerb("camera_focus", b.String(), *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("camera_focus", b.String(), opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

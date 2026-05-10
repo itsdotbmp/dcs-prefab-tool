@@ -18,6 +18,13 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | [`uninstall-me-mod`](uninstall-me-mod.md) | remove the Mission Editor mod (revert MissionEditor.lua, delete modules) |
 | [`update`](update.md) | download the latest dcs-sms.exe from GitHub and replace this binary |
 
+## me camera
+
+| Command | Description |
+|---|---|
+| [`me camera focus`](me-camera-focus.md) | focus the ME camera on a coordinate / lat-lon / airdrome name |
+| [`me camera get`](me-camera-get.md) | return the ME camera's current map center (x, y, lat, lon, scale) |
+
 ## me drawing
 
 | Command | Description |
@@ -87,6 +94,8 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | [`me trigger remove-action`](me-trigger-remove-action.md) | delete one action from a trigger by index |
 | [`me trigger remove-condition`](me-trigger-remove-condition.md) | delete one condition from a trigger by index |
 | [`me trigger reorder`](me-trigger-reorder.md) | reorder triggers in the open mission |
+| [`me trigger reorder-action`](me-trigger-reorder-action.md) | move an action to a new index in a trigger's action list |
+| [`me trigger reorder-condition`](me-trigger-reorder-condition.md) | move a condition to a new index in a trigger's condition list |
 | [`me trigger set-eventlist`](me-trigger-set-eventlist.md) | set the event filter list for an event-driven trigger |
 | [`me trigger set-name`](me-trigger-set-name.md) | rename a trigger |
 
