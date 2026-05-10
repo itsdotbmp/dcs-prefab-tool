@@ -111,8 +111,9 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 - `me trigger reorder` — move a trigger to a new position in `mission.trigrules` (by name).
 - `me trigger reorder-condition` — move a condition to a new position in a trigger's `rules` list.
 - `me trigger reorder-action` — move an action to a new position in a trigger's `actions` list.
+- `me trigger add-condition --predicate or` — pseudo-predicate that connects two surrounding conditions with logical OR. ED's panel exposes this via the OR button between rules; the bridge now resolves it through `add-condition`. Discoverable via `me trigger list-predicates` / `describe-predicate or`.
 
-All three accept the same five mutually-exclusive position flags: `--to-index N`, `--before X`, `--after X`, `--to-start`, `--to-end`. For `me trigger reorder`, `X` is a trigger name; for `reorder-condition` / `reorder-action`, `X` is a 1-based index into the parent trigger's list. Self-targeting (e.g. `--before T` where `T` is the source itself, or `--to-index <where-source-already-is>`) is an idempotent no-op (`moved: false`), not an error.
+All three reorder verbs accept the same five mutually-exclusive position flags: `--to-index N`, `--before X`, `--after X`, `--to-start`, `--to-end`. For `me trigger reorder`, `X` is a trigger name; for `reorder-condition` / `reorder-action`, `X` is a 1-based index into the parent trigger's list. Self-targeting (e.g. `--before T` where `T` is the source itself, or `--to-index <where-source-already-is>`) is an idempotent no-op (`moved: false`), not an error.
 
 **Fixed**
 - Trigger ref fields (unit / vehicle / aircarrier / drawObject combos) now resolve names to numeric ids before storage. Previously, `me trigger add-condition --predicate unit-altitude-lower unit=b1-1 ...` stored `entry.unit = "b1-1"` (a string), which the ME panel's combo couldn't match — and a subsequent panel interaction would nil the field via the bound `onChange` callback. Closes [#45](https://github.com/nielsvaes/dcs-sms/issues/45).

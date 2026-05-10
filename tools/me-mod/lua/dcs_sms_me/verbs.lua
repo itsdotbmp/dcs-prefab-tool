@@ -3614,16 +3614,20 @@ end
 -- _trigger_build_alias_cache — populate _trigger_alias_cache by walking ED's
 -- three descriptor arrays: me_predicates.rulesDescr (conditions, c_*),
 -- me_trigrules.actionsDescr (actions, a_*), and me_trigrules.triggersDescr
--- (trigger types). All three are 1-indexed arrays of {name=..., fields=...}.
+-- (trigger types). actionsDescr and triggersDescr are pure 1-indexed arrays.
+-- rulesDescr is mostly a 1-indexed array but ALSO carries pseudo-predicates
+-- under string keys (currently just `["or"]` — see me_predicates.lua:1555,
+-- "special predicates have individual key"); pairs() picks both up.
 local function _trigger_build_alias_cache()
     local Trigger = require('me_trigrules')
     local Predicates = require('me_predicates')
     local cache = {}
 
-    -- Conditions: me_predicates.rulesDescr is an indexed array of
-    -- { name = "c_*", fields = {...} } entries.
+    -- Conditions: me_predicates.rulesDescr is mostly { name = "c_*", ...}
+    -- entries, plus pseudo-predicates like ["or"] keyed by their literal
+    -- name. Walk with pairs() so we pick up both shapes.
     if type(Predicates.rulesDescr) == 'table' then
-        for _, descr in ipairs(Predicates.rulesDescr) do
+        for _, descr in pairs(Predicates.rulesDescr) do
             if type(descr) == 'table' and type(descr.name) == 'string' then
                 local entry = { canonical = descr.name, kind = 'condition', descr = descr }
                 cache[descr.name] = entry
@@ -4212,7 +4216,9 @@ function M.trigger_list_predicates(args)
     end
 
     if type(Predicates.rulesDescr) == 'table' then
-        for _, descr in ipairs(Predicates.rulesDescr) do
+        -- pairs() (not ipairs) so pseudo-predicates under string keys
+        -- (currently just ["or"]) are surfaced too.
+        for _, descr in pairs(Predicates.rulesDescr) do
             if type(descr) == 'table' and type(descr.name) == 'string' then
                 collect(descr.name)
             end
