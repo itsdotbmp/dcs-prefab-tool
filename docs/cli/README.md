@@ -18,6 +18,14 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | [`uninstall-me-mod`](uninstall-me-mod.md) | remove the Mission Editor mod (revert MissionEditor.lua, delete modules) |
 | [`update`](update.md) | download the latest dcs-sms.exe from GitHub and replace this binary |
 
+## me airbase
+
+| Command | Description |
+|---|---|
+| [`me airbase get`](me-airbase-get.md) | get an airbase's full info — metadata, frequencies, parking stands, runways |
+| [`me airbase list`](me-airbase-list.md) | list airbases on the current theatre (name, position, coalition) |
+| [`me airbase set-coalition`](me-airbase-set-coalition.md) | set an airbase's coalition (red, blue, neutral) and refresh the map display |
+
 ## me camera
 
 | Command | Description |
@@ -78,6 +86,13 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | [`me group set-name`](me-group-set-name.md) | rename a group |
 | [`me group set-pos`](me-group-set-pos.md) | move a group to a new north/east coordinate |
 | [`me group set-task`](me-group-set-task.md) | set a group's role/task (e.g. CAP, CAS, Escort) |
+
+## me resources
+
+| Command | Description |
+|---|---|
+| [`me resources get`](me-resources-get.md) | read the warehouse / resources entry for an airbase or a ship/structure unit |
+| [`me resources set`](me-resources-set.md) | mutate an airbase or ship/structure warehouse — toggle unlimited, clear categories, set per-fuel / per-aircraft / per-weapon counts |
 
 ## me trigger
 
