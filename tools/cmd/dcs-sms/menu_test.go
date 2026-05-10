@@ -281,3 +281,104 @@ func TestMenuOption4RejectsNonDirectory(t *testing.T) {
 		t.Errorf("expected error about missing/invalid directory, got %q", stdout.String())
 	}
 }
+
+func TestMenuOption5_AgentClaudeInstall(t *testing.T) {
+	gotArgs := []string(nil)
+	stub := func(args []string, stdout, stderr io.Writer) int {
+		gotArgs = append([]string(nil), args...)
+		fmt.Fprintln(stdout, "stub install-ai-skill ran")
+		return 0
+	}
+	deps := menuDeps{actions: menuActions{
+		install: failHandler(t), uninstall: failHandler(t), update: failHandler(t),
+		installAISkill: stub, uninstallAISkill: failHandler(t),
+	}}
+	var stdout, stderr bytes.Buffer
+	code := runInteractiveMenuWith(strings.NewReader("5\na\ni\n\n"), &stdout, &stderr, deps)
+	if code != 0 {
+		t.Errorf("exit code %d, want 0", code)
+	}
+	want := []string{"--agent", "claude"}
+	if !stringSliceEqual(gotArgs, want) {
+		t.Errorf("got args %v, want %v", gotArgs, want)
+	}
+	if !strings.Contains(stdout.String(), "stub install-ai-skill ran") {
+		t.Errorf("expected stub output in stdout, got %q", stdout.String())
+	}
+}
+
+func TestMenuOption5_AgentAllUninstall(t *testing.T) {
+	gotArgs := []string(nil)
+	stub := func(args []string, stdout, stderr io.Writer) int {
+		gotArgs = append([]string(nil), args...)
+		return 0
+	}
+	deps := menuDeps{actions: menuActions{
+		install: failHandler(t), uninstall: failHandler(t), update: failHandler(t),
+		installAISkill: failHandler(t), uninstallAISkill: stub,
+	}}
+	var stdout, stderr bytes.Buffer
+	code := runInteractiveMenuWith(strings.NewReader("5\nd\nu\n\n"), &stdout, &stderr, deps)
+	if code != 0 {
+		t.Errorf("exit code %d, want 0", code)
+	}
+	want := []string{"--agent", "all"}
+	if !stringSliceEqual(gotArgs, want) {
+		t.Errorf("got args %v, want %v", gotArgs, want)
+	}
+}
+
+func TestMenuOption5_CancelAtAgentReturnsToMenu(t *testing.T) {
+	deps := menuDeps{actions: menuActions{
+		install: failHandler(t), uninstall: failHandler(t), update: failHandler(t),
+		installAISkill: failHandler(t), uninstallAISkill: failHandler(t),
+	}}
+	var stdout, stderr bytes.Buffer
+	// 5 → q (cancel agent picker) → q (quit main menu).
+	code := runInteractiveMenuWith(strings.NewReader("5\nq\nq\n"), &stdout, &stderr, deps)
+	if code != 0 {
+		t.Errorf("exit code %d, want 0", code)
+	}
+	// Main banner must appear at least twice (initial + after sub-menu cancel).
+	if c := strings.Count(stdout.String(), "1. Install DCS-SMS Mission Editor mod"); c < 2 {
+		t.Errorf("expected main menu redrawn after sub-menu cancel; got %d banners in %q", c, stdout.String())
+	}
+}
+
+func TestMenuOption5_CancelAtActionReturnsToMenu(t *testing.T) {
+	deps := menuDeps{actions: menuActions{
+		install: failHandler(t), uninstall: failHandler(t), update: failHandler(t),
+		installAISkill: failHandler(t), uninstallAISkill: failHandler(t),
+	}}
+	var stdout, stderr bytes.Buffer
+	// 5 → a (claude) → q (cancel action picker) → q (quit main menu).
+	code := runInteractiveMenuWith(strings.NewReader("5\na\nq\nq\n"), &stdout, &stderr, deps)
+	if code != 0 {
+		t.Errorf("exit code %d, want 0", code)
+	}
+}
+
+func TestMenuOption5_ThreeInvalidAgentsFallsBackToMenu(t *testing.T) {
+	deps := menuDeps{actions: menuActions{
+		install: failHandler(t), uninstall: failHandler(t), update: failHandler(t),
+		installAISkill: failHandler(t), uninstallAISkill: failHandler(t),
+	}}
+	var stdout, stderr bytes.Buffer
+	// 5 → x → y → z → q (quit main menu).
+	code := runInteractiveMenuWith(strings.NewReader("5\nx\ny\nz\nq\n"), &stdout, &stderr, deps)
+	if code != 0 {
+		t.Errorf("exit code %d, want 0", code)
+	}
+}
+
+func stringSliceEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
