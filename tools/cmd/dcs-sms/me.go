@@ -14,19 +14,27 @@ import (
 	"github.com/nielsvaes/dcs-sms/tools/internal/proto"
 )
 
-// meCommands is the noun → verb → handler map for the `me` namespace.
+// meCommands is the noun → verb → metadata map for the `me` namespace.
 // Each `me <noun> <verb>` subcommand registers itself in init().
-var meCommands = map[string]map[string]commandFunc{}
+var meCommands = map[string]map[string]cmdInfo{}
 
-// registerMe wires a (noun, verb) pair to its handler.
-func registerMe(noun, verb string, fn commandFunc) {
+// registerMeInfo wires a (noun, verb) pair to its full metadata (new API).
+func registerMeInfo(noun, verb string, info cmdInfo) {
+	if info.Run == nil {
+		panic("registerMeInfo: Run is required for me " + noun + " " + verb)
+	}
 	if meCommands[noun] == nil {
-		meCommands[noun] = map[string]commandFunc{}
+		meCommands[noun] = map[string]cmdInfo{}
 	}
 	if _, exists := meCommands[noun][verb]; exists {
 		panic("duplicate me-command registration: " + noun + " " + verb)
 	}
-	meCommands[noun][verb] = fn
+	meCommands[noun][verb] = info
+}
+
+// registerMe is a backward-compatible wrapper for the old (noun, verb, fn) API.
+func registerMe(noun, verb string, fn commandFunc) {
+	registerMeInfo(noun, verb, cmdInfo{Run: fn})
 }
 
 func init() {
@@ -61,7 +69,7 @@ func meDispatch(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "dcs-sms me %s: unknown verb %q\n", args[0], args[1])
 		return 2
 	}
-	return verbHandler(args[2:], stdout, stderr)
+	return verbHandler.Run(args[2:], stdout, stderr)
 }
 
 func printMeUsage(w io.Writer) {
