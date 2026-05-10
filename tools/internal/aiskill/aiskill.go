@@ -1,6 +1,8 @@
 package aiskill
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -63,4 +65,51 @@ func concreteAgents(agent Agent) []Agent {
 		return []Agent{AgentClaude, AgentCodex, AgentGemini}
 	}
 	return []Agent{agent}
+}
+
+// Result describes what one Install / Uninstall call did for a single
+// agent, suitable for printing one line per file.
+type Result struct {
+	Agent  Agent
+	Paths  []string // files written (Install) or removed/missing (Uninstall)
+	Errors []error  // empty on full success
+}
+
+// Install writes the skill / command files for one agent (or all three)
+// under home. home must be absolute. Idempotent: re-running overwrites.
+// For AgentAll, all three are attempted; failures on one do not abort
+// the others. Returns one Result per agent attempted.
+func Install(agent Agent, home string) []Result {
+	agents := concreteAgents(agent)
+	out := make([]Result, 0, len(agents))
+	for _, a := range agents {
+		out = append(out, installOne(a, home))
+	}
+	return out
+}
+
+func installOne(agent Agent, home string) Result {
+	r := Result{Agent: agent}
+	for _, target := range Paths(agent, home) {
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			r.Errors = append(r.Errors, fmt.Errorf("%s: mkdir parent: %w", target, err))
+			continue
+		}
+		body := bodyFor(target)
+		if err := os.WriteFile(target, body, 0o644); err != nil {
+			r.Errors = append(r.Errors, fmt.Errorf("%s: write: %w", target, err))
+			continue
+		}
+		r.Paths = append(r.Paths, target)
+	}
+	return r
+}
+
+// bodyFor returns the file body to write at target. The Gemini TOML lives
+// at the .toml suffix; everything else is the SKILL.md markdown body.
+func bodyFor(target string) []byte {
+	if strings.HasSuffix(target, ".toml") {
+		return geminiTOML
+	}
+	return skillMarkdown
 }
