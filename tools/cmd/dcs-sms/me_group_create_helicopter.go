@@ -7,8 +7,53 @@ import (
 	"time"
 )
 
+type meGroupCreateHelicopterOpts struct {
+	Country    string
+	Type       string
+	North      float64
+	East       float64
+	Name       string
+	Alt        float64
+	AltType    string
+	Speed      float64
+	Heading    float64
+	Skill      string
+	Livery     string
+	Frequency  float64
+	OnboardNum string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meGroupCreateHelicopterFlags() (*flag.FlagSet, *meGroupCreateHelicopterOpts) {
+	opts := &meGroupCreateHelicopterOpts{}
+	fs := flag.NewFlagSet("me group create-helicopter", flag.ContinueOnError)
+	fs.StringVar(&opts.Country, "country", "", "country in current mission (e.g. USA, Russia)")
+	fs.StringVar(&opts.Type, "type", "", "airframe id (e.g. UH-60L, Mi-8MT)")
+	fs.Float64Var(&opts.North, "north", 0, "meters north of theatre origin")
+	fs.Float64Var(&opts.East, "east", 0, "meters east of theatre origin")
+	fs.StringVar(&opts.Name, "name", "", "group name (auto-allocated if empty)")
+	fs.Float64Var(&opts.Alt, "alt", 1000, "altitude in meters above sea level")
+	fs.StringVar(&opts.AltType, "alt-type", "BARO", "altitude reference: BARO or RADIO")
+	fs.Float64Var(&opts.Speed, "speed", 50, "speed in m/s")
+	fs.Float64Var(&opts.Heading, "heading", 0, "heading in degrees (0 = north, CW positive)")
+	fs.StringVar(&opts.Skill, "skill", "Average", "AI skill")
+	fs.StringVar(&opts.Livery, "livery", "", "livery id")
+	fs.Float64Var(&opts.Frequency, "frequency", 127.5, "radio frequency MHz")
+	fs.StringVar(&opts.OnboardNum, "onboard-num", "010", "onboard number")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("group", "create-helicopter", meGroupCreateHelicopterCmd)
+	registerMeInfo("group", "create-helicopter", cmdInfo{
+		Run:      meGroupCreateHelicopterCmd,
+		Flags:    flagsOnly(meGroupCreateHelicopterFlags),
+		Synopsis: "spawn a new helicopter group at the given coordinates",
+	})
 }
 
 // meGroupCreateHelicopterCmd implements
@@ -18,34 +63,16 @@ func init() {
 // empty ComboTask, save-survives via Mission.fixWaypointForGroup), but with
 // helo-typical defaults: lower altitude, slower speed, lower frequency.
 func meGroupCreateHelicopterCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me group create-helicopter", flag.ContinueOnError)
+	fs, opts := meGroupCreateHelicopterFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagCountry    = fs.String("country", "", "country in current mission (e.g. USA, Russia)")
-		flagType       = fs.String("type", "", "airframe id (e.g. UH-60L, Mi-8MT)")
-		flagNorth      = fs.Float64("north", 0, "meters north of theatre origin")
-		flagEast       = fs.Float64("east", 0, "meters east of theatre origin")
-		flagName       = fs.String("name", "", "group name (auto-allocated if empty)")
-		flagAlt        = fs.Float64("alt", 1000, "altitude in meters above sea level")
-		flagAltType    = fs.String("alt-type", "BARO", "altitude reference: BARO or RADIO")
-		flagSpeed      = fs.Float64("speed", 50, "speed in m/s")
-		flagHeading    = fs.Float64("heading", 0, "heading in degrees (0 = north, CW positive)")
-		flagSkill      = fs.String("skill", "Average", "AI skill")
-		flagLivery     = fs.String("livery", "", "livery id")
-		flagFreq       = fs.Float64("frequency", 127.5, "radio frequency MHz")
-		flagOnboard    = fs.String("onboard-num", "010", "onboard number")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagCountry == "" {
+	if opts.Country == "" {
 		fmt.Fprintln(stderr, "dcs-sms me group create-helicopter: --country is required")
 		return 2
 	}
-	if *flagType == "" {
+	if opts.Type == "" {
 		fmt.Fprintln(stderr, "dcs-sms me group create-helicopter: --type is required")
 		return 2
 	}
@@ -54,14 +81,14 @@ func meGroupCreateHelicopterCmd(args []string, stdout, stderr io.Writer) int {
 		"{ country = %q, type = %q, north = %g, east = %g, name = %q, "+
 			"alt = %g, alt_type = %q, speed = %g, heading_deg = %g, "+
 			"skill = %q, livery = %q, frequency = %g, onboard_num = %q }",
-		*flagCountry, *flagType, *flagNorth, *flagEast, *flagName,
-		*flagAlt, *flagAltType, *flagSpeed, *flagHeading,
-		*flagSkill, *flagLivery, *flagFreq, *flagOnboard,
+		opts.Country, opts.Type, opts.North, opts.East, opts.Name,
+		opts.Alt, opts.AltType, opts.Speed, opts.Heading,
+		opts.Skill, opts.Livery, opts.Frequency, opts.OnboardNum,
 	)
 
-	resp, exitCode := runMeVerb("group_create_helicopter", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("group_create_helicopter", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

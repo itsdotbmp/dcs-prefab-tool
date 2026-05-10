@@ -7,8 +7,33 @@ import (
 	"time"
 )
 
+type meGroupSetHiddenOpts struct {
+	Name       string
+	ID         int
+	Hidden     bool
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meGroupSetHiddenFlags() (*flag.FlagSet, *meGroupSetHiddenOpts) {
+	opts := &meGroupSetHiddenOpts{}
+	fs := flag.NewFlagSet("me group set-hidden", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "group name (mutually exclusive with --id)")
+	fs.IntVar(&opts.ID, "id", 0, "group id (mutually exclusive with --name)")
+	fs.BoolVar(&opts.Hidden, "hidden", false, "hide (true) or show (false); pass explicitly")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("group", "set-hidden", meGroupSetHiddenCmd)
+	registerMeInfo("group", "set-hidden", cmdInfo{
+		Run:      meGroupSetHiddenCmd,
+		Flags:    flagsOnly(meGroupSetHiddenFlags),
+		Synopsis: "toggle whether a group is hidden in the ME view",
+	})
 }
 
 // meGroupSetHiddenCmd implements `dcs-sms me group set-hidden --name|--id <X> --hidden=true|false`.
@@ -21,21 +46,13 @@ func init() {
 // `hiddenOnPlanner` and `hiddenOnMFD` (per-coalition) toggles. Those aren't
 // exposed yet — add separate verbs if you need to flip them independently.
 func meGroupSetHiddenCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me group set-hidden", flag.ContinueOnError)
+	fs, opts := meGroupSetHiddenFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "group name (mutually exclusive with --id)")
-		flagID         = fs.Int("id", 0, "group id (mutually exclusive with --name)")
-		flagHidden     = fs.Bool("hidden", false, "hide (true) or show (false); pass explicitly")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	hasName := *flagName != ""
-	hasID := *flagID != 0
+	hasName := opts.Name != ""
+	hasID := opts.ID != 0
 	if hasName == hasID {
 		fmt.Fprintln(stderr, "dcs-sms me group set-hidden: exactly one of --name or --id is required")
 		return 2
@@ -53,15 +70,15 @@ func meGroupSetHiddenCmd(args []string, stdout, stderr io.Writer) int {
 
 	var idClause string
 	if hasName {
-		idClause = fmt.Sprintf("name = %q", *flagName)
+		idClause = fmt.Sprintf("name = %q", opts.Name)
 	} else {
-		idClause = fmt.Sprintf("id = %d", *flagID)
+		idClause = fmt.Sprintf("id = %d", opts.ID)
 	}
-	luaArgs := fmt.Sprintf("{ %s, hidden = %t }", idClause, *flagHidden)
+	luaArgs := fmt.Sprintf("{ %s, hidden = %t }", idClause, opts.Hidden)
 
-	resp, exitCode := runMeVerb("group_set_hidden", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("group_set_hidden", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

@@ -7,8 +7,41 @@ import (
 	"time"
 )
 
+type meGroupCreateVehicleOpts struct {
+	Country    string
+	Type       string
+	North      float64
+	East       float64
+	Name       string
+	Heading    float64
+	Skill      string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meGroupCreateVehicleFlags() (*flag.FlagSet, *meGroupCreateVehicleOpts) {
+	opts := &meGroupCreateVehicleOpts{}
+	fs := flag.NewFlagSet("me group create-vehicle", flag.ContinueOnError)
+	fs.StringVar(&opts.Country, "country", "", "country in current mission")
+	fs.StringVar(&opts.Type, "type", "", "vehicle id (e.g. M-1 Abrams, T-72B)")
+	fs.Float64Var(&opts.North, "north", 0, "meters north of theatre origin")
+	fs.Float64Var(&opts.East, "east", 0, "meters east of theatre origin")
+	fs.StringVar(&opts.Name, "name", "", "group name (auto-allocated if empty)")
+	fs.Float64Var(&opts.Heading, "heading", 0, "heading in degrees (0 = north, CW positive)")
+	fs.StringVar(&opts.Skill, "skill", "Average", "AI skill")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("group", "create-vehicle", meGroupCreateVehicleCmd)
+	registerMeInfo("group", "create-vehicle", cmdInfo{
+		Run:      meGroupCreateVehicleCmd,
+		Flags:    flagsOnly(meGroupCreateVehicleFlags),
+		Synopsis: "spawn a new ground vehicle group at the given coordinates",
+	})
 }
 
 // meGroupCreateVehicleCmd implements
@@ -18,28 +51,16 @@ func init() {
 // "Off Road" waypoint at the spawn point with speed=0, speed_locked.
 // task = "Ground Nothing".
 func meGroupCreateVehicleCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me group create-vehicle", flag.ContinueOnError)
+	fs, opts := meGroupCreateVehicleFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagCountry    = fs.String("country", "", "country in current mission")
-		flagType       = fs.String("type", "", "vehicle id (e.g. M-1 Abrams, T-72B)")
-		flagNorth      = fs.Float64("north", 0, "meters north of theatre origin")
-		flagEast       = fs.Float64("east", 0, "meters east of theatre origin")
-		flagName       = fs.String("name", "", "group name (auto-allocated if empty)")
-		flagHeading    = fs.Float64("heading", 0, "heading in degrees (0 = north, CW positive)")
-		flagSkill      = fs.String("skill", "Average", "AI skill")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagCountry == "" {
+	if opts.Country == "" {
 		fmt.Fprintln(stderr, "dcs-sms me group create-vehicle: --country is required")
 		return 2
 	}
-	if *flagType == "" {
+	if opts.Type == "" {
 		fmt.Fprintln(stderr, "dcs-sms me group create-vehicle: --type is required")
 		return 2
 	}
@@ -47,13 +68,13 @@ func meGroupCreateVehicleCmd(args []string, stdout, stderr io.Writer) int {
 	luaArgs := fmt.Sprintf(
 		"{ country = %q, type = %q, north = %g, east = %g, name = %q, "+
 			"heading_deg = %g, skill = %q }",
-		*flagCountry, *flagType, *flagNorth, *flagEast, *flagName,
-		*flagHeading, *flagSkill,
+		opts.Country, opts.Type, opts.North, opts.East, opts.Name,
+		opts.Heading, opts.Skill,
 	)
 
-	resp, exitCode := runMeVerb("group_create_vehicle", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("group_create_vehicle", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

@@ -7,8 +7,35 @@ import (
 	"time"
 )
 
+type meGroupSetFormationOpts struct {
+	Name       string
+	ID         int
+	Formation  string
+	Waypoint   int
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meGroupSetFormationFlags() (*flag.FlagSet, *meGroupSetFormationOpts) {
+	opts := &meGroupSetFormationOpts{}
+	fs := flag.NewFlagSet("me group set-formation", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "group name (mutually exclusive with --id)")
+	fs.IntVar(&opts.ID, "id", 0, "group id (mutually exclusive with --name)")
+	fs.StringVar(&opts.Formation, "formation", "", "formation alias (vee/cone/rank/...) or a DB.templates name (Custom)")
+	fs.IntVar(&opts.Waypoint, "waypoint", 1, "waypoint index (1-based); default 1")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("group", "set-formation", meGroupSetFormationCmd)
+	registerMeInfo("group", "set-formation", cmdInfo{
+		Run:      meGroupSetFormationCmd,
+		Flags:    flagsOnly(meGroupSetFormationFlags),
+		Synopsis: "set a group's formation",
+	})
 }
 
 // meGroupSetFormationCmd implements
@@ -23,47 +50,38 @@ func init() {
 // Refused on plane / helicopter (formation is per-task, not yet exposed),
 // ship (only turningPoint is valid), and static (no route).
 func meGroupSetFormationCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me group set-formation", flag.ContinueOnError)
+	fs, opts := meGroupSetFormationFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "group name (mutually exclusive with --id)")
-		flagID         = fs.Int("id", 0, "group id (mutually exclusive with --name)")
-		flagFormation  = fs.String("formation", "", "formation alias (vee/cone/rank/...) or a DB.templates name (Custom)")
-		flagWaypoint   = fs.Int("waypoint", 1, "waypoint index (1-based); default 1")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	hasName := *flagName != ""
-	hasID := *flagID != 0
+	hasName := opts.Name != ""
+	hasID := opts.ID != 0
 	if hasName == hasID {
 		fmt.Fprintln(stderr, "dcs-sms me group set-formation: exactly one of --name or --id is required")
 		return 2
 	}
-	if *flagFormation == "" {
+	if opts.Formation == "" {
 		fmt.Fprintln(stderr, "dcs-sms me group set-formation: --formation is required")
 		return 2
 	}
-	if *flagWaypoint < 1 {
+	if opts.Waypoint < 1 {
 		fmt.Fprintln(stderr, "dcs-sms me group set-formation: --waypoint must be >= 1")
 		return 2
 	}
 
 	var idClause string
 	if hasName {
-		idClause = fmt.Sprintf("name = %q", *flagName)
+		idClause = fmt.Sprintf("name = %q", opts.Name)
 	} else {
-		idClause = fmt.Sprintf("id = %d", *flagID)
+		idClause = fmt.Sprintf("id = %d", opts.ID)
 	}
 	luaArgs := fmt.Sprintf("{ %s, formation = %q, waypoint = %d }",
-		idClause, *flagFormation, *flagWaypoint)
+		idClause, opts.Formation, opts.Waypoint)
 
-	resp, exitCode := runMeVerb("group_set_formation", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("group_set_formation", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

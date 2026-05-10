@@ -8,8 +8,53 @@ import (
 	"time"
 )
 
+type meGroupAddUnitOpts struct {
+	Group       string
+	GroupID     int
+	Type        string
+	OffsetNorth float64
+	OffsetEast  float64
+	Skill       string
+	Livery      string
+	Heading     float64
+	Alt         float64
+	AltType     string
+	OnboardNum  string
+	Callsign    string
+	Frequency   float64
+	Timeout     time.Duration
+	Pretty      bool
+	SavedGames  string
+}
+
+func meGroupAddUnitFlags() (*flag.FlagSet, *meGroupAddUnitOpts) {
+	opts := &meGroupAddUnitOpts{}
+	fs := flag.NewFlagSet("me group add-unit", flag.ContinueOnError)
+	fs.StringVar(&opts.Group, "group", "", "group name (mutually exclusive with --group-id)")
+	fs.IntVar(&opts.GroupID, "group-id", 0, "group id (mutually exclusive with --group)")
+	fs.StringVar(&opts.Type, "type", "", "unit type (defaults to last unit's type)")
+	fs.Float64Var(&opts.OffsetNorth, "offset-north", 0, "meters north of group anchor (positive = north)")
+	fs.Float64Var(&opts.OffsetEast, "offset-east", 0, "meters east of group anchor (positive = east)")
+	fs.StringVar(&opts.Skill, "skill", "", "AI skill (defaults to last unit's)")
+	fs.StringVar(&opts.Livery, "livery", "", "livery id (defaults to last unit's)")
+	fs.Float64Var(&opts.Heading, "heading", 0, "heading in degrees (defaults to last unit's)")
+	fs.Float64Var(&opts.Alt, "alt", 0, "altitude in meters (air only; defaults to last unit's)")
+	fs.StringVar(&opts.AltType, "alt-type", "", "BARO | RADIO (air only; defaults to last unit's)")
+	fs.StringVar(&opts.OnboardNum, "onboard-num", "", "onboard number (insert_unit auto-allocates if empty)")
+	fs.StringVar(&opts.Callsign, "callsign", "", "radio callsign label (auto-allocates if empty)")
+	fs.Float64Var(&opts.Frequency, "frequency", 0, "frequency MHz (ship only)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("group", "add-unit", meGroupAddUnitCmd)
+	registerMeInfo("group", "add-unit", cmdInfo{
+		Run:      meGroupAddUnitCmd,
+		Flags:    flagsOnly(meGroupAddUnitFlags),
+		Synopsis: "add a unit to an existing group",
+	})
 }
 
 // meGroupAddUnitCmd implements `dcs-sms me group add-unit --group <X> [...]`.
@@ -38,31 +83,13 @@ func init() {
 // respect per-unit positions verbatim. (A future `me group set-formation`
 // would be the right knob for air-group runtime layout.)
 func meGroupAddUnitCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me group add-unit", flag.ContinueOnError)
+	fs, opts := meGroupAddUnitFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagGroup       = fs.String("group", "", "group name (mutually exclusive with --group-id)")
-		flagGroupID     = fs.Int("group-id", 0, "group id (mutually exclusive with --group)")
-		flagType        = fs.String("type", "", "unit type (defaults to last unit's type)")
-		flagOffsetN     = fs.Float64("offset-north", 0, "meters north of group anchor (positive = north)")
-		flagOffsetE     = fs.Float64("offset-east", 0, "meters east of group anchor (positive = east)")
-		flagSkill       = fs.String("skill", "", "AI skill (defaults to last unit's)")
-		flagLivery      = fs.String("livery", "", "livery id (defaults to last unit's)")
-		flagHeading     = fs.Float64("heading", 0, "heading in degrees (defaults to last unit's)")
-		flagAlt         = fs.Float64("alt", 0, "altitude in meters (air only; defaults to last unit's)")
-		flagAltType     = fs.String("alt-type", "", "BARO | RADIO (air only; defaults to last unit's)")
-		flagOnboardNum  = fs.String("onboard-num", "", "onboard number (insert_unit auto-allocates if empty)")
-		flagCallsign    = fs.String("callsign", "", "radio callsign label (auto-allocates if empty)")
-		flagFrequency   = fs.Float64("frequency", 0, "frequency MHz (ship only)")
-		flagTimeout     = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty      = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames  = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	hasGroup := *flagGroup != ""
-	hasGroupID := *flagGroupID != 0
+	hasGroup := opts.Group != ""
+	hasGroupID := opts.GroupID != 0
 	if hasGroup == hasGroupID {
 		fmt.Fprintln(stderr, "dcs-sms me group add-unit: exactly one of --group or --group-id is required")
 		return 2
@@ -71,9 +98,9 @@ func meGroupAddUnitCmd(args []string, stdout, stderr io.Writer) int {
 	// Selector clause for the group target.
 	var groupClause string
 	if hasGroup {
-		groupClause = fmt.Sprintf("name = %q", *flagGroup)
+		groupClause = fmt.Sprintf("name = %q", opts.Group)
 	} else {
-		groupClause = fmt.Sprintf("id = %d", *flagGroupID)
+		groupClause = fmt.Sprintf("id = %d", opts.GroupID)
 	}
 
 	// Build the optional-args section. Lua-side handles nil-semantics; we
@@ -83,51 +110,51 @@ func meGroupAddUnitCmd(args []string, stdout, stderr io.Writer) int {
 	visited := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { visited[f.Name] = true })
 
-	if *flagType != "" {
-		parts = append(parts, fmt.Sprintf("type = %q", *flagType))
+	if opts.Type != "" {
+		parts = append(parts, fmt.Sprintf("type = %q", opts.Type))
 	}
 	if visited["offset-north"] {
-		parts = append(parts, fmt.Sprintf("offset_north = %g", *flagOffsetN))
+		parts = append(parts, fmt.Sprintf("offset_north = %g", opts.OffsetNorth))
 	}
 	if visited["offset-east"] {
-		parts = append(parts, fmt.Sprintf("offset_east = %g", *flagOffsetE))
+		parts = append(parts, fmt.Sprintf("offset_east = %g", opts.OffsetEast))
 	}
-	if *flagSkill != "" {
-		parts = append(parts, fmt.Sprintf("skill = %q", *flagSkill))
+	if opts.Skill != "" {
+		parts = append(parts, fmt.Sprintf("skill = %q", opts.Skill))
 	}
 	if visited["livery"] {
 		// Allow explicit empty string (= "default") via --livery="".
-		parts = append(parts, fmt.Sprintf("livery = %q", *flagLivery))
+		parts = append(parts, fmt.Sprintf("livery = %q", opts.Livery))
 	}
 	if visited["heading"] {
-		parts = append(parts, fmt.Sprintf("heading_deg = %g", *flagHeading))
+		parts = append(parts, fmt.Sprintf("heading_deg = %g", opts.Heading))
 	}
 	if visited["alt"] {
-		parts = append(parts, fmt.Sprintf("alt = %g", *flagAlt))
+		parts = append(parts, fmt.Sprintf("alt = %g", opts.Alt))
 	}
-	if *flagAltType != "" {
-		altType := strings.ToUpper(*flagAltType)
+	if opts.AltType != "" {
+		altType := strings.ToUpper(opts.AltType)
 		if altType != "BARO" && altType != "RADIO" {
 			fmt.Fprintln(stderr, "dcs-sms me group add-unit: --alt-type must be BARO or RADIO")
 			return 2
 		}
 		parts = append(parts, fmt.Sprintf("alt_type = %q", altType))
 	}
-	if *flagOnboardNum != "" {
-		parts = append(parts, fmt.Sprintf("onboard_num = %q", *flagOnboardNum))
+	if opts.OnboardNum != "" {
+		parts = append(parts, fmt.Sprintf("onboard_num = %q", opts.OnboardNum))
 	}
-	if *flagCallsign != "" {
-		parts = append(parts, fmt.Sprintf("callsign = %q", *flagCallsign))
+	if opts.Callsign != "" {
+		parts = append(parts, fmt.Sprintf("callsign = %q", opts.Callsign))
 	}
 	if visited["frequency"] {
-		parts = append(parts, fmt.Sprintf("frequency = %g", *flagFrequency))
+		parts = append(parts, fmt.Sprintf("frequency = %g", opts.Frequency))
 	}
 
 	luaArgs := "{ " + strings.Join(parts, ", ") + " }"
 
-	resp, exitCode := runMeVerb("group_add_unit", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("group_add_unit", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

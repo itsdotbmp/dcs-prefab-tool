@@ -7,8 +7,31 @@ import (
 	"time"
 )
 
+type meGroupRemoveOpts struct {
+	Name       string
+	ID         int
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meGroupRemoveFlags() (*flag.FlagSet, *meGroupRemoveOpts) {
+	opts := &meGroupRemoveOpts{}
+	fs := flag.NewFlagSet("me group remove", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "group name (exact match)")
+	fs.IntVar(&opts.ID, "id", 0, "groupId (numeric)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("group", "remove", meGroupRemoveCmd)
+	registerMeInfo("group", "remove", cmdInfo{
+		Run:      meGroupRemoveCmd,
+		Flags:    flagsOnly(meGroupRemoveFlags),
+		Synopsis: "delete a group from the open mission",
+	})
 }
 
 // meGroupRemoveCmd implements `dcs-sms me group remove --name <name> | --id <n>`.
@@ -18,20 +41,13 @@ func init() {
 // Note: groupIds and unitIds are NOT reused after remove (they increment
 // monotonically), so a fresh inject afterwards will land at id+1, not id.
 func meGroupRemoveCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me group remove", flag.ContinueOnError)
+	fs, opts := meGroupRemoveFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagName       = fs.String("name", "", "group name (exact match)")
-		flagID         = fs.Int("id", 0, "groupId (numeric)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	hasName := *flagName != ""
-	hasID := *flagID != 0
+	hasName := opts.Name != ""
+	hasID := opts.ID != 0
 	if hasName == hasID { // both or neither
 		fmt.Fprintln(stderr, "dcs-sms me group remove: pass exactly one of --name or --id")
 		return 2
@@ -39,14 +55,14 @@ func meGroupRemoveCmd(args []string, stdout, stderr io.Writer) int {
 
 	var luaArgs string
 	if hasName {
-		luaArgs = fmt.Sprintf("{ name = %q }", *flagName)
+		luaArgs = fmt.Sprintf("{ name = %q }", opts.Name)
 	} else {
-		luaArgs = fmt.Sprintf("{ id = %d }", *flagID)
+		luaArgs = fmt.Sprintf("{ id = %d }", opts.ID)
 	}
 
-	resp, exitCode := runMeVerb("group_remove", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("group_remove", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

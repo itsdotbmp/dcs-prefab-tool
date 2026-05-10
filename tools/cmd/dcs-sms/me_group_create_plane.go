@@ -7,8 +7,53 @@ import (
 	"time"
 )
 
+type meGroupCreatePlaneOpts struct {
+	Country    string
+	Type       string
+	North      float64
+	East       float64
+	Name       string
+	Alt        float64
+	AltType    string
+	Speed      float64
+	Heading    float64
+	Skill      string
+	Livery     string
+	Frequency  float64
+	OnboardNum string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meGroupCreatePlaneFlags() (*flag.FlagSet, *meGroupCreatePlaneOpts) {
+	opts := &meGroupCreatePlaneOpts{}
+	fs := flag.NewFlagSet("me group create-plane", flag.ContinueOnError)
+	fs.StringVar(&opts.Country, "country", "", "country name in current mission (e.g. USA, Russia)")
+	fs.StringVar(&opts.Type, "type", "", "airframe id (e.g. F-16C_50, Su-27)")
+	fs.Float64Var(&opts.North, "north", 0, "meters north of theatre origin (north positive)")
+	fs.Float64Var(&opts.East, "east", 0, "meters east of theatre origin (east positive)")
+	fs.StringVar(&opts.Name, "name", "", "group name (auto-allocated if empty)")
+	fs.Float64Var(&opts.Alt, "alt", 8000, "altitude in meters above sea level")
+	fs.StringVar(&opts.AltType, "alt-type", "BARO", "altitude reference: BARO or RADIO")
+	fs.Float64Var(&opts.Speed, "speed", 220, "speed in m/s")
+	fs.Float64Var(&opts.Heading, "heading", 0, "heading in degrees (0 = north, CW positive)")
+	fs.StringVar(&opts.Skill, "skill", "Average", "AI skill: Average, Good, High, Excellent, Random, Player")
+	fs.StringVar(&opts.Livery, "livery", "", "livery id ('' = default)")
+	fs.Float64Var(&opts.Frequency, "frequency", 251, "radio frequency MHz")
+	fs.StringVar(&opts.OnboardNum, "onboard-num", "010", "onboard number (display only)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("group", "create-plane", meGroupCreatePlaneCmd)
+	registerMeInfo("group", "create-plane", cmdInfo{
+		Run:      meGroupCreatePlaneCmd,
+		Flags:    flagsOnly(meGroupCreatePlaneFlags),
+		Synopsis: "spawn a new plane group at the given coordinates",
+	})
 }
 
 // meGroupCreatePlaneCmd implements
@@ -32,34 +77,16 @@ func init() {
 // --map <theatre>` sets DCS defaults that include the usual Red/Blue
 // countries for that theatre.
 func meGroupCreatePlaneCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me group create-plane", flag.ContinueOnError)
+	fs, opts := meGroupCreatePlaneFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagCountry    = fs.String("country", "", "country name in current mission (e.g. USA, Russia)")
-		flagType       = fs.String("type", "", "airframe id (e.g. F-16C_50, Su-27)")
-		flagNorth      = fs.Float64("north", 0, "meters north of theatre origin (north positive)")
-		flagEast       = fs.Float64("east", 0, "meters east of theatre origin (east positive)")
-		flagName       = fs.String("name", "", "group name (auto-allocated if empty)")
-		flagAlt        = fs.Float64("alt", 8000, "altitude in meters above sea level")
-		flagAltType    = fs.String("alt-type", "BARO", "altitude reference: BARO or RADIO")
-		flagSpeed      = fs.Float64("speed", 220, "speed in m/s")
-		flagHeading    = fs.Float64("heading", 0, "heading in degrees (0 = north, CW positive)")
-		flagSkill      = fs.String("skill", "Average", "AI skill: Average, Good, High, Excellent, Random, Player")
-		flagLivery     = fs.String("livery", "", "livery id ('' = default)")
-		flagFreq       = fs.Float64("frequency", 251, "radio frequency MHz")
-		flagOnboard    = fs.String("onboard-num", "010", "onboard number (display only)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *flagCountry == "" {
+	if opts.Country == "" {
 		fmt.Fprintln(stderr, "dcs-sms me group create-plane: --country is required")
 		return 2
 	}
-	if *flagType == "" {
+	if opts.Type == "" {
 		fmt.Fprintln(stderr, "dcs-sms me group create-plane: --type is required")
 		return 2
 	}
@@ -70,14 +97,14 @@ func meGroupCreatePlaneCmd(args []string, stdout, stderr io.Writer) int {
 		"{ country = %q, type = %q, north = %g, east = %g, name = %q, "+
 			"alt = %g, alt_type = %q, speed = %g, heading_deg = %g, "+
 			"skill = %q, livery = %q, frequency = %g, onboard_num = %q }",
-		*flagCountry, *flagType, *flagNorth, *flagEast, *flagName,
-		*flagAlt, *flagAltType, *flagSpeed, *flagHeading,
-		*flagSkill, *flagLivery, *flagFreq, *flagOnboard,
+		opts.Country, opts.Type, opts.North, opts.East, opts.Name,
+		opts.Alt, opts.AltType, opts.Speed, opts.Heading,
+		opts.Skill, opts.Livery, opts.Frequency, opts.OnboardNum,
 	)
 
-	resp, exitCode := runMeVerb("group_create_plane", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("group_create_plane", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }

@@ -8,8 +8,35 @@ import (
 	"time"
 )
 
+type meGroupListOpts struct {
+	Side       string
+	Country    string
+	Category   string
+	Name       string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meGroupListFlags() (*flag.FlagSet, *meGroupListOpts) {
+	opts := &meGroupListOpts{}
+	fs := flag.NewFlagSet("me group list", flag.ContinueOnError)
+	fs.StringVar(&opts.Side, "side", "", "filter by side: red | blue | neutrals")
+	fs.StringVar(&opts.Country, "country", "", "filter by country (case-insensitive exact match)")
+	fs.StringVar(&opts.Category, "category", "", "filter by category: plane | helicopter | vehicle | ship | static")
+	fs.StringVar(&opts.Name, "name", "", "filter by group-name substring (case-insensitive)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	registerMe("group", "list", meGroupListCmd)
+	registerMeInfo("group", "list", cmdInfo{
+		Run:      meGroupListCmd,
+		Flags:    flagsOnly(meGroupListFlags),
+		Synopsis: "list all groups in the open mission",
+	})
 }
 
 // meGroupListCmd implements `dcs-sms me group list [--side --country --category --name]`.
@@ -17,39 +44,30 @@ func init() {
 // Returns concise group summaries. All filter flags are optional and AND-combined.
 // For full mission-table detail of one group, use `me group get`.
 func meGroupListCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("me group list", flag.ContinueOnError)
+	fs, opts := meGroupListFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagSide       = fs.String("side", "", "filter by side: red | blue | neutrals")
-		flagCountry    = fs.String("country", "", "filter by country (case-insensitive exact match)")
-		flagCategory   = fs.String("category", "", "filter by category: plane | helicopter | vehicle | ship | static")
-		flagName       = fs.String("name", "", "filter by group-name substring (case-insensitive)")
-		flagTimeout    = fs.Duration("timeout", 30*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
 	var parts []string
-	if *flagSide != "" {
-		parts = append(parts, fmt.Sprintf("side = %q", strings.ToLower(*flagSide)))
+	if opts.Side != "" {
+		parts = append(parts, fmt.Sprintf("side = %q", strings.ToLower(opts.Side)))
 	}
-	if *flagCountry != "" {
-		parts = append(parts, fmt.Sprintf("country = %q", *flagCountry))
+	if opts.Country != "" {
+		parts = append(parts, fmt.Sprintf("country = %q", opts.Country))
 	}
-	if *flagCategory != "" {
-		parts = append(parts, fmt.Sprintf("category = %q", strings.ToLower(*flagCategory)))
+	if opts.Category != "" {
+		parts = append(parts, fmt.Sprintf("category = %q", strings.ToLower(opts.Category)))
 	}
-	if *flagName != "" {
-		parts = append(parts, fmt.Sprintf("name = %q", *flagName))
+	if opts.Name != "" {
+		parts = append(parts, fmt.Sprintf("name = %q", opts.Name))
 	}
 	luaArgs := "{ " + strings.Join(parts, ", ") + " }"
 
-	resp, exitCode := runMeVerb("group_list", luaArgs, *flagTimeout, *flagSavedGames, stderr)
+	resp, exitCode := runMeVerb("group_list", luaArgs, opts.Timeout, opts.SavedGames, stderr)
 	if exitCode != 0 {
 		return exitCode
 	}
-	return emitMeResponse(resp, *flagPretty, stdout)
+	return emitMeResponse(resp, opts.Pretty, stdout)
 }
