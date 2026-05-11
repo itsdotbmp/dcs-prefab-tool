@@ -177,4 +177,31 @@ function M.remove_waypoint(group, index)
     end
 end
 
+-- move_waypoint — mock stand-in for MapWindow.move_waypoint. Updates the
+-- data side: wpt.x/wpt.y and vehicle route.spans. Real ME also moves map
+-- symbols, number labels, child units, etc. — tests only care about data.
+-- Same module is registered as both 'me_mission' and 'me_map_window' via
+-- package.preload in test_verbs_route.lua, so require('me_map_window')
+-- inside verbs.lua resolves to this table.
+function M.move_waypoint(group, index, x, y, dontMoveLinked, doNotUpdateRoute, dontMoveChild, dontRelativePos, noCheckSurface)
+    local wpt = group.route.points[index]
+    if not wpt then return end
+    wpt.x = x
+    wpt.y = y
+    if group.route.spans and #group.route.spans > 0 then
+        local spans = group.route.spans
+        if index > 1 then
+            local p = group.route.points[index - 1]
+            spans[index - 1] = { { x = p.x, y = p.y }, { x = x, y = y } }
+        end
+        if index < #group.route.points then
+            local p = group.route.points[index + 1]
+            spans[index] = { { x = x, y = y }, { x = p.x, y = p.y } }
+        end
+        if index == #group.route.points then
+            spans[index] = { { x = x, y = y }, { x = x, y = y } }
+        end
+    end
+end
+
 return M

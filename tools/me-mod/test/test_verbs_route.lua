@@ -12,9 +12,13 @@ local here = (arg and arg[0] and arg[0]:match('^(.*[\\/])')) or './'
 package.path = here .. '?.lua;' .. package.path
 
 -- Inject the mock BEFORE requiring verbs.lua so the verbs' calls to
--- require('me_mission') return our mock.
+-- require('me_mission') / require('me_map_window') return our mock.
+-- The same table services both: me_mission methods (insert_waypoint,
+-- remove_waypoint, update_group_map_objects, …) and me_map_window
+-- methods (move_waypoint) coexist as fields on the mock module.
 local mock = require('mock_me_mission')
-package.preload['me_mission'] = function() return mock end
+package.preload['me_mission']    = function() return mock end
+package.preload['me_map_window'] = function() return mock end
 
 -- verbs.lua lives under tools/me-mod/lua/dcs_sms_me/. Adjust path so its
 -- 'dcs_sms_me.*' requires resolve. The bridge installer copies these
@@ -483,6 +487,49 @@ local function test_set_formation()
     assert_eq(g.route.points[2].formation_template, 'Diamond', 'set_formation: applied')
 end
 
+local function test_set_pos_vehicle_first_wp_updates_span()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'vh1' })
+    g.route.points[1].x = 0
+    g.route.points[1].y = 0
+    table.insert(g.route.points, mock.make_waypoint('vehicle', { x = 1000, y = 0 }))
+    g.route.spans = {
+        { { x = 0, y = 0 }, { x = 1000, y = 0 } },
+        { { x = 1000, y = 0 }, { x = 1000, y = 0 } },
+    }
+    local r = verbs.waypoint_set_pos({ name = 'vh1', index = 0, north = 500, east = 500 })
+    assert_true(r.ok, 'set_pos vehicle WP 0: ok')
+    assert_eq(g.route.points[1].x, 500, 'set_pos vehicle WP 0: wpt.x updated')
+    assert_eq(g.route.spans[1][1].x, 500, 'set_pos vehicle WP 0: spans[1] start x updated')
+    assert_eq(g.route.spans[1][1].y, 500, 'set_pos vehicle WP 0: spans[1] start y updated')
+    assert_eq(g.route.spans[1][2].x, 1000, 'set_pos vehicle WP 0: spans[1] end x preserved')
+end
+
+local function test_set_pos_vehicle_middle_wp_updates_both_spans()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'vh2' })
+    g.route.points[1].x = 0
+    g.route.points[1].y = 0
+    table.insert(g.route.points, mock.make_waypoint('vehicle', { x = 1000, y = 0 }))
+    table.insert(g.route.points, mock.make_waypoint('vehicle', { x = 2000, y = 0 }))
+    g.route.spans = {
+        { { x = 0, y = 0 }, { x = 1000, y = 0 } },
+        { { x = 1000, y = 0 }, { x = 2000, y = 0 } },
+        { { x = 2000, y = 0 }, { x = 2000, y = 0 } },
+    }
+    local r = verbs.waypoint_set_pos({ name = 'vh2', index = 1, north = 500, east = 500 })
+    assert_true(r.ok, 'set_pos vehicle middle WP: ok')
+    assert_eq(g.route.points[2].x, 500, 'set_pos vehicle middle: wpt.x updated')
+    -- spans[1] endpoint (segment from WP 0 to WP 1) gets the new pos
+    assert_eq(g.route.spans[1][2].x, 500, 'set_pos vehicle middle: prev-span end x updated')
+    assert_eq(g.route.spans[1][2].y, 500, 'set_pos vehicle middle: prev-span end y updated')
+    -- spans[2] startpoint (segment from WP 1 to WP 2) gets the new pos
+    assert_eq(g.route.spans[2][1].x, 500, 'set_pos vehicle middle: next-span start x updated')
+    assert_eq(g.route.spans[2][1].y, 500, 'set_pos vehicle middle: next-span start y updated')
+    -- spans[2] endpoint preserved (still at WP 2)
+    assert_eq(g.route.spans[2][2].x, 2000, 'set_pos vehicle middle: next-span end x preserved')
+end
+
 local function test_task_preservation_on_setters()
     local g = _setup_plane_route('tp2')
     g.route.points[1].task.params.tasks = { { id = 'Orbit', params = { alt = 500 } } }
@@ -523,7 +570,10 @@ test_waypoint_remove_ground_last_allowed()
 test_task_preservation_on_neighbor_after_add()
 test_set_pos(); test_set_alt(); test_set_speed(); test_set_type(); test_set_action()
 test_set_name(); test_set_eta(); test_set_speed_locked(); test_set_eta_locked()
-test_set_formation(); test_task_preservation_on_setters()
+test_set_formation()
+test_set_pos_vehicle_first_wp_updates_span()
+test_set_pos_vehicle_middle_wp_updates_both_spans()
+test_task_preservation_on_setters()
 
 print(string.format('test_verbs_route: %d passed, %d failed', passed, failed))
 for _, e in ipairs(errors) do print('  FAIL: ' .. e) end

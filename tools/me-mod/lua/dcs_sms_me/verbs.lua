@@ -6057,7 +6057,30 @@ function M.waypoint_set_pos(args)
     end
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
-    wp.x = args.north; wp.y = args.east
+    -- Delegate to ME-native MapWindow.move_waypoint which handles all the
+    -- side effects: updates wpt.x/y, rebuilds route.spans (vehicles),
+    -- moves the map symbol + number label, updates numberFirst for WP 0,
+    -- moves target lines, and (for WP 0) moves the group origin + child
+    -- units. Manual wp.x/wp.y assignment leaves spans and map symbols
+    -- stale — visible as a "ghost corner" in the route line until the
+    -- user nudges another waypoint.
+    --
+    -- noCheckSurface=true: CLI/agent callers know where they want the WP;
+    -- surface validation belongs in the caller, not the bridge (and would
+    -- otherwise silently no-op the move).
+    ensure_map_objects(g)
+    pcall(function()
+        local MapWindow = require('me_map_window')
+        if type(MapWindow.move_waypoint) == 'function' then
+            MapWindow.move_waypoint(g, args.index + 1,
+                args.north, args.east, nil, nil, nil, nil, true)
+        end
+    end)
+    -- Defense in depth: if MapWindow.move_waypoint was unavailable (rare)
+    -- or returned early (linkUnit edge cases), make sure the data side is
+    -- still updated so the .miz save reflects the request.
+    wp.x = args.north
+    wp.y = args.east
     refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, north = wp.x, east = wp.y }
