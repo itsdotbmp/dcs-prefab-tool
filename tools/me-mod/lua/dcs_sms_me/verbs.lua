@@ -6620,4 +6620,131 @@ function M.route_clear(args)
     return { ok = true, group = g.name, points_removed = previous }
 end
 
+-- ============================================================
+-- Unit ↔ airbase parking verb
+-- ============================================================
+--
+-- Lives down here (not in the unit verb block) because it reaches into
+-- the airbase helpers (_airbase_find_by_name) and the route-block locals
+-- (AIRFIELD_TYPES, ensure_map_objects, refresh_route_panel). Those are
+-- declared later in the file than the rest of the unit verbs; Lua 5.1's
+-- lexical scoping means a function referencing them must come AFTER
+-- their declaration.
+
+-- unit_set_parking — pin a unit to a specific named parking stand at an
+-- airbase. Sets unit.parking (the road-network crossroad index DCS uses
+-- internally) AND unit.parking_id (the human-facing stand name shown in
+-- the ME, e.g. "08"), then moves the unit symbol to the stand position
+-- via MapWindow.move_unit.
+--
+-- For the LEAD unit of an air group whose WP 0 is already a takeoff/
+-- landing type, this also updates WP 0's position + airdromeId so the
+-- waypoint and the unit don't drift apart at save time.
+--
+-- Validates that the stand's category matches the unit's group category
+-- (plane stand for planes, helicopter pad for helos) — refuses with a
+-- discriminating error rather than silently writing a mismatched
+-- parking_id that DCS would later reject.
+function M.unit_set_parking(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'unit_set_parking requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'unit_set_parking requires exactly one of args.name or args.id' }
+    end
+    if type(args.airbase) ~= 'string' or args.airbase == '' then
+        return { ok = false, error = 'unit_set_parking requires args.airbase (string)' }
+    end
+    if type(args.stand) ~= 'string' or args.stand == '' then
+        return { ok = false, error = 'unit_set_parking requires args.stand (string, stand name e.g. "08")' }
+    end
+    local u, g, _, _, cat = find_unit_in_mission(
+        has_name and args.name or nil, has_id and args.id or nil)
+    if not u then
+        return { ok = false, error = 'unit not found' }
+    end
+    local ad = _airbase_find_by_name(args.airbase)
+    if not ad then
+        return { ok = false, error = "no airbase matching '" .. tostring(args.airbase) .. "'" }
+    end
+    local airdrome_number = ad.getAirdromeNumber and ad:getAirdromeNumber() or nil
+    if type(airdrome_number) ~= 'number' then
+        return { ok = false, error = "airbase '" .. args.airbase .. "' has no airdrome number" }
+    end
+    local roadnet
+    local rn_ok = pcall(function() roadnet = ad:getRoadnet() end)
+    if not rn_ok or not roadnet then
+        return { ok = false, error = "airbase '" .. args.airbase .. "' has no roadnet" }
+    end
+    local mp_ok, mp = pcall(require, 'me_parking')
+    if not mp_ok or type(mp.getStandList) ~= 'function' then
+        return { ok = false, error = 'me_parking.getStandList unavailable' }
+    end
+    local sl_ok, stands = pcall(mp.getStandList, roadnet)
+    if not sl_ok or type(stands) ~= 'table' then
+        return { ok = false, error = 'me_parking.getStandList failed' }
+    end
+    local match
+    for _, s in pairs(stands) do
+        if s.name == args.stand then match = s; break end
+    end
+    if not match then
+        return { ok = false, error = "no stand named '" .. args.stand
+                .. "' at airbase '" .. ad:getName() .. "'" }
+    end
+    local sp = match.params or {}
+    local for_planes = (tonumber(sp.FOR_AIRPLANES) or 0) ~= 0
+    local for_helicopters = (tonumber(sp.FOR_HELICOPTERS) or 0) ~= 0
+    if cat == 'plane' and not for_planes then
+        return { ok = false, error = "stand '" .. args.stand .. "' at "
+                .. ad:getName() .. " is not plane-capable" }
+    end
+    if cat == 'helicopter' and not for_helicopters then
+        return { ok = false, error = "stand '" .. args.stand .. "' at "
+                .. ad:getName() .. " is not helicopter-capable" }
+    end
+    u.parking    = match.crossroad_index
+    u.parking_id = match.name
+    ensure_map_objects(g)
+    pcall(function()
+        local MapWindow = require('me_map_window')
+        if type(MapWindow.move_unit) == 'function' then
+            -- Args: (group, unit, x, y, doNotRedraw, noCheckSurface)
+            MapWindow.move_unit(g, u, match.x, match.y, false, true)
+        end
+    end)
+    u.x = match.x
+    u.y = match.y
+    -- If this is the lead of an air group with a takeoff/landing WP 0,
+    -- align WP 0 to the same stand so save+reload doesn't see drift.
+    local lead = g.units and g.units[1]
+    if lead and lead.unitId == u.unitId and g.route and g.route.points and g.route.points[1] then
+        local wp0 = g.route.points[1]
+        local wp_type_str = type(wp0.type) == 'string' and wp0.type
+                or (type(wp0.type) == 'table' and wp0.type.type) or ''
+        if AIRFIELD_TYPES[wp_type_str] then
+            wp0.x               = match.x
+            wp0.y               = match.y
+            wp0.airdromeId      = airdrome_number
+            wp0.helipadId       = nil
+            wp0.grassAirfieldId = nil
+        end
+    end
+    refresh_route_panel()
+    refresh_group_view(g)
+    return {
+        ok = true,
+        group = g.name,
+        unit = u.name,
+        unit_id = u.unitId,
+        airbase = ad:getName(),
+        airdromeId = airdrome_number,
+        stand = match.name,
+        crossroad_index = match.crossroad_index,
+        north = u.x, east = u.y,
+    }
+end
+
 return M
