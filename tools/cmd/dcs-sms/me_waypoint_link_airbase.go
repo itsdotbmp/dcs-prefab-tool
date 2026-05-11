@@ -28,8 +28,12 @@ func meWaypointLinkAirbaseFlags() (*flag.FlagSet, *meWaypointLinkAirbaseOpts) {
 	fs.StringVar(&opts.Airbase, "airbase", "",
 		"airbase name (case-insensitive, exact preferred, substring fallback). "+
 			"Sets wpt.airdromeId, moves the waypoint to the airbase position, "+
-			"and clears any conflicting helipad/grass-strip linkage. Pair with "+
-			"`set-mode Landing` (or Takeoff*) to specify the flight phase.")
+			"and clears any conflicting helipad/grass-strip linkage. For "+
+			"TakeOffParking / TakeOffParkingHot waypoints, ALSO positions each "+
+			"unit at a parking stand at the airbase (via me_parking). For "+
+			"TakeOff (runway), positions the group at the runway threshold. "+
+			"Pair with `set-mode Landing` (or Takeoff*) to specify the flight "+
+			"phase first.")
 	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
 	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
 	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")

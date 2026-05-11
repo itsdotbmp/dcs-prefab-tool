@@ -6238,11 +6238,18 @@ function M.waypoint_set_mode(args)
     return { ok = true, group = g.name, index = args.index, type = wp.type, action = wp.action }
 end
 
--- waypoint_link_airbase — set wpt.airdromeId to a specific airbase by name,
--- move the waypoint to that airbase's position, and clear any conflicting
--- helipad/grass-strip linkage. Doesn't change wpt.type — caller pairs this
--- with set-mode Landing / TakeOff* etc. as needed. For helipads or
--- grass strips, see (future) waypoint_link_helipad.
+-- waypoint_link_airbase — link a waypoint to a specific airbase by name.
+-- Moves the waypoint to the airbase position, sets wpt.airdromeId, clears
+-- any conflicting helipad/grass-strip/moving-unit linkage, and for
+-- takeoff-type waypoints ALSO calls the ME's me_parking primitive that
+-- positions each unit at a parking stand or runway threshold (without
+-- which the planes spawn at their old coordinates regardless of
+-- airdromeId — visible as a takeoff WP linked to an airbase but units
+-- floating off the ramp).
+--
+-- Doesn't auto-change wpt.type — caller pairs this with set-mode Landing
+-- / TakeOff* as appropriate. For helipads, FARPs, grass strips, ship
+-- decks: a future link-helipad / link-ship verb will handle those.
 function M.waypoint_link_airbase(args)
     if type(args) ~= 'table' then return { ok = false, error = 'waypoint_link_airbase requires args (table)' } end
     local has_name = type(args.name) == 'string' and args.name ~= ''
@@ -6254,8 +6261,6 @@ function M.waypoint_link_airbase(args)
     end
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
-    -- Use the file-local _airbase_find_by_name helper (defined above) —
-    -- handles case-insensitive exact + substring fallback.
     local ad = _airbase_find_by_name(args.airbase)
     if not ad then
         return { ok = false, error = "no airbase matching '" .. tostring(args.airbase) .. "'" }
@@ -6268,8 +6273,15 @@ function M.waypoint_link_airbase(args)
     if type(x) ~= 'number' or type(y) ~= 'number' then
         return { ok = false, error = "airbase '" .. args.airbase .. "' has no position" }
     end
-    -- Move the waypoint via the ME-native MapWindow.move_waypoint (handles
-    -- spans, map symbol, label, and child units for WP 0 the right way).
+
+    -- Determine waypoint type. wpt.type can be either a string (our wire
+    -- shape) or a panel-normalized table — handle both.
+    local wp_type_str = type(wp.type) == 'string' and wp.type
+            or (type(wp.type) == 'table' and wp.type.type) or ''
+
+    -- Move the waypoint to the airbase position via MapWindow.move_waypoint
+    -- (handles spans, symbol, label, child units for WP 0). Done first so
+    -- setAirGroupOn* in the takeoff branches see the WP at the target.
     ensure_map_objects(g)
     pcall(function()
         local MapWindow = require('me_map_window')
@@ -6279,11 +6291,37 @@ function M.waypoint_link_airbase(args)
     end)
     wp.x = x
     wp.y = y
-    -- Set the linkage, exclusive of helipad/grass-strip.
+
+    -- For TakeOffParking / TakeOffParkingHot: position each unit at a
+    -- parking stand near (x,y). For TakeOff (runway): position the group
+    -- at the runway threshold. These are the same primitives the ME UI
+    -- uses inside attractToAirfield — calling them directly works
+    -- regardless of whether wpt.type is a string or panel-table.
+    local units_positioned = false
+    if wp_type_str == 'TakeOffParking' or wp_type_str == 'TakeOffParkingHot' then
+        pcall(function()
+            local mp = require('me_parking')
+            if type(mp.setAirGroupOnAirport) == 'function' then
+                local res = mp.setAirGroupOnAirport(g, x, y)
+                if res ~= false then units_positioned = true end
+            end
+        end)
+    elseif wp_type_str == 'TakeOff' then
+        pcall(function()
+            local mp = require('me_parking')
+            if type(mp.setAirGroupOnAirportRunway) == 'function' then
+                local res = mp.setAirGroupOnAirportRunway(g, x, y)
+                if res ~= false then units_positioned = true end
+            end
+        end)
+    end
+
+    -- Force airdromeId to our target. setAirGroupOn* may have set it
+    -- already to the same value; this is idempotent. Clears conflicting
+    -- linkage types.
     wp.airdromeId      = airdrome_number
     wp.helipadId       = nil
     wp.grassAirfieldId = nil
-    -- Unlink any moving-unit linkage (e.g. carrier ops).
     if wp.linkUnit then
         pcall(function()
             local Mission = require('me_mission')
@@ -6294,9 +6332,13 @@ function M.waypoint_link_airbase(args)
     end
     refresh_route_panel()
     refresh_group_view(g)
-    return { ok = true, group = g.name, index = args.index,
-             airbase = ad:getName(), airdromeId = airdrome_number,
-             north = wp.x, east = wp.y }
+    return {
+        ok = true, group = g.name, index = args.index,
+        airbase = ad:getName(), airdromeId = airdrome_number,
+        north = wp.x, east = wp.y,
+        units_positioned = units_positioned,
+        wp_type = wp_type_str,
+    }
 end
 
 function M.waypoint_set_type(args)
