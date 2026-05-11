@@ -5711,6 +5711,18 @@ local WAYPOINT_TYPES = {
     ['On Railroads'] = true,     -- trains
 }
 
+-- Airfield-linked types — these store an airdromeId / helipadId /
+-- grassAirfieldId on the waypoint. Changing AWAY from one of these
+-- requires clearing those fields, mirroring setWPTppmDefault in
+-- me_route.lua (line 721-734); leaving them set would conflict with
+-- the new type at mission load.
+local AIRFIELD_TYPES = {
+    ['TakeOff'] = true,            ['TakeOffParking'] = true,
+    ['TakeOffParkingHot'] = true,  ['TakeOffGround'] = true,
+    ['TakeOffGroundHot'] = true,   ['Land'] = true,
+    ['LandingReFuAr'] = true,
+}
+
 local WAYPOINT_ACTIONS = {
     -- Air actions
     ['Turning Point'] = true,        ['Fly Over Point'] = true,
@@ -6155,7 +6167,29 @@ function M.waypoint_set_type(args)
     end
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
+    -- Detect a transition AWAY from an airfield-linked type. The ME UI
+    -- clears airdromeId / helipadId / grassAirfieldId and unlinks any
+    -- bound unit in this case (me_route.lua setWPTppmDefault, ~line 721).
+    -- Skipping that cleanup leaves stale linkage in the .miz that
+    -- conflicts with the new type at mission load.
+    local old_type = type(wp.type) == 'string' and wp.type
+            or (type(wp.type) == 'table' and wp.type.type) or ''
+    local old_was_airfield = AIRFIELD_TYPES[old_type] == true
+    local new_is_airfield = AIRFIELD_TYPES[args.wp_type] == true
     wp.type = args.wp_type
+    if old_was_airfield and not new_is_airfield then
+        wp.airdromeId      = nil
+        wp.helipadId       = nil
+        wp.grassAirfieldId = nil
+        if wp.linkUnit then
+            pcall(function()
+                local Mission = require('me_mission')
+                if type(Mission.unlinkWaypoint) == 'function' then
+                    Mission.unlinkWaypoint(wp)
+                end
+            end)
+        end
+    end
     refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, type = wp.type }
@@ -6190,6 +6224,18 @@ function M.waypoint_set_name(args)
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
     wp.name = args.name_text
+    -- The map's floating "<index>:<name>" label is cached on
+    -- mapObjects.route.numbers[i].title and isn't recomputed from
+    -- wpt.name by update_group_map_objects. Mission.updateTitleWaypoints
+    -- (me_mission.lua line 9275) iterates every label, rebuilds the
+    -- title string, and re-adds the user-objects to MapWindow — the
+    -- ME's canonical "I renamed a WP, refresh labels" path.
+    pcall(function()
+        local Mission = require('me_mission')
+        if type(Mission.updateTitleWaypoints) == 'function' then
+            Mission.updateTitleWaypoints(g)
+        end
+    end)
     refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, name = wp.name }
