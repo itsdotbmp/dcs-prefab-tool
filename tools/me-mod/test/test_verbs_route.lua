@@ -90,10 +90,114 @@ local function test_smoke()
 end
 
 -- ============================================================
+-- Helper tests — exercised through public verbs but with focused
+-- assertions on inheritance / range-checking behaviour.
+-- ============================================================
+
+local function test_find_route_happy()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'h1' })
+    local res = verbs.route_list({ name = 'h1' })
+    assert_true(res.ok, 'find_route: by name → ok')
+    assert_eq(res.group, 'h1', 'find_route: returns group name')
+    assert_eq(#res.points, 1, 'find_route: default route has 1 wp')
+end
+
+local function test_find_route_not_found()
+    mock.new_mission()
+    local res = verbs.route_list({ name = 'nope' })
+    assert_false(res.ok, 'find_route: missing group → not ok')
+    assert_contains(res.error, 'group not found', 'find_route: error message')
+end
+
+local function test_find_route_args_mutex()
+    mock.new_mission()
+    local r1 = verbs.route_list({ name = 'a', id = 1 })
+    assert_false(r1.ok, 'find_route: both name and id rejected')
+    local r2 = verbs.route_list({})
+    assert_false(r2.ok, 'find_route: neither name nor id rejected')
+end
+
+local function test_find_waypoint_range()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'wp1' })
+    -- add two more WPs to make the route 3 deep
+    table.insert(g.route.points, mock.make_waypoint('plane', { x = 1000, y = 2000 }))
+    table.insert(g.route.points, mock.make_waypoint('plane', { x = 2000, y = 3000 }))
+    local r_ok = verbs.waypoint_get({ name = 'wp1', index = 2 })
+    assert_true(r_ok.ok, 'find_waypoint: index 2 of 3 → ok')
+    local r_oob = verbs.waypoint_get({ name = 'wp1', index = 3 })
+    assert_false(r_oob.ok, 'find_waypoint: index 3 of 3 → out of range')
+    assert_contains(r_oob.error, 'out of range', 'find_waypoint: out-of-range message')
+    local r_neg = verbs.waypoint_get({ name = 'wp1', index = -1 })
+    assert_false(r_neg.ok, 'find_waypoint: negative index rejected')
+end
+
+local function test_inherit_waypoint_empty_route_uses_category_defaults()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'inh1' })
+    g.route.points = {}  -- empty route
+    local r = verbs.waypoint_add({ name = 'inh1', north = 100, east = 200 })
+    assert_true(r.ok, 'inherit (plane, empty): add → ok')
+    local wp = g.route.points[1]
+    assert_eq(wp.alt, 8000, 'inherit (plane, empty): alt = 8000')
+    assert_eq(wp.alt_type, 'BARO', 'inherit (plane, empty): alt_type = BARO')
+    assert_eq(wp.speed, 220, 'inherit (plane, empty): speed = 220')
+    assert_eq(wp.type, 'Turning Point', 'inherit (plane, empty): type')
+    assert_eq(wp.action, 'Turning Point', 'inherit (plane, empty): action')
+end
+
+local function test_inherit_waypoint_from_source()
+    mock.new_mission()
+    local g = mock.add_helicopter({ name = 'inh2' })
+    -- mutate the existing WP so we can verify inheritance differs from defaults
+    g.route.points[1].alt = 1234
+    g.route.points[1].speed = 77
+    g.route.points[1].formation_template = 'Diamond'
+    -- add a WP with task non-empty on source so we can verify task is wiped
+    g.route.points[1].task.params.tasks = { { id = 'Orbit', params = {} } }
+    local r = verbs.waypoint_add({ name = 'inh2', north = 500, east = 600 })
+    assert_true(r.ok, 'inherit (helo, from source): add → ok')
+    local wp = g.route.points[2]
+    assert_eq(wp.alt, 1234, 'inherit: alt from source')
+    assert_eq(wp.speed, 77, 'inherit: speed from source')
+    assert_eq(wp.formation_template, 'Diamond', 'inherit: formation from source')
+    assert_eq(wp.name, '', 'inherit: name NOT inherited (empty)')
+    assert_eq(wp.ETA, 0, 'inherit: ETA NOT inherited (0)')
+    assert_deep_eq(wp.task,
+        { id = 'ComboTask', params = { tasks = {} } },
+        'inherit: task is empty ComboTask regardless of source')
+end
+
+local function test_inherit_overrides_win()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'inh3' })
+    local r = verbs.waypoint_add({
+        name = 'inh3', north = 100, east = 200,
+        alt = 5000, speed = 180, alt_type = 'RADIO',
+        type = 'Land', action = 'Landing',
+    })
+    assert_true(r.ok, 'inherit (overrides win): ok')
+    local wp = g.route.points[2]
+    assert_eq(wp.alt, 5000, 'override: alt')
+    assert_eq(wp.speed, 180, 'override: speed')
+    assert_eq(wp.alt_type, 'RADIO', 'override: alt_type')
+    assert_eq(wp.type, 'Land', 'override: type')
+    assert_eq(wp.action, 'Landing', 'override: action')
+end
+
+-- ============================================================
 -- Test runner
 -- ============================================================
 
 test_smoke()
+test_find_route_happy()
+test_find_route_not_found()
+test_find_route_args_mutex()
+test_find_waypoint_range()
+test_inherit_waypoint_empty_route_uses_category_defaults()
+test_inherit_waypoint_from_source()
+test_inherit_overrides_win()
 
 print(string.format('test_verbs_route: %d passed, %d failed', passed, failed))
 for _, e in ipairs(errors) do print('  FAIL: ' .. e) end

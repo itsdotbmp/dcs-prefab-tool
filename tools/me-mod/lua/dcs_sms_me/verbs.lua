@@ -5658,4 +5658,227 @@ function M.airbase_get(args)
     return result
 end
 
+-- ============================================================
+-- Route / waypoint geometry verbs
+-- ============================================================
+--
+-- Verb surface (18 total):
+--   route_list / route_get / route_clear              -- whole-route
+--   waypoint_add / waypoint_insert / waypoint_remove  -- array shape
+--   waypoint_get                                       -- single read
+--   waypoint_set_pos / set_alt / set_speed / set_type
+--   waypoint_set_action / set_name / set_eta
+--   waypoint_set_speed_locked / set_eta_locked
+--   waypoint_set_formation                             -- per-field
+--
+-- Index convention: 0-based on the wire (matches ME UI display);
+-- 1-based in Lua (native ipairs). Translation happens in find_waypoint.
+--
+-- Task preservation: every write verb leaves per-WP `task` tables
+-- untouched. Inheritance never copies tasks — new WPs always get
+-- { id = 'ComboTask', params = { tasks = {} } }.
+--
+-- Spec: docs/superpowers/specs/2026-05-11-me-route-geometry.md
+
+local CATEGORY_DEFAULTS = {
+    plane =      { alt = 8000, alt_type = 'BARO', speed = 220, type = 'Turning Point', action = 'Turning Point' },
+    helicopter = { alt = 500,  alt_type = 'BARO', speed = 50,  type = 'Turning Point', action = 'Turning Point' },
+    vehicle =    { alt = 0,    alt_type = 'BARO', speed = 8,   type = 'Turning Point', action = 'Off Road' },
+    ship =       { alt = 0,    alt_type = 'BARO', speed = 5,   type = 'Turning Point', action = 'Turning Point' },
+    train =      { alt = 0,    alt_type = 'BARO', speed = 14,  type = 'Turning Point', action = 'On Road' },
+    static =     { alt = 0,    alt_type = 'BARO', speed = 0,   type = 'Turning Point', action = 'Off Road' },
+}
+
+-- Enum validation tables. Mirror framework/waypoint.lua + framework/alt_type.lua.
+-- The duplication is intentional: bridge runs in ME's Lua state, framework in
+-- mission env — no shared runtime.
+local WAYPOINT_TYPES = {
+    ['TakeOffParking'] = true, ['TakeOffParkingHot'] = true,
+    ['TakeOffGround'] = true,  ['TakeOffGroundHot'] = true,
+    ['Turning Point'] = true,  ['Land'] = true,
+    ['LandingReFuAr'] = true,
+}
+
+local WAYPOINT_ACTIONS = {
+    ['Turning Point'] = true,        ['Fly Over Point'] = true,
+    ['From Parking Area'] = true,    ['From Parking Area Hot'] = true,
+    ['From Ground Area'] = true,     ['From Ground Area Hot'] = true,
+    ['From Runway'] = true,          ['Landing'] = true,
+    ['LandingReFuAr'] = true,        ['Off Road'] = true, ['On Road'] = true,
+}
+
+local ALT_TYPES = { BARO = true, RADIO = true }
+
+-- find_route — locate a group by name or id, return its route table.
+-- Ensures route.points exists (defensive; ME-created groups always have one).
+-- Returns (route, group, category, nil) on success, (nil, nil, nil, err) otherwise.
+local function find_route(by_name, by_id)
+    local g, _, _, cat = find_group_in_mission(by_name, by_id)
+    if not g then
+        local ident = by_name and ("'" .. tostring(by_name) .. "'") or tostring(by_id)
+        return nil, nil, nil, 'group not found: ' .. ident
+    end
+    g.route = g.route or { points = {}, routeRelativeTOT = false }
+    g.route.points = g.route.points or {}
+    return g.route, g, cat, nil
+end
+
+-- find_waypoint — locate the waypoint at wire-index N (0-based) inside a
+-- group's route. Returns (waypoint, route, group, category, nil) on success.
+-- On failure: (nil, nil, nil, nil, err).
+local function find_waypoint(by_name, by_id, wire_index)
+    local route, g, cat, err = find_route(by_name, by_id)
+    if not route then return nil, nil, nil, nil, err end
+    if type(wire_index) ~= 'number' or wire_index < 0
+            or wire_index ~= math.floor(wire_index) then
+        return nil, nil, nil, nil, 'index must be an integer >= 0'
+    end
+    local lua_idx = wire_index + 1
+    local wp = route.points[lua_idx]
+    if not wp then
+        return nil, nil, nil, nil, string.format(
+            'waypoint index %d out of range (route has %d points)',
+            wire_index, #route.points)
+    end
+    return wp, route, g, cat, nil
+end
+
+-- inherit_waypoint — build a new waypoint from source + overrides + category
+-- defaults. source may be nil (empty-route case). Task is ALWAYS an empty
+-- ComboTask; name is ALWAYS '' unless overridden; ETA is ALWAYS 0 unless
+-- overridden.
+local function inherit_waypoint(source, overrides, category)
+    local cat_defaults = CATEGORY_DEFAULTS[category] or CATEGORY_DEFAULTS.vehicle
+    local wp = {
+        x = 0, y = 0,
+        alt = cat_defaults.alt,
+        alt_type = cat_defaults.alt_type,
+        speed = cat_defaults.speed,
+        type = cat_defaults.type,
+        action = cat_defaults.action,
+        speed_locked = true,
+        ETA_locked = true,
+        formation_template = '',
+        ETA = 0,
+        name = '',
+        task = { id = 'ComboTask', params = { tasks = {} } },
+    }
+    if source then
+        local inherit_fields = { 'alt', 'alt_type', 'speed', 'type', 'action',
+                                 'speed_locked', 'ETA_locked', 'formation_template' }
+        for _, k in ipairs(inherit_fields) do
+            if source[k] ~= nil then wp[k] = source[k] end
+        end
+    end
+    if overrides then
+        for k, v in pairs(overrides) do
+            if v ~= nil then wp[k] = v end
+        end
+    end
+    -- Always-empty task, regardless of overrides.
+    wp.task = { id = 'ComboTask', params = { tasks = {} } }
+    return wp
+end
+
+-- Stub stubs for the verbs covered by the helper tests — full
+-- implementations land in Tasks 3-8. These minimum-viable forms exist
+-- only so the Task 2 helper tests can pass.
+
+function M.route_list(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'route_list requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'route_list requires exactly one of args.name or args.id' }
+    end
+    local route, g, _, err = find_route(has_name and args.name or nil,
+                                        has_id and args.id or nil)
+    if not route then return { ok = false, error = err } end
+    local points = {}
+    for i, wp in ipairs(route.points) do
+        points[i] = {
+            index = i - 1, type = wp.type, action = wp.action,
+            north = wp.x, east = wp.y, alt = wp.alt, alt_type = wp.alt_type,
+            speed = wp.speed, name = wp.name or '', eta = wp.ETA or 0,
+            has_task = (wp.task and wp.task.params and wp.task.params.tasks
+                        and #wp.task.params.tasks > 0) or false,
+        }
+    end
+    return { ok = true, group = g.name,
+             route_relative_tot = route.routeRelativeTOT and true or false,
+             points = points }
+end
+
+function M.waypoint_get(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'waypoint_get requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'waypoint_get requires exactly one of args.name or args.id' }
+    end
+    if type(args.index) ~= 'number' then
+        return { ok = false, error = 'waypoint_get requires args.index (integer >= 0)' }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil,
+                                           has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    return { ok = true, group = g.name, index = args.index,
+             waypoint = strip_back_refs(wp) }
+end
+
+function M.waypoint_add(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'waypoint_add requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'waypoint_add requires exactly one of args.name or args.id' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'waypoint_add requires args.north and args.east (numbers, meters)' }
+    end
+    local route, g, cat, err = find_route(has_name and args.name or nil,
+                                          has_id and args.id or nil)
+    if not route then return { ok = false, error = err } end
+    -- enum validations (only for fields actually passed)
+    if args.type ~= nil and not WAYPOINT_TYPES[args.type] then
+        return { ok = false, error = "unknown waypoint type '" .. tostring(args.type) .. "'" }
+    end
+    if args.action ~= nil and not WAYPOINT_ACTIONS[args.action] then
+        return { ok = false, error = "unknown waypoint action '" .. tostring(args.action) .. "'" }
+    end
+    if args.alt_type ~= nil and not ALT_TYPES[args.alt_type] then
+        return { ok = false, error = "alt_type must be 'BARO' or 'RADIO'" }
+    end
+    if args.alt ~= nil and (type(args.alt) ~= 'number' or args.alt < 0) then
+        return { ok = false, error = 'alt must be >= 0' }
+    end
+    if args.speed ~= nil and (type(args.speed) ~= 'number' or args.speed <= 0) then
+        return { ok = false, error = 'speed must be > 0' }
+    end
+    if args.eta ~= nil and (type(args.eta) ~= 'number' or args.eta < 0) then
+        return { ok = false, error = 'eta must be >= 0' }
+    end
+    local source = route.points[#route.points]  -- last WP, nil if empty
+    local overrides = {
+        x = args.north, y = args.east,
+        alt = args.alt, alt_type = args.alt_type,
+        speed = args.speed, type = args.type, action = args.action,
+        ETA = args.eta, speed_locked = args.speed_locked,
+        ETA_locked = args.eta_locked,
+        formation_template = args.formation_template,
+        name = args.name_text,  -- collision-free key, mapped by Go side
+    }
+    local new_wp = inherit_waypoint(source, overrides, cat)
+    table.insert(route.points, new_wp)
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = #route.points - 1,
+             waypoint = strip_back_refs(new_wp) }
+end
+
 return M
