@@ -5972,6 +5972,166 @@ function M.waypoint_remove(args)
              remaining = #route.points }
 end
 
+function M.waypoint_set_pos(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_pos requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_pos requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_pos requires args.index (integer >= 0)' } end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'waypoint_set_pos requires args.north and args.east (numbers, meters)' }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    wp.x = args.north; wp.y = args.east
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, north = wp.x, east = wp.y }
+end
+
+function M.waypoint_set_alt(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_alt requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_alt requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_alt requires args.index (integer >= 0)' } end
+    if type(args.alt) ~= 'number' or args.alt < 0 then
+        return { ok = false, error = 'waypoint_set_alt requires args.alt (number >= 0)' }
+    end
+    if args.alt_type ~= nil and not ALT_TYPES[args.alt_type] then
+        return { ok = false, error = "alt_type must be 'BARO' or 'RADIO'" }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    wp.alt = args.alt
+    if args.alt_type ~= nil then wp.alt_type = args.alt_type end
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, alt = wp.alt, alt_type = wp.alt_type }
+end
+
+function M.waypoint_set_speed(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_speed requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_speed requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_speed requires args.index (integer >= 0)' } end
+    if type(args.speed) ~= 'number' or args.speed <= 0 then
+        return { ok = false, error = 'speed must be > 0' }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    wp.speed = args.speed
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, speed = wp.speed }
+end
+
+function M.waypoint_set_type(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_type requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_type requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_type requires args.index (integer >= 0)' } end
+    if type(args.wp_type) ~= 'string' or not WAYPOINT_TYPES[args.wp_type] then
+        return { ok = false, error = "unknown waypoint type '" .. tostring(args.wp_type) .. "'" }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    wp.type = args.wp_type
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, type = wp.type }
+end
+
+function M.waypoint_set_action(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_action requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_action requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_action requires args.index (integer >= 0)' } end
+    if type(args.action) ~= 'string' or not WAYPOINT_ACTIONS[args.action] then
+        return { ok = false, error = "unknown waypoint action '" .. tostring(args.action) .. "'" }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    wp.action = args.action
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, action = wp.action }
+end
+
+function M.waypoint_set_name(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_name requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_name requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_name requires args.index (integer >= 0)' } end
+    if type(args.name_text) ~= 'string' then
+        return { ok = false, error = 'waypoint_set_name requires args.name_text (string, possibly empty)' }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    wp.name = args.name_text
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, name = wp.name }
+end
+
+function M.waypoint_set_eta(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_eta requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_eta requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_eta requires args.index (integer >= 0)' } end
+    if type(args.eta) ~= 'number' or args.eta < 0 then
+        return { ok = false, error = 'eta must be >= 0' }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    wp.ETA = args.eta
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, eta = wp.ETA }
+end
+
+function M.waypoint_set_speed_locked(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_speed_locked requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_speed_locked requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_speed_locked requires args.index (integer >= 0)' } end
+    if type(args.locked) ~= 'boolean' then return { ok = false, error = 'locked must be true or false' } end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    wp.speed_locked = args.locked
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, speed_locked = wp.speed_locked }
+end
+
+function M.waypoint_set_eta_locked(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_eta_locked requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_eta_locked requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_eta_locked requires args.index (integer >= 0)' } end
+    if type(args.locked) ~= 'boolean' then return { ok = false, error = 'locked must be true or false' } end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    wp.ETA_locked = args.locked
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, eta_locked = wp.ETA_locked }
+end
+
+function M.waypoint_set_formation(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_formation requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_formation requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_formation requires args.index (integer >= 0)' } end
+    if type(args.formation_template) ~= 'string' then
+        return { ok = false, error = 'waypoint_set_formation requires args.formation_template (string, possibly empty)' }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    wp.formation_template = args.formation_template
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, formation_template = wp.formation_template }
+end
+
 function M.route_get(args)
     if type(args) ~= 'table' then
         return { ok = false, error = 'route_get requires args (table)' }

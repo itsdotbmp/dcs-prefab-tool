@@ -385,6 +385,113 @@ local function test_task_preservation_on_neighbor_after_add()
               'task preservation: new WP has empty task')
 end
 
+local function _setup_plane_route(name)
+    mock.new_mission()
+    local g = mock.add_plane({ name = name })
+    table.insert(g.route.points, mock.make_waypoint('plane',
+        { x = 1000, y = 2000, name = 'WP1', alt = 5000, speed = 200 }))
+    return g
+end
+
+local function test_set_pos()
+    local g = _setup_plane_route('sp1')
+    local r = verbs.waypoint_set_pos({ name = 'sp1', index = 1, north = 9999, east = 8888 })
+    assert_true(r.ok, 'set_pos: ok')
+    assert_eq(g.route.points[2].x, 9999, 'set_pos: x updated')
+    assert_eq(g.route.points[2].y, 8888, 'set_pos: y updated')
+    local r2 = verbs.waypoint_set_pos({ name = 'sp1', index = 5, north = 1, east = 1 })
+    assert_false(r2.ok, 'set_pos: oob rejected')
+end
+
+local function test_set_alt()
+    local g = _setup_plane_route('sa1')
+    local r = verbs.waypoint_set_alt({ name = 'sa1', index = 1, alt = 7500, alt_type = 'RADIO' })
+    assert_true(r.ok, 'set_alt: ok')
+    assert_eq(g.route.points[2].alt, 7500, 'set_alt: alt')
+    assert_eq(g.route.points[2].alt_type, 'RADIO', 'set_alt: alt_type')
+    local r2 = verbs.waypoint_set_alt({ name = 'sa1', index = 1, alt = -1 })
+    assert_false(r2.ok, 'set_alt: negative alt rejected')
+    local r3 = verbs.waypoint_set_alt({ name = 'sa1', index = 1, alt = 5000, alt_type = 'X' })
+    assert_false(r3.ok, 'set_alt: bad alt_type rejected')
+end
+
+local function test_set_speed()
+    local g = _setup_plane_route('ss1')
+    local r = verbs.waypoint_set_speed({ name = 'ss1', index = 1, speed = 250 })
+    assert_true(r.ok, 'set_speed: ok')
+    assert_eq(g.route.points[2].speed, 250, 'set_speed: applied')
+    local r2 = verbs.waypoint_set_speed({ name = 'ss1', index = 1, speed = 0 })
+    assert_false(r2.ok, 'set_speed: zero rejected')
+end
+
+local function test_set_type()
+    local g = _setup_plane_route('st1')
+    local r = verbs.waypoint_set_type({ name = 'st1', index = 1, wp_type = 'Land' })
+    assert_true(r.ok, 'set_type: ok')
+    assert_eq(g.route.points[2].type, 'Land', 'set_type: applied')
+    local r2 = verbs.waypoint_set_type({ name = 'st1', index = 1, wp_type = 'Bogus' })
+    assert_false(r2.ok, 'set_type: bad enum rejected')
+end
+
+local function test_set_action()
+    local g = _setup_plane_route('act1')
+    local r = verbs.waypoint_set_action({ name = 'act1', index = 1, action = 'Fly Over Point' })
+    assert_true(r.ok, 'set_action: ok')
+    assert_eq(g.route.points[2].action, 'Fly Over Point', 'set_action: applied')
+end
+
+local function test_set_name()
+    local g = _setup_plane_route('sn1')
+    local r = verbs.waypoint_set_name({ name = 'sn1', index = 1, name_text = 'IP-North' })
+    assert_true(r.ok, 'set_name: ok')
+    assert_eq(g.route.points[2].name, 'IP-North', 'set_name: applied')
+    local r2 = verbs.waypoint_set_name({ name = 'sn1', index = 1, name_text = '' })
+    assert_true(r2.ok, 'set_name: empty is legal')
+    assert_eq(g.route.points[2].name, '', 'set_name: empty applied')
+end
+
+local function test_set_eta()
+    local g = _setup_plane_route('se1')
+    local r = verbs.waypoint_set_eta({ name = 'se1', index = 1, eta = 600 })
+    assert_true(r.ok, 'set_eta: ok')
+    assert_eq(g.route.points[2].ETA, 600, 'set_eta: applied')
+    local r2 = verbs.waypoint_set_eta({ name = 'se1', index = 1, eta = -1 })
+    assert_false(r2.ok, 'set_eta: negative rejected')
+end
+
+local function test_set_speed_locked()
+    local g = _setup_plane_route('sl1')
+    g.route.points[2].speed_locked = false
+    local r = verbs.waypoint_set_speed_locked({ name = 'sl1', index = 1, locked = true })
+    assert_true(r.ok, 'set_speed_locked: ok')
+    assert_eq(g.route.points[2].speed_locked, true, 'set_speed_locked: applied')
+end
+
+local function test_set_eta_locked()
+    local g = _setup_plane_route('el1')
+    g.route.points[2].ETA_locked = true
+    local r = verbs.waypoint_set_eta_locked({ name = 'el1', index = 1, locked = false })
+    assert_true(r.ok, 'set_eta_locked: ok')
+    assert_eq(g.route.points[2].ETA_locked, false, 'set_eta_locked: applied')
+end
+
+local function test_set_formation()
+    local g = _setup_plane_route('sf1')
+    local r = verbs.waypoint_set_formation({
+        name = 'sf1', index = 1, formation_template = 'Diamond' })
+    assert_true(r.ok, 'set_formation: ok')
+    assert_eq(g.route.points[2].formation_template, 'Diamond', 'set_formation: applied')
+end
+
+local function test_task_preservation_on_setters()
+    local g = _setup_plane_route('tp2')
+    g.route.points[1].task.params.tasks = { { id = 'Orbit', params = { alt = 500 } } }
+    g.route.points[2].task.params.tasks = { { id = 'Bombing', params = {} } }
+    verbs.waypoint_set_pos({ name = 'tp2', index = 1, north = 0, east = 0 })
+    assert_eq(g.route.points[1].task.params.tasks[1].id, 'Orbit', 'setter: WP0 task preserved')
+    assert_eq(g.route.points[2].task.params.tasks[1].id, 'Bombing', 'setter: target WP task preserved')
+end
+
 -- ============================================================
 -- Test runner
 -- ============================================================
@@ -414,6 +521,9 @@ test_waypoint_remove_air_last_refused()
 test_waypoint_remove_air_not_last_allowed()
 test_waypoint_remove_ground_last_allowed()
 test_task_preservation_on_neighbor_after_add()
+test_set_pos(); test_set_alt(); test_set_speed(); test_set_type(); test_set_action()
+test_set_name(); test_set_eta(); test_set_speed_locked(); test_set_eta_locked()
+test_set_formation(); test_task_preservation_on_setters()
 
 print(string.format('test_verbs_route: %d passed, %d failed', passed, failed))
 for _, e in ipairs(errors) do print('  FAIL: ' .. e) end
