@@ -5709,6 +5709,39 @@ local WAYPOINT_ACTIONS = {
 
 local ALT_TYPES = { BARO = true, RADIO = true }
 
+-- refresh_route_panel — re-render the right-side Route panel (waypoint
+-- dropdown + selected-WP fields). Required after any route mutation —
+-- update_group_map_objects only repaints the map layer; the route panel
+-- caches its display state separately and won't pick up new/removed/
+-- renamed waypoints without an explicit panel_route.update() call.
+--
+-- Safe no-op if me_route isn't available (defensive — same posture as
+-- refresh_group_view's pcall on update_group_map_objects).
+local function refresh_route_panel()
+    pcall(function()
+        local panel_route = require('me_route')
+        if type(panel_route.update) == 'function' then
+            panel_route.update()
+        end
+    end)
+end
+
+-- ensure_map_objects — guarantee g.mapObjects is populated. ME-native
+-- insert_waypoint / remove_waypoint reach into g.mapObjects.route.{points,
+-- numbers, targets, ...} unconditionally, so they crash if the group was
+-- never visually rendered. create_group_map_objects(g, true) is idempotent
+-- in the sense that calling it on a group with existing mapObjects orphans
+-- the old symbols in MapWindow; we only call it when truly absent.
+local function ensure_map_objects(g)
+    if g.mapObjects and g.mapObjects.route then return end
+    pcall(function()
+        local Mission = require('me_mission')
+        if type(Mission.create_group_map_objects) == 'function' then
+            Mission.create_group_map_objects(g, true)
+        end
+    end)
+end
+
 -- find_route — locate a group by name or id, return its route table.
 -- Ensures route.points exists (defensive; ME-created groups always have one).
 -- Returns (route, group, category, nil) on success, (nil, nil, nil, err) otherwise.
@@ -5864,20 +5897,39 @@ function M.waypoint_add(args)
     if args.eta ~= nil and (type(args.eta) ~= 'number' or args.eta < 0) then
         return { ok = false, error = 'eta must be >= 0' }
     end
-    local source = route.points[#route.points]  -- last WP, nil if empty
-    local overrides = {
-        x = args.north, y = args.east,
-        alt = args.alt, alt_type = args.alt_type,
-        speed = args.speed, type = args.type, action = args.action,
-        ETA = args.eta, speed_locked = args.speed_locked,
-        ETA_locked = args.eta_locked,
-        formation_template = args.formation_template,
-        name = args.name_text,  -- collision-free key, mapped by Go side
-    }
-    local new_wp = inherit_waypoint(source, overrides, cat)
-    table.insert(route.points, new_wp)
+    -- Inheritance source = last WP (nil if route is empty).
+    local source = route.points[#route.points]
+    local cat_defaults = CATEGORY_DEFAULTS[cat] or CATEGORY_DEFAULTS.vehicle
+    -- Compute the parameters Mission.insert_waypoint takes. It inherits
+    -- alt_type internally but takes everything else from us.
+    local alt = args.alt or (source and source.alt) or cat_defaults.alt
+    local speed = args.speed or (source and source.speed) or cat_defaults.speed
+    local type_str = args.type or (source and source.type) or cat_defaults.type
+    local name_text = args.name_text or ''
+    local formation_template = args.formation_template
+            or (source and source.formation_template) or ''
+    -- Delegate to ME-native insert_waypoint so we get the waypoint icon,
+    -- numbered label, target array slots, and label renumbering for free.
+    ensure_map_objects(g)
+    local Mission = require('me_mission')
+    local insert_idx = #route.points + 1
+    local ok, wpt_or_err = pcall(Mission.insert_waypoint, g, insert_idx,
+            type_str, args.north, args.east, alt, speed, name_text, formation_template)
+    if not ok or type(wpt_or_err) ~= 'table' then
+        return { ok = false, error = 'insert_waypoint failed: ' .. tostring(wpt_or_err) }
+    end
+    local new_wp = wpt_or_err
+    -- Post-process: fields insert_waypoint doesn't set + caller overrides.
+    new_wp.action = args.action or (source and source.action) or cat_defaults.action
+    if args.alt_type ~= nil then new_wp.alt_type = args.alt_type end
+    if args.eta ~= nil then new_wp.ETA = args.eta
+    elseif new_wp.ETA == nil then new_wp.ETA = 0 end
+    if args.speed_locked ~= nil then new_wp.speed_locked = args.speed_locked end
+    if args.eta_locked ~= nil then new_wp.ETA_locked = args.eta_locked end
+    new_wp.task = { id = 'ComboTask', params = { tasks = {} } }
+    refresh_route_panel()
     refresh_group_view(g)
-    return { ok = true, group = g.name, index = #route.points - 1,
+    return { ok = true, group = g.name, index = new_wp.index - 1,
              waypoint = strip_back_refs(new_wp) }
 end
 
@@ -5928,19 +5980,32 @@ function M.waypoint_insert(args)
     -- before=0 the source is the WP currently at index 0 (Lua index 1).
     local source_lua_idx = math.max(args.before, 1)
     local source = route.points[source_lua_idx]
-    local overrides = {
-        x = args.north, y = args.east,
-        alt = args.alt, alt_type = args.alt_type,
-        speed = args.speed, type = args.type, action = args.action,
-        ETA = args.eta, speed_locked = args.speed_locked,
-        ETA_locked = args.eta_locked,
-        formation_template = args.formation_template,
-        name = args.name_text,
-    }
-    local new_wp = inherit_waypoint(source, overrides, cat)
-    -- Lua table.insert with a position shifts elements at and after it up.
-    -- Lua index for "before wire N" is N+1. So before=0 → insert at Lua 1.
-    table.insert(route.points, args.before + 1, new_wp)
+    local cat_defaults = CATEGORY_DEFAULTS[cat] or CATEGORY_DEFAULTS.vehicle
+    local alt = args.alt or (source and source.alt) or cat_defaults.alt
+    local speed = args.speed or (source and source.speed) or cat_defaults.speed
+    local type_str = args.type or (source and source.type) or cat_defaults.type
+    local name_text = args.name_text or ''
+    local formation_template = args.formation_template
+            or (source and source.formation_template) or ''
+    -- Delegate to ME-native insert_waypoint. Lua index for "before wire N"
+    -- is N+1 (so before=0 → insert at Lua 1).
+    ensure_map_objects(g)
+    local Mission = require('me_mission')
+    local insert_idx = args.before + 1
+    local ok, wpt_or_err = pcall(Mission.insert_waypoint, g, insert_idx,
+            type_str, args.north, args.east, alt, speed, name_text, formation_template)
+    if not ok or type(wpt_or_err) ~= 'table' then
+        return { ok = false, error = 'insert_waypoint failed: ' .. tostring(wpt_or_err) }
+    end
+    local new_wp = wpt_or_err
+    new_wp.action = args.action or (source and source.action) or cat_defaults.action
+    if args.alt_type ~= nil then new_wp.alt_type = args.alt_type end
+    if args.eta ~= nil then new_wp.ETA = args.eta
+    elseif new_wp.ETA == nil then new_wp.ETA = 0 end
+    if args.speed_locked ~= nil then new_wp.speed_locked = args.speed_locked end
+    if args.eta_locked ~= nil then new_wp.ETA_locked = args.eta_locked end
+    new_wp.task = { id = 'ComboTask', params = { tasks = {} } }
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.before,
              waypoint = strip_back_refs(new_wp) }
@@ -5966,7 +6031,16 @@ function M.waypoint_remove(args)
                  error = "cannot remove last waypoint on air group '" .. g.name
                          .. "'; use waypoint set-pos to reposition" }
     end
-    table.remove(route.points, args.index + 1)
+    -- Delegate to ME-native remove_waypoint so the map symbol, label,
+    -- target arrays, task back-references on other groups, and route line
+    -- all get cleaned up in lockstep with route.points.
+    ensure_map_objects(g)
+    local Mission = require('me_mission')
+    local ok, err_rm = pcall(Mission.remove_waypoint, g, args.index + 1)
+    if not ok then
+        return { ok = false, error = 'remove_waypoint failed: ' .. tostring(err_rm) }
+    end
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, removed_index = args.index,
              remaining = #route.points }
@@ -5984,6 +6058,7 @@ function M.waypoint_set_pos(args)
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
     wp.x = args.north; wp.y = args.east
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, north = wp.x, east = wp.y }
 end
@@ -6004,6 +6079,7 @@ function M.waypoint_set_alt(args)
     if not wp then return { ok = false, error = err } end
     wp.alt = args.alt
     if args.alt_type ~= nil then wp.alt_type = args.alt_type end
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, alt = wp.alt, alt_type = wp.alt_type }
 end
@@ -6020,6 +6096,7 @@ function M.waypoint_set_speed(args)
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
     wp.speed = args.speed
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, speed = wp.speed }
 end
@@ -6036,6 +6113,7 @@ function M.waypoint_set_type(args)
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
     wp.type = args.wp_type
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, type = wp.type }
 end
@@ -6052,6 +6130,7 @@ function M.waypoint_set_action(args)
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
     wp.action = args.action
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, action = wp.action }
 end
@@ -6068,6 +6147,7 @@ function M.waypoint_set_name(args)
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
     wp.name = args.name_text
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, name = wp.name }
 end
@@ -6084,6 +6164,7 @@ function M.waypoint_set_eta(args)
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
     wp.ETA = args.eta
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, eta = wp.ETA }
 end
@@ -6098,6 +6179,7 @@ function M.waypoint_set_speed_locked(args)
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
     wp.speed_locked = args.locked
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, speed_locked = wp.speed_locked }
 end
@@ -6112,6 +6194,7 @@ function M.waypoint_set_eta_locked(args)
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
     wp.ETA_locked = args.locked
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, eta_locked = wp.ETA_locked }
 end
@@ -6128,6 +6211,7 @@ function M.waypoint_set_formation(args)
     local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
     if not wp then return { ok = false, error = err } end
     wp.formation_template = args.formation_template
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, formation_template = wp.formation_template }
 end
@@ -6165,7 +6249,14 @@ function M.route_clear(args)
                          .. "'; use waypoint set-pos to reposition" }
     end
     local previous = #route.points
-    route.points = {}
+    -- Remove from last to first so indices stay stable during the loop.
+    -- Delegate to ME-native remove_waypoint for symbol/label/task cleanup.
+    ensure_map_objects(g)
+    local Mission = require('me_mission')
+    for i = previous, 1, -1 do
+        pcall(Mission.remove_waypoint, g, i)
+    end
+    refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, points_removed = previous }
 end

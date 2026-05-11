@@ -132,4 +132,49 @@ function M.make_waypoint(category, opts)
     return wp
 end
 
+-- insert_waypoint — mock stand-in for me_mission.insert_waypoint. Mirrors the
+-- data-side behavior of the real function (alt_type inherited from previous
+-- WP, default locks per index, wpt.index assigned, route renumbered) without
+-- the mapObjects manipulation the real ME does. Tests don't need symbol
+-- creation; they assert against route.points directly.
+function M.insert_waypoint(group, index, type, x, y, alt, speed, name, formation_template)
+    local alt_type = 'BARO'
+    if group.route.points[index - 1] then
+        alt_type = group.route.points[index - 1].alt_type or 'BARO'
+    end
+    local speed_locked = true
+    local ETA_locked = (index == 1) and true or false
+    local ETA = (index == 1) and 0.0 or 0
+    local wpt = {
+        boss = group,
+        index = index,
+        type = type,
+        x = x, y = y,
+        alt = alt or 0,
+        alt_type = alt_type,
+        speed = speed or 0,
+        speed_locked = speed_locked,
+        ETA = ETA,
+        ETA_locked = ETA_locked,
+        targets = {},
+        formation_template = formation_template or '',
+        name = name or '',
+    }
+    table.insert(group.route.points, index, wpt)
+    for i = index + 1, #group.route.points do
+        group.route.points[i].index = i
+    end
+    return wpt
+end
+
+-- remove_waypoint — mock stand-in for me_mission.remove_waypoint. Removes
+-- from route.points and renumbers. Skips the symbol/task-back-reference
+-- cleanup the real ME does.
+function M.remove_waypoint(group, index)
+    table.remove(group.route.points, index)
+    for i = 1, #group.route.points do
+        group.route.points[i].index = i
+    end
+end
+
 return M
