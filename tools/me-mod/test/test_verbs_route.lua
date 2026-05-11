@@ -186,6 +186,82 @@ local function test_inherit_overrides_win()
     assert_eq(wp.action, 'Landing', 'override: action')
 end
 
+local function test_route_list_summary_fields()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'rl1', x = 100, y = 200 })
+    g.route.points[1].name = 'WP0'
+    g.route.points[1].task.params.tasks = { { id = 'Orbit', params = {} } }
+    table.insert(g.route.points, mock.make_waypoint('plane', { x = 1000, y = 2000, name = 'WP1' }))
+    local r = verbs.route_list({ name = 'rl1' })
+    assert_true(r.ok, 'route_list: ok')
+    assert_eq(#r.points, 2, 'route_list: 2 points')
+    assert_eq(r.points[1].index, 0, 'route_list: index 0 first')
+    assert_eq(r.points[1].name, 'WP0', 'route_list: name preserved')
+    assert_eq(r.points[1].north, 100, 'route_list: north mapping')
+    assert_eq(r.points[1].east, 200, 'route_list: east mapping')
+    assert_true(r.points[1].has_task, 'route_list: has_task true when tasks present')
+    assert_false(r.points[2].has_task, 'route_list: has_task false when empty')
+end
+
+local function test_route_get_preserves_task()
+    mock.new_mission()
+    local g = mock.add_helicopter({ name = 'rg1' })
+    g.route.points[1].task.params.tasks = {
+        { id = 'Orbit', params = { altitude = 500, pattern = 'Circle' } }
+    }
+    local r = verbs.route_get({ name = 'rg1' })
+    assert_true(r.ok, 'route_get: ok')
+    assert_eq(#r.route.points, 1, 'route_get: 1 point')
+    assert_eq(r.route.points[1].task.params.tasks[1].id, 'Orbit',
+              'route_get: task subtree preserved verbatim')
+    assert_eq(r.route.points[1].task.params.tasks[1].params.altitude, 500,
+              'route_get: task params preserved')
+end
+
+local function test_route_clear_ground()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'rc1' })
+    -- 3 points
+    table.insert(g.route.points, mock.make_waypoint('vehicle'))
+    table.insert(g.route.points, mock.make_waypoint('vehicle'))
+    assert_eq(#g.route.points, 3, 'route_clear-setup: 3 pts')
+    local r = verbs.route_clear({ name = 'rc1' })
+    assert_true(r.ok, 'route_clear (ground): ok')
+    assert_eq(r.points_removed, 3, 'route_clear: returns count')
+    assert_eq(#g.route.points, 0, 'route_clear: route is empty')
+end
+
+local function test_route_clear_air_refused()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'rc2' })
+    local r = verbs.route_clear({ name = 'rc2' })
+    assert_false(r.ok, 'route_clear (air): refused')
+    assert_contains(r.error, 'air group', 'route_clear (air): air-group error message')
+    assert_eq(#g.route.points, 1, 'route_clear (air): route untouched')
+end
+
+local function test_waypoint_get_full_fields()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'wg1', x = 50, y = 60 })
+    g.route.points[1].name = 'IP'
+    g.route.points[1].alt = 6000
+    g.route.points[1].speed = 250
+    local r = verbs.waypoint_get({ name = 'wg1', index = 0 })
+    assert_true(r.ok, 'waypoint_get: ok')
+    assert_eq(r.waypoint.name, 'IP', 'waypoint_get: name')
+    assert_eq(r.waypoint.alt, 6000, 'waypoint_get: alt')
+    assert_eq(r.waypoint.speed, 250, 'waypoint_get: speed')
+    assert_eq(r.waypoint.task.id, 'ComboTask', 'waypoint_get: task field present')
+end
+
+local function test_refresh_called_on_clear()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'rf1' })
+    mock.reset_refresh_counters()
+    verbs.route_clear({ name = 'rf1' })
+    assert_eq(mock.refresh_calls.update, 1, 'route_clear: update_group_map_objects called once')
+end
+
 -- ============================================================
 -- Test runner
 -- ============================================================
@@ -198,6 +274,12 @@ test_find_waypoint_range()
 test_inherit_waypoint_empty_route_uses_category_defaults()
 test_inherit_waypoint_from_source()
 test_inherit_overrides_win()
+test_route_list_summary_fields()
+test_route_get_preserves_task()
+test_route_clear_ground()
+test_route_clear_air_refused()
+test_waypoint_get_full_fields()
+test_refresh_called_on_clear()
 
 print(string.format('test_verbs_route: %d passed, %d failed', passed, failed))
 for _, e in ipairs(errors) do print('  FAIL: ' .. e) end

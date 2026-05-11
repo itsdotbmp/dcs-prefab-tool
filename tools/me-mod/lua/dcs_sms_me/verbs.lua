@@ -5881,4 +5881,42 @@ function M.waypoint_add(args)
              waypoint = strip_back_refs(new_wp) }
 end
 
+function M.route_get(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'route_get requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'route_get requires exactly one of args.name or args.id' }
+    end
+    local route, g, _, err = find_route(has_name and args.name or nil,
+                                        has_id and args.id or nil)
+    if not route then return { ok = false, error = err } end
+    return { ok = true, group = g.name, route = strip_back_refs(route) }
+end
+
+function M.route_clear(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'route_clear requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'route_clear requires exactly one of args.name or args.id' }
+    end
+    local route, g, cat, err = find_route(has_name and args.name or nil,
+                                          has_id and args.id or nil)
+    if not route then return { ok = false, error = err } end
+    if cat == 'plane' or cat == 'helicopter' then
+        return { ok = false,
+                 error = "cannot clear route on air group '" .. g.name
+                         .. "'; use waypoint set-pos to reposition" }
+    end
+    local previous = #route.points
+    route.points = {}
+    refresh_group_view(g)
+    return { ok = true, group = g.name, points_removed = previous }
+end
+
 return M
