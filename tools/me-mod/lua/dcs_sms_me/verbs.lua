@@ -5741,36 +5741,55 @@ local WAYPOINT_ACTIONS = {
 
 local ALT_TYPES = { BARO = true, RADIO = true }
 
--- WAYPOINT_MODES — maps ME UI picker labels (lowercased) to the
--- (type, action) pair that the .miz format stores. The ME's right-side
--- Type combo box exposes ONE picker that internally sets both fields;
--- our set-type/set-action are more granular, which is convenient for
--- automation but confusing for users coming from the UI. set-mode is
--- the ergonomic equivalent of the UI picker. Source: DCS's own
+-- WAYPOINT_MODES — maps ME UI picker labels (lowercased) to the canonical
+-- (type, action) pair the .miz format stores PLUS the panel_route.actions
+-- table key. At runtime the route panel keeps wpt.type as a TABLE
+-- reference into panel_route.actions (e.g. actions.takeoffRunway), not a
+-- string — its setTypeWpt iterates combo items comparing item:getText()
+-- to wpt.type.name, so a bare string assignment causes the panel to
+-- silently fall back to actions.turningPoint on its next refresh.
+-- set-mode looks up the matching actions table entry by key and uses
+-- that reference for wpt.type, with a string fallback for standalone /
+-- test contexts where panel_route isn't loaded. Source: DCS's own
 -- Scripts/utils_common.lua actions table.
 local WAYPOINT_MODES = {
-    ['turning point']            = { type = 'Turning Point',     action = 'Turning Point' },
-    ['fly over point']           = { type = 'Turning Point',     action = 'Fly Over Point' },
-    ['takeoff from runway']      = { type = 'TakeOff',           action = 'From Runway' },
-    ['takeoff from parking']     = { type = 'TakeOffParking',    action = 'From Parking Area' },
-    ['takeoff from parking hot'] = { type = 'TakeOffParkingHot', action = 'From Parking Area Hot' },
-    ['takeoff from ground']      = { type = 'TakeOffGround',     action = 'From Ground Area' },
-    ['takeoff from ground hot']  = { type = 'TakeOffGroundHot',  action = 'From Ground Area Hot' },
-    ['landing']                  = { type = 'Land',              action = 'Landing' },
-    ['landingrefuar']            = { type = 'LandingReFuAr',     action = 'LandingReFuAr' },
-    ['offroad']                  = { type = 'Turning Point',     action = 'Off Road' },
-    ['off road']                 = { type = 'Turning Point',     action = 'Off Road' },
-    ['on road']                  = { type = 'Turning Point',     action = 'On Road' },
-    ['rank']                     = { type = 'Turning Point',     action = 'Rank' },
-    ['line abreast']             = { type = 'Turning Point',     action = 'Rank' },
-    ['cone']                     = { type = 'Turning Point',     action = 'Cone' },
-    ['vee']                      = { type = 'Turning Point',     action = 'Vee' },
-    ['diamond']                  = { type = 'Turning Point',     action = 'Diamond' },
-    ['echelon left']             = { type = 'Turning Point',     action = 'EchelonL' },
-    ['echelon right']            = { type = 'Turning Point',     action = 'EchelonR' },
-    ['custom']                   = { type = 'Turning Point',     action = 'Custom' },
-    ['on railroads']             = { type = 'On Railroads',      action = 'On Railroads' },
+    ['turning point']            = { key = 'turningPoint',     type = 'Turning Point',     action = 'Turning Point' },
+    ['fly over point']           = { key = 'flyOverPoint',     type = 'Turning Point',     action = 'Fly Over Point' },
+    ['takeoff from runway']      = { key = 'takeoffRunway',    type = 'TakeOff',           action = 'From Runway' },
+    ['takeoff from parking']     = { key = 'takeoffParking',   type = 'TakeOffParking',    action = 'From Parking Area' },
+    ['takeoff from parking hot'] = { key = 'takeoffParkingHot',type = 'TakeOffParkingHot', action = 'From Parking Area Hot' },
+    ['takeoff from ground']      = { key = 'takeoffGround',    type = 'TakeOffGround',     action = 'From Ground Area' },
+    ['takeoff from ground hot']  = { key = 'takeoffGroundHot', type = 'TakeOffGroundHot',  action = 'From Ground Area Hot' },
+    ['landing']                  = { key = 'landing',          type = 'Land',              action = 'Landing' },
+    ['landingrefuar']            = { key = 'LandingReFuAr',    type = 'LandingReFuAr',     action = 'LandingReFuAr' },
+    ['offroad']                  = { key = 'offRoad',          type = 'Turning Point',     action = 'Off Road' },
+    ['off road']                 = { key = 'offRoad',          type = 'Turning Point',     action = 'Off Road' },
+    ['on road']                  = { key = 'onRoad',           type = 'Turning Point',     action = 'On Road' },
+    ['rank']                     = { key = 'rank',             type = 'Turning Point',     action = 'Rank' },
+    ['line abreast']             = { key = 'rank',             type = 'Turning Point',     action = 'Rank' },
+    ['cone']                     = { key = 'cone',             type = 'Turning Point',     action = 'Cone' },
+    ['vee']                      = { key = 'vee',              type = 'Turning Point',     action = 'Vee' },
+    ['diamond']                  = { key = 'diamond',          type = 'Turning Point',     action = 'Diamond' },
+    ['echelon left']             = { key = 'echelonL',         type = 'Turning Point',     action = 'EchelonL' },
+    ['echelon right']            = { key = 'echelonR',         type = 'Turning Point',     action = 'EchelonR' },
+    ['custom']                   = { key = 'customForm',       type = 'Turning Point',     action = 'Custom' },
+    ['on railroads']             = { key = 'onRailroads',      type = 'On Railroads',      action = 'On Railroads' },
 }
+
+-- resolve_action_entry — look up panel_route.actions[key] (the runtime
+-- table reference the route panel uses for wpt.type). Returns nil if
+-- panel_route isn't loaded — e.g. in unit tests — letting callers fall
+-- back to the string type/action representation.
+local function resolve_action_entry(key)
+    local entry
+    pcall(function()
+        local panel_route = require('me_route')
+        if panel_route and type(panel_route.actions) == 'table' then
+            entry = panel_route.actions[key]
+        end
+    end)
+    return entry
+end
 
 -- refresh_route_panel — re-render the right-side Route panel (waypoint
 -- dropdown + selected-WP fields). Required after any route mutation —
@@ -6207,7 +6226,13 @@ function M.waypoint_set_mode(args)
             or (type(wp.type) == 'table' and wp.type.type) or ''
     local old_was_airfield = AIRFIELD_TYPES[old_type] == true
     local new_is_airfield = AIRFIELD_TYPES[mode.type] == true
-    wp.type = mode.type
+    -- Use the panel_route.actions table reference if available, falling
+    -- back to the canonical string for standalone contexts. This is what
+    -- prevents panel_route.update() from silently re-normalizing
+    -- wpt.type back to actions.turningPoint when it fails to match a
+    -- string against the combo items' .name fields.
+    local action_entry = resolve_action_entry(mode.key)
+    wp.type = action_entry or mode.type
     wp.action = mode.action
     if old_was_airfield and not new_is_airfield then
         wp.airdromeId      = nil
