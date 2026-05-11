@@ -487,6 +487,60 @@ local function test_set_formation()
     assert_eq(g.route.points[2].formation_template, 'Diamond', 'set_formation: applied')
 end
 
+local function test_set_mode_landing()
+    local g = _setup_plane_route('sm1')
+    local r = verbs.waypoint_set_mode({ name = 'sm1', index = 1, mode = 'Landing' })
+    assert_true(r.ok, 'set_mode Landing: ok')
+    assert_eq(g.route.points[2].type, 'Land', 'set_mode Landing: wpt.type = Land')
+    assert_eq(g.route.points[2].action, 'Landing', 'set_mode Landing: wpt.action = Landing')
+end
+
+local function test_set_mode_case_insensitive()
+    local g = _setup_plane_route('sm2')
+    local r = verbs.waypoint_set_mode({ name = 'sm2', index = 1, mode = 'TAKEOFF FROM PARKING' })
+    assert_true(r.ok, 'set_mode case-insensitive: ok')
+    assert_eq(g.route.points[2].type, 'TakeOffParking', 'set_mode TFP: wpt.type')
+    assert_eq(g.route.points[2].action, 'From Parking Area', 'set_mode TFP: wpt.action')
+end
+
+local function test_set_mode_ground_formation()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'sm3' })
+    table.insert(g.route.points, mock.make_waypoint('vehicle', { x = 1000, y = 0 }))
+    local r = verbs.waypoint_set_mode({ name = 'sm3', index = 1, mode = 'Cone' })
+    assert_true(r.ok, 'set_mode Cone: ok')
+    assert_eq(g.route.points[2].type, 'Turning Point', 'set_mode Cone: wpt.type = Turning Point')
+    assert_eq(g.route.points[2].action, 'Cone', 'set_mode Cone: wpt.action = Cone')
+end
+
+local function test_set_mode_unknown_rejected()
+    local g = _setup_plane_route('sm4')
+    local r = verbs.waypoint_set_mode({ name = 'sm4', index = 1, mode = 'Bogus' })
+    assert_false(r.ok, 'set_mode unknown: rejected')
+    assert_contains(r.error, 'unknown waypoint mode', 'set_mode unknown: error msg')
+end
+
+local function test_set_mode_alias_line_abreast()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'sm5' })
+    table.insert(g.route.points, mock.make_waypoint('vehicle', { x = 1000, y = 0 }))
+    local r = verbs.waypoint_set_mode({ name = 'sm5', index = 1, mode = 'Line abreast' })
+    assert_true(r.ok, 'set_mode Line abreast: ok')
+    assert_eq(g.route.points[2].action, 'Rank', 'set_mode Line abreast: alias maps to Rank')
+end
+
+local function test_set_mode_clears_airdrome_on_transition()
+    local g = _setup_plane_route('sm6')
+    g.route.points[2].type = 'TakeOffParkingHot'
+    g.route.points[2].airdromeId = 42
+    g.route.points[2].helipadId = 7
+    local r = verbs.waypoint_set_mode({ name = 'sm6', index = 1, mode = 'Turning point' })
+    assert_true(r.ok, 'set_mode airfield→turning: ok')
+    assert_eq(g.route.points[2].type, 'Turning Point', 'airfield→turning: type set')
+    assert_eq(g.route.points[2].airdromeId, nil, 'airfield→turning: airdromeId cleared')
+    assert_eq(g.route.points[2].helipadId, nil, 'airfield→turning: helipadId cleared')
+end
+
 local function test_set_pos_vehicle_first_wp_updates_span()
     mock.new_mission()
     local g = mock.add_vehicle({ name = 'vh1' })
@@ -571,6 +625,12 @@ test_task_preservation_on_neighbor_after_add()
 test_set_pos(); test_set_alt(); test_set_speed(); test_set_type(); test_set_action()
 test_set_name(); test_set_eta(); test_set_speed_locked(); test_set_eta_locked()
 test_set_formation()
+test_set_mode_landing()
+test_set_mode_case_insensitive()
+test_set_mode_ground_formation()
+test_set_mode_unknown_rejected()
+test_set_mode_alias_line_abreast()
+test_set_mode_clears_airdrome_on_transition()
 test_set_pos_vehicle_first_wp_updates_span()
 test_set_pos_vehicle_middle_wp_updates_both_spans()
 test_task_preservation_on_setters()

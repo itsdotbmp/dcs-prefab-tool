@@ -5741,6 +5741,37 @@ local WAYPOINT_ACTIONS = {
 
 local ALT_TYPES = { BARO = true, RADIO = true }
 
+-- WAYPOINT_MODES — maps ME UI picker labels (lowercased) to the
+-- (type, action) pair that the .miz format stores. The ME's right-side
+-- Type combo box exposes ONE picker that internally sets both fields;
+-- our set-type/set-action are more granular, which is convenient for
+-- automation but confusing for users coming from the UI. set-mode is
+-- the ergonomic equivalent of the UI picker. Source: DCS's own
+-- Scripts/utils_common.lua actions table.
+local WAYPOINT_MODES = {
+    ['turning point']            = { type = 'Turning Point',     action = 'Turning Point' },
+    ['fly over point']           = { type = 'Turning Point',     action = 'Fly Over Point' },
+    ['takeoff from runway']      = { type = 'TakeOff',           action = 'From Runway' },
+    ['takeoff from parking']     = { type = 'TakeOffParking',    action = 'From Parking Area' },
+    ['takeoff from parking hot'] = { type = 'TakeOffParkingHot', action = 'From Parking Area Hot' },
+    ['takeoff from ground']      = { type = 'TakeOffGround',     action = 'From Ground Area' },
+    ['takeoff from ground hot']  = { type = 'TakeOffGroundHot',  action = 'From Ground Area Hot' },
+    ['landing']                  = { type = 'Land',              action = 'Landing' },
+    ['landingrefuar']            = { type = 'LandingReFuAr',     action = 'LandingReFuAr' },
+    ['offroad']                  = { type = 'Turning Point',     action = 'Off Road' },
+    ['off road']                 = { type = 'Turning Point',     action = 'Off Road' },
+    ['on road']                  = { type = 'Turning Point',     action = 'On Road' },
+    ['rank']                     = { type = 'Turning Point',     action = 'Rank' },
+    ['line abreast']             = { type = 'Turning Point',     action = 'Rank' },
+    ['cone']                     = { type = 'Turning Point',     action = 'Cone' },
+    ['vee']                      = { type = 'Turning Point',     action = 'Vee' },
+    ['diamond']                  = { type = 'Turning Point',     action = 'Diamond' },
+    ['echelon left']             = { type = 'Turning Point',     action = 'EchelonL' },
+    ['echelon right']            = { type = 'Turning Point',     action = 'EchelonR' },
+    ['custom']                   = { type = 'Turning Point',     action = 'Custom' },
+    ['on railroads']             = { type = 'On Railroads',      action = 'On Railroads' },
+}
+
 -- refresh_route_panel — re-render the right-side Route panel (waypoint
 -- dropdown + selected-WP fields). Required after any route mutation —
 -- update_group_map_objects only repaints the map layer; the route panel
@@ -6154,6 +6185,46 @@ function M.waypoint_set_speed(args)
     refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, speed = wp.speed }
+end
+
+function M.waypoint_set_mode(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_set_mode requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_set_mode requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_set_mode requires args.index (integer >= 0)' } end
+    if type(args.mode) ~= 'string' or args.mode == '' then
+        return { ok = false, error = 'waypoint_set_mode requires args.mode (e.g. "Landing", "Takeoff from parking", "Off road", "Cone")' }
+    end
+    local mode = WAYPOINT_MODES[string.lower(args.mode)]
+    if not mode then
+        return { ok = false, error = "unknown waypoint mode '" .. tostring(args.mode) .. "'" }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    -- Airfield-linkage transition (same logic as set-type).
+    local old_type = type(wp.type) == 'string' and wp.type
+            or (type(wp.type) == 'table' and wp.type.type) or ''
+    local old_was_airfield = AIRFIELD_TYPES[old_type] == true
+    local new_is_airfield = AIRFIELD_TYPES[mode.type] == true
+    wp.type = mode.type
+    wp.action = mode.action
+    if old_was_airfield and not new_is_airfield then
+        wp.airdromeId      = nil
+        wp.helipadId       = nil
+        wp.grassAirfieldId = nil
+        if wp.linkUnit then
+            pcall(function()
+                local Mission = require('me_mission')
+                if type(Mission.unlinkWaypoint) == 'function' then
+                    Mission.unlinkWaypoint(wp)
+                end
+            end)
+        end
+    end
+    refresh_route_panel()
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index, type = wp.type, action = wp.action }
 end
 
 function M.waypoint_set_type(args)
