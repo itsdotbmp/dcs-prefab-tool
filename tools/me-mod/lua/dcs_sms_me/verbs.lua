@@ -1449,6 +1449,58 @@ function M.group_set_hidden(args)
     return { ok = true, id = g.groupId, name = g.name, hidden = g.hidden }
 end
 
+-- group_set_late_activation — toggle g.lateActivation. Late-activation
+-- groups don't spawn at mission start; they're spawned later via a
+-- trigger's GROUP ACTIVATE action (or a script's activateGroup() call).
+-- The ME shows them on the planner / F10 map but renders them in a
+-- distinct "deferred" style.
+function M.group_set_late_activation(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_set_late_activation requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_set_late_activation requires exactly one of args.name or args.id' }
+    end
+    if type(args.enabled) ~= 'boolean' then
+        return { ok = false, error = 'group_set_late_activation requires args.enabled (boolean)' }
+    end
+    local g = find_group_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+    g.lateActivation = args.enabled
+    return { ok = true, id = g.groupId, name = g.name, late_activation = g.lateActivation }
+end
+
+-- group_set_uncontrolled — toggle g.uncontrolled. Uncontrolled groups
+-- spawn but DCS gives them no AI controller: aircraft sit on the ramp
+-- with engines off (for parking-spot starts) until a trigger's GROUP AI
+-- ON action / script's startCommand fires. Common pattern for "ready
+-- alert" CAP, scripted intercepts, or player-slot groups. The flag
+-- only meaningfully affects AI-controlled groups (plane/helicopter/
+-- vehicle/ship/train); statics ignore it.
+function M.group_set_uncontrolled(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'group_set_uncontrolled requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'group_set_uncontrolled requires exactly one of args.name or args.id' }
+    end
+    if type(args.enabled) ~= 'boolean' then
+        return { ok = false, error = 'group_set_uncontrolled requires args.enabled (boolean)' }
+    end
+    local g = find_group_in_mission(has_name and args.name or nil, has_id and args.id or nil)
+    if not g then
+        return { ok = false, error = 'group not found' }
+    end
+    g.uncontrolled = args.enabled
+    return { ok = true, id = g.groupId, name = g.name, uncontrolled = g.uncontrolled }
+end
+
 -- group_set_frequency — set g.frequency in MHz.
 function M.group_set_frequency(args)
     if type(args) ~= 'table' then
