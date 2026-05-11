@@ -94,6 +94,14 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | [`me resources get`](me-resources-get.md) | read the warehouse / resources entry for an airbase or a ship/structure unit |
 | [`me resources set`](me-resources-set.md) | mutate an airbase or ship/structure warehouse — toggle unlimited, clear categories, set per-fuel / per-aircraft / per-weapon counts |
 
+## me route
+
+| Command | Description |
+|---|---|
+| [`me route clear`](me-route-clear.md) | remove all waypoints from a group's route (air groups refused) |
+| [`me route get`](me-route-get.md) | get a group's full route table (waypoints with all fields, task subtrees preserved) |
+| [`me route list`](me-route-list.md) | list waypoints on a group's route (compact summary per WP) |
+
 ## me trigger
 
 | Command | Description |
@@ -134,6 +142,25 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | [`me unit set-onboard-num`](me-unit-set-onboard-num.md) | set a unit's display onboard number |
 | [`me unit set-pos`](me-unit-set-pos.md) | move a unit to a new north/east coordinate |
 | [`me unit set-skill`](me-unit-set-skill.md) | set a unit's AI skill (Average, Good, High, Excellent, Random, Player) |
+
+## me waypoint
+
+| Command | Description |
+|---|---|
+| [`me waypoint add`](me-waypoint-add.md) | append a waypoint to a group's route (inherits unset fields from previous WP) |
+| [`me waypoint get`](me-waypoint-get.md) | get a single waypoint's full field set |
+| [`me waypoint insert`](me-waypoint-insert.md) | insert a waypoint at index N (shifts subsequent WPs up; --before K appends) |
+| [`me waypoint remove`](me-waypoint-remove.md) | remove a waypoint from a group's route (air groups: refused if it'd leave 0 WPs) |
+| [`me waypoint set-action`](me-waypoint-set-action.md) | set a waypoint's action (sms.waypoint.ACTION enum) |
+| [`me waypoint set-alt`](me-waypoint-set-alt.md) | set a waypoint's altitude (optionally also its alt-type) |
+| [`me waypoint set-eta`](me-waypoint-set-eta.md) | set a waypoint's ETA in seconds (mission-relative) |
+| [`me waypoint set-eta-locked`](me-waypoint-set-eta-locked.md) | set a waypoint's ETA_locked flag |
+| [`me waypoint set-formation`](me-waypoint-set-formation.md) | set a waypoint's formation_template string |
+| [`me waypoint set-name`](me-waypoint-set-name.md) | set a waypoint's display name (empty string allowed) |
+| [`me waypoint set-pos`](me-waypoint-set-pos.md) | move a waypoint to a new north/east coordinate |
+| [`me waypoint set-speed`](me-waypoint-set-speed.md) | set a waypoint's speed (m/s) |
+| [`me waypoint set-speed-locked`](me-waypoint-set-speed-locked.md) | set a waypoint's speed_locked flag |
+| [`me waypoint set-type`](me-waypoint-set-type.md) | set a waypoint's type (sms.waypoint.TYPE enum) |
 
 ## me zone
 

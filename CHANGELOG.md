@@ -105,6 +105,20 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.7.1] — Unreleased
+
+**Added**
+- `me route list` — compact per-waypoint summary for a group's route (index, type, action, north/east, alt, alt_type, speed, name, eta, has_task flag).
+- `me route get` — full route table including each waypoint's complete field set; per-waypoint `task` subtree preserved verbatim.
+- `me route clear` — strip all waypoints from a group's route (refused for plane / helicopter groups).
+- `me waypoint add` — append a waypoint with `--north / --east` required; optional `--alt / --alt-type / --speed / --type / --action / --name / --eta / --speed-locked / --eta-locked / --formation-template`. Unset fields inherit from the previous waypoint, falling back to per-category defaults for empty routes.
+- `me waypoint insert` — insert at index `--before N`; same optional fields as `add`; inheritance source is the waypoint at index `N-1`.
+- `me waypoint remove` — delete the waypoint at `--index N`; refused for air groups if it would leave 0 waypoints.
+- `me waypoint get` — full field set of a single waypoint.
+- `me waypoint set-pos / set-alt / set-speed / set-type / set-action / set-name / set-eta / set-speed-locked / set-eta-locked / set-formation` — per-field setters. `set-alt` accepts an optional `--alt-type BARO|RADIO` so a single call covers the common "altitude + reference" edit.
+
+Eighteen verbs total. Indices are 0-based on the wire to match what the ME UI displays as "Waypoint 0, 1, 2 …"; Lua internals work in their native 1-based world. Speeds are in meters/sec (DCS native). Per-waypoint `task` fields are never mutated by any of these verbs — task assignment is the next sub-project.
+
 ### [0.7.0] — Unreleased
 
 > Note: 0.6.0 was released on `main` with the interactive menu (see below).
