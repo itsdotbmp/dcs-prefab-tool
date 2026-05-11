@@ -6222,9 +6222,81 @@ function M.waypoint_set_mode(args)
             end)
         end
     end
+    -- timeReFuAr is LandingReFuAr-specific. Going TO LandingReFuAr without a
+    -- value leaves the WP ambiguous; coming FROM LandingReFuAr without
+    -- clearing leaves the field stale and panel_route re-derives the type
+    -- as LandingReFuAr regardless of what we set wpt.type to.
+    if mode.type == 'LandingReFuAr' then
+        if type(wp.timeReFuAr) ~= 'number' or wp.timeReFuAr <= 0 then
+            wp.timeReFuAr = 10  -- default seconds, matches ME UI default
+        end
+    else
+        wp.timeReFuAr = nil
+    end
     refresh_route_panel()
     refresh_group_view(g)
     return { ok = true, group = g.name, index = args.index, type = wp.type, action = wp.action }
+end
+
+-- waypoint_link_airbase — set wpt.airdromeId to a specific airbase by name,
+-- move the waypoint to that airbase's position, and clear any conflicting
+-- helipad/grass-strip linkage. Doesn't change wpt.type — caller pairs this
+-- with set-mode Landing / TakeOff* etc. as needed. For helipads or
+-- grass strips, see (future) waypoint_link_helipad.
+function M.waypoint_link_airbase(args)
+    if type(args) ~= 'table' then return { ok = false, error = 'waypoint_link_airbase requires args (table)' } end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then return { ok = false, error = 'waypoint_link_airbase requires exactly one of args.name or args.id' } end
+    if type(args.index) ~= 'number' then return { ok = false, error = 'waypoint_link_airbase requires args.index (integer >= 0)' } end
+    if type(args.airbase) ~= 'string' or args.airbase == '' then
+        return { ok = false, error = 'waypoint_link_airbase requires args.airbase (string, airbase name)' }
+    end
+    local wp, _, g, _, err = find_waypoint(has_name and args.name or nil, has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    -- Use the file-local _airbase_find_by_name helper (defined above) —
+    -- handles case-insensitive exact + substring fallback.
+    local ad = _airbase_find_by_name(args.airbase)
+    if not ad then
+        return { ok = false, error = "no airbase matching '" .. tostring(args.airbase) .. "'" }
+    end
+    local airdrome_number = ad.getAirdromeNumber and ad:getAirdromeNumber() or nil
+    if type(airdrome_number) ~= 'number' then
+        return { ok = false, error = "airbase '" .. args.airbase .. "' has no airdrome number" }
+    end
+    local x, y = ad.x, ad.y
+    if type(x) ~= 'number' or type(y) ~= 'number' then
+        return { ok = false, error = "airbase '" .. args.airbase .. "' has no position" }
+    end
+    -- Move the waypoint via the ME-native MapWindow.move_waypoint (handles
+    -- spans, map symbol, label, and child units for WP 0 the right way).
+    ensure_map_objects(g)
+    pcall(function()
+        local MapWindow = require('me_map_window')
+        if type(MapWindow.move_waypoint) == 'function' then
+            MapWindow.move_waypoint(g, args.index + 1, x, y, nil, nil, nil, nil, true)
+        end
+    end)
+    wp.x = x
+    wp.y = y
+    -- Set the linkage, exclusive of helipad/grass-strip.
+    wp.airdromeId      = airdrome_number
+    wp.helipadId       = nil
+    wp.grassAirfieldId = nil
+    -- Unlink any moving-unit linkage (e.g. carrier ops).
+    if wp.linkUnit then
+        pcall(function()
+            local Mission = require('me_mission')
+            if type(Mission.unlinkWaypoint) == 'function' then
+                Mission.unlinkWaypoint(wp)
+            end
+        end)
+    end
+    refresh_route_panel()
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.index,
+             airbase = ad:getName(), airdromeId = airdrome_number,
+             north = wp.x, east = wp.y }
 end
 
 function M.waypoint_set_type(args)
@@ -6260,6 +6332,14 @@ function M.waypoint_set_type(args)
                 end
             end)
         end
+    end
+    -- LandingReFuAr-specific field cleanup (see set_mode for rationale).
+    if args.wp_type == 'LandingReFuAr' then
+        if type(wp.timeReFuAr) ~= 'number' or wp.timeReFuAr <= 0 then
+            wp.timeReFuAr = 10
+        end
+    else
+        wp.timeReFuAr = nil
     end
     refresh_route_panel()
     refresh_group_view(g)

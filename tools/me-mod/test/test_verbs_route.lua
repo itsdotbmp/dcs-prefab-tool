@@ -529,6 +529,48 @@ local function test_set_mode_alias_line_abreast()
     assert_eq(g.route.points[2].action, 'Rank', 'set_mode Line abreast: alias maps to Rank')
 end
 
+local function test_set_mode_landing_clears_timerefuar()
+    -- Going FROM LandingReFuAr (with timeReFuAr=10) TO plain Landing
+    -- must clear timeReFuAr; otherwise panel_route re-derives the type
+    -- as LandingReFuAr regardless of the wpt.type string we set.
+    local g = _setup_plane_route('rfa1')
+    g.route.points[2].type = 'LandingReFuAr'
+    g.route.points[2].action = 'LandingReFuAr'
+    g.route.points[2].timeReFuAr = 10
+    local r = verbs.waypoint_set_mode({ name = 'rfa1', index = 1, mode = 'Landing' })
+    assert_true(r.ok, 'set_mode LRF→L: ok')
+    assert_eq(g.route.points[2].type, 'Land', 'set_mode LRF→L: type = Land')
+    assert_eq(g.route.points[2].action, 'Landing', 'set_mode LRF→L: action = Landing')
+    assert_eq(g.route.points[2].timeReFuAr, nil, 'set_mode LRF→L: timeReFuAr cleared')
+end
+
+local function test_set_mode_landingrefuar_sets_default_timerefuar()
+    local g = _setup_plane_route('rfa2')
+    local r = verbs.waypoint_set_mode({ name = 'rfa2', index = 1, mode = 'LandingReFuAr' })
+    assert_true(r.ok, 'set_mode L→LRF: ok')
+    assert_eq(g.route.points[2].type, 'LandingReFuAr', 'set_mode L→LRF: type = LandingReFuAr')
+    assert_eq(g.route.points[2].timeReFuAr, 10, 'set_mode L→LRF: timeReFuAr = 10 default')
+end
+
+local function test_set_mode_preserves_existing_timerefuar()
+    -- If timeReFuAr was already set to a non-default, set-mode LandingReFuAr
+    -- should NOT overwrite it (user may have a custom duration).
+    local g = _setup_plane_route('rfa3')
+    g.route.points[2].timeReFuAr = 300
+    local r = verbs.waypoint_set_mode({ name = 'rfa3', index = 1, mode = 'LandingReFuAr' })
+    assert_true(r.ok, 'set_mode preserves: ok')
+    assert_eq(g.route.points[2].timeReFuAr, 300, 'set_mode preserves: existing timeReFuAr kept')
+end
+
+local function test_set_type_clears_timerefuar_on_transition_away()
+    local g = _setup_plane_route('rfa4')
+    g.route.points[2].type = 'LandingReFuAr'
+    g.route.points[2].timeReFuAr = 10
+    local r = verbs.waypoint_set_type({ name = 'rfa4', index = 1, wp_type = 'Turning Point' })
+    assert_true(r.ok, 'set_type LRF→TP: ok')
+    assert_eq(g.route.points[2].timeReFuAr, nil, 'set_type LRF→TP: timeReFuAr cleared')
+end
+
 local function test_set_mode_clears_airdrome_on_transition()
     local g = _setup_plane_route('sm6')
     g.route.points[2].type = 'TakeOffParkingHot'
@@ -631,6 +673,10 @@ test_set_mode_ground_formation()
 test_set_mode_unknown_rejected()
 test_set_mode_alias_line_abreast()
 test_set_mode_clears_airdrome_on_transition()
+test_set_mode_landing_clears_timerefuar()
+test_set_mode_landingrefuar_sets_default_timerefuar()
+test_set_mode_preserves_existing_timerefuar()
+test_set_type_clears_timerefuar_on_transition_away()
 test_set_pos_vehicle_first_wp_updates_span()
 test_set_pos_vehicle_middle_wp_updates_both_spans()
 test_task_preservation_on_setters()
