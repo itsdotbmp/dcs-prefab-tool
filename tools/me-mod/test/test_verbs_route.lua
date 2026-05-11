@@ -263,6 +263,129 @@ local function test_refresh_called_on_clear()
 end
 
 -- ============================================================
+-- Task 4: waypoint_add / waypoint_insert / waypoint_remove tests
+-- ============================================================
+
+local function test_waypoint_add_appends()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'wa1' })
+    local r = verbs.waypoint_add({ name = 'wa1', north = 1000, east = 2000 })
+    assert_true(r.ok, 'waypoint_add: ok')
+    assert_eq(r.index, 1, 'waypoint_add: appended at index 1')
+    assert_eq(#g.route.points, 2, 'waypoint_add: route now has 2 pts')
+    assert_eq(g.route.points[2].x, 1000, 'waypoint_add: north → x')
+    assert_eq(g.route.points[2].y, 2000, 'waypoint_add: east → y')
+end
+
+local function test_waypoint_add_enum_validation()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'wa2' })
+    local r1 = verbs.waypoint_add({ name = 'wa2', north = 1, east = 2, type = 'WrongType' })
+    assert_false(r1.ok, 'waypoint_add: bad type rejected')
+    assert_contains(r1.error, 'unknown waypoint type', 'bad-type error msg')
+    local r2 = verbs.waypoint_add({ name = 'wa2', north = 1, east = 2, action = 'WrongAction' })
+    assert_false(r2.ok, 'waypoint_add: bad action rejected')
+    local r3 = verbs.waypoint_add({ name = 'wa2', north = 1, east = 2, alt_type = 'X' })
+    assert_false(r3.ok, 'waypoint_add: bad alt_type rejected')
+    local r4 = verbs.waypoint_add({ name = 'wa2', north = 1, east = 2, speed = 0 })
+    assert_false(r4.ok, 'waypoint_add: speed=0 rejected')
+end
+
+local function test_waypoint_insert_shifts_indices()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'wi1' })
+    table.insert(g.route.points, mock.make_waypoint('plane', { x = 1000, y = 1000 }))
+    table.insert(g.route.points, mock.make_waypoint('plane', { x = 2000, y = 2000 }))
+    -- route: [0]=spawn, [1]=1000/1000, [2]=2000/2000
+    local r = verbs.waypoint_insert({ name = 'wi1', before = 1, north = 500, east = 500 })
+    assert_true(r.ok, 'waypoint_insert: ok')
+    assert_eq(r.index, 1, 'waypoint_insert: inserted at index 1')
+    assert_eq(#g.route.points, 4, 'waypoint_insert: route grew to 4')
+    assert_eq(g.route.points[2].x, 500, 'waypoint_insert: new WP at Lua idx 2')
+    assert_eq(g.route.points[3].x, 1000, 'waypoint_insert: old idx 1 shifted to idx 2 (Lua) / wire 2')
+end
+
+local function test_waypoint_insert_before_zero()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'wi2' })
+    g.route.points[1].x = 999
+    local r = verbs.waypoint_insert({ name = 'wi2', before = 0, north = 1, east = 2 })
+    assert_true(r.ok, 'waypoint_insert before 0: ok')
+    assert_eq(r.index, 0, 'waypoint_insert before 0: index 0')
+    assert_eq(g.route.points[1].x, 1, 'waypoint_insert before 0: new WP first')
+    assert_eq(g.route.points[2].x, 999, 'waypoint_insert before 0: old first shifted')
+end
+
+local function test_waypoint_insert_at_end_equivalent_to_add()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'wi3' })
+    -- route has 1 point; --before 1 appends
+    local r = verbs.waypoint_insert({ name = 'wi3', before = 1, north = 10, east = 20 })
+    assert_true(r.ok, 'waypoint_insert at end: ok')
+    assert_eq(r.index, 1, 'waypoint_insert at end: index 1')
+    assert_eq(#g.route.points, 2, 'waypoint_insert at end: route grew')
+end
+
+local function test_waypoint_insert_oob()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'wi4' })
+    -- route has 1 point; --before 5 is out of range
+    local r = verbs.waypoint_insert({ name = 'wi4', before = 5, north = 1, east = 2 })
+    assert_false(r.ok, 'waypoint_insert oob: rejected')
+    assert_contains(r.error, 'out of range', 'oob error')
+end
+
+local function test_waypoint_remove_middle()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'wr1' })
+    g.route.points[1].x = 100
+    table.insert(g.route.points, mock.make_waypoint('vehicle', { x = 200, y = 0 }))
+    table.insert(g.route.points, mock.make_waypoint('vehicle', { x = 300, y = 0 }))
+    local r = verbs.waypoint_remove({ name = 'wr1', index = 1 })
+    assert_true(r.ok, 'waypoint_remove middle: ok')
+    assert_eq(#g.route.points, 2, 'waypoint_remove: route shrunk')
+    assert_eq(g.route.points[1].x, 100, 'waypoint_remove: WP 0 untouched')
+    assert_eq(g.route.points[2].x, 300, 'waypoint_remove: WP 2 shifted to 1')
+end
+
+local function test_waypoint_remove_air_last_refused()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'wr2' })
+    local r = verbs.waypoint_remove({ name = 'wr2', index = 0 })
+    assert_false(r.ok, 'waypoint_remove air-last: refused')
+    assert_contains(r.error, 'air group', 'air-last error')
+    assert_eq(#g.route.points, 1, 'waypoint_remove air-last: route untouched')
+end
+
+local function test_waypoint_remove_air_not_last_allowed()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'wr3' })
+    table.insert(g.route.points, mock.make_waypoint('plane'))
+    local r = verbs.waypoint_remove({ name = 'wr3', index = 0 })
+    assert_true(r.ok, 'waypoint_remove air-not-last: ok')
+    assert_eq(#g.route.points, 1, 'waypoint_remove: 1 WP remains')
+end
+
+local function test_waypoint_remove_ground_last_allowed()
+    mock.new_mission()
+    local g = mock.add_vehicle({ name = 'wr4' })
+    local r = verbs.waypoint_remove({ name = 'wr4', index = 0 })
+    assert_true(r.ok, 'waypoint_remove ground-last: ok')
+    assert_eq(#g.route.points, 0, 'waypoint_remove ground-last: empty')
+end
+
+local function test_task_preservation_on_neighbor_after_add()
+    mock.new_mission()
+    local g = mock.add_plane({ name = 'tp1' })
+    g.route.points[1].task.params.tasks = { { id = 'Orbit', params = { altitude = 500 } } }
+    verbs.waypoint_add({ name = 'tp1', north = 1, east = 1 })
+    assert_eq(g.route.points[1].task.params.tasks[1].id, 'Orbit',
+              'task preservation: neighbor WP task untouched')
+    assert_eq(#g.route.points[2].task.params.tasks, 0,
+              'task preservation: new WP has empty task')
+end
+
+-- ============================================================
 -- Test runner
 -- ============================================================
 
@@ -280,6 +403,17 @@ test_route_clear_ground()
 test_route_clear_air_refused()
 test_waypoint_get_full_fields()
 test_refresh_called_on_clear()
+test_waypoint_add_appends()
+test_waypoint_add_enum_validation()
+test_waypoint_insert_shifts_indices()
+test_waypoint_insert_before_zero()
+test_waypoint_insert_at_end_equivalent_to_add()
+test_waypoint_insert_oob()
+test_waypoint_remove_middle()
+test_waypoint_remove_air_last_refused()
+test_waypoint_remove_air_not_last_allowed()
+test_waypoint_remove_ground_last_allowed()
+test_task_preservation_on_neighbor_after_add()
 
 print(string.format('test_verbs_route: %d passed, %d failed', passed, failed))
 for _, e in ipairs(errors) do print('  FAIL: ' .. e) end

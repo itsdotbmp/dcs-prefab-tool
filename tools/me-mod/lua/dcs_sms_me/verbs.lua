@@ -5881,6 +5881,97 @@ function M.waypoint_add(args)
              waypoint = strip_back_refs(new_wp) }
 end
 
+function M.waypoint_insert(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'waypoint_insert requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'waypoint_insert requires exactly one of args.name or args.id' }
+    end
+    if type(args.before) ~= 'number' or args.before < 0
+            or args.before ~= math.floor(args.before) then
+        return { ok = false, error = 'waypoint_insert requires args.before (integer >= 0)' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'waypoint_insert requires args.north and args.east (numbers, meters)' }
+    end
+    local route, g, cat, err = find_route(has_name and args.name or nil,
+                                          has_id and args.id or nil)
+    if not route then return { ok = false, error = err } end
+    if args.before > #route.points then
+        return { ok = false, error = string.format(
+            'insert index %d out of range (route has %d points; legal range 0..%d)',
+            args.before, #route.points, #route.points) }
+    end
+    -- Enum + numeric validation (mirror waypoint_add)
+    if args.type ~= nil and not WAYPOINT_TYPES[args.type] then
+        return { ok = false, error = "unknown waypoint type '" .. tostring(args.type) .. "'" }
+    end
+    if args.action ~= nil and not WAYPOINT_ACTIONS[args.action] then
+        return { ok = false, error = "unknown waypoint action '" .. tostring(args.action) .. "'" }
+    end
+    if args.alt_type ~= nil and not ALT_TYPES[args.alt_type] then
+        return { ok = false, error = "alt_type must be 'BARO' or 'RADIO'" }
+    end
+    if args.alt ~= nil and (type(args.alt) ~= 'number' or args.alt < 0) then
+        return { ok = false, error = 'alt must be >= 0' }
+    end
+    if args.speed ~= nil and (type(args.speed) ~= 'number' or args.speed <= 0) then
+        return { ok = false, error = 'speed must be > 0' }
+    end
+    if args.eta ~= nil and (type(args.eta) ~= 'number' or args.eta < 0) then
+        return { ok = false, error = 'eta must be >= 0' }
+    end
+    -- Inheritance source: WP at index `before-1` (Lua index `before`). For
+    -- before=0 the source is the WP currently at index 0 (Lua index 1).
+    local source_lua_idx = math.max(args.before, 1)
+    local source = route.points[source_lua_idx]
+    local overrides = {
+        x = args.north, y = args.east,
+        alt = args.alt, alt_type = args.alt_type,
+        speed = args.speed, type = args.type, action = args.action,
+        ETA = args.eta, speed_locked = args.speed_locked,
+        ETA_locked = args.eta_locked,
+        formation_template = args.formation_template,
+        name = args.name_text,
+    }
+    local new_wp = inherit_waypoint(source, overrides, cat)
+    -- Lua table.insert with a position shifts elements at and after it up.
+    -- Lua index for "before wire N" is N+1. So before=0 → insert at Lua 1.
+    table.insert(route.points, args.before + 1, new_wp)
+    refresh_group_view(g)
+    return { ok = true, group = g.name, index = args.before,
+             waypoint = strip_back_refs(new_wp) }
+end
+
+function M.waypoint_remove(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'waypoint_remove requires args (table)' }
+    end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_id = type(args.id) == 'number'
+    if has_name == has_id then
+        return { ok = false, error = 'waypoint_remove requires exactly one of args.name or args.id' }
+    end
+    if type(args.index) ~= 'number' then
+        return { ok = false, error = 'waypoint_remove requires args.index (integer >= 0)' }
+    end
+    local wp, route, g, cat, err = find_waypoint(has_name and args.name or nil,
+                                                  has_id and args.id or nil, args.index)
+    if not wp then return { ok = false, error = err } end
+    if (cat == 'plane' or cat == 'helicopter') and #route.points == 1 then
+        return { ok = false,
+                 error = "cannot remove last waypoint on air group '" .. g.name
+                         .. "'; use waypoint set-pos to reposition" }
+    end
+    table.remove(route.points, args.index + 1)
+    refresh_group_view(g)
+    return { ok = true, group = g.name, removed_index = args.index,
+             remaining = #route.points }
+end
+
 function M.route_get(args)
     if type(args) ~= 'table' then
         return { ok = false, error = 'route_get requires args (table)' }
