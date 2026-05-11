@@ -25,7 +25,13 @@ func meWaypointSetTypeFlags() (*flag.FlagSet, *meWaypointSetTypeOpts) {
 	fs.StringVar(&opts.GroupName, "group-name", "", "group name (mutually exclusive with --group-id)")
 	fs.IntVar(&opts.GroupID, "group-id", 0, "group id (mutually exclusive with --group-name)")
 	fs.IntVar(&opts.Index, "index", -1, "waypoint index (0-based; required)")
-	fs.StringVar(&opts.WpType, "type", "", "waypoint type (sms.waypoint.TYPE: TakeOffParking, TakeOffParkingHot, TakeOffGround, TakeOffGroundHot, Turning Point, Land, LandingReFuAr)")
+	fs.StringVar(&opts.WpType, "type", "",
+		"waypoint type — the flight-phase / arrival/departure mode. Legal: "+
+			"\"Turning Point\" (used by every turning-point + ground-formation mode), "+
+			"\"TakeOff\" (from runway), \"TakeOffParking\", \"TakeOffParkingHot\", "+
+			"\"TakeOffGround\", \"TakeOffGroundHot\", \"Land\", \"LandingReFuAr\", "+
+			"\"On Railroads\". Ground formations (Off Road, Cone, Vee, Diamond, Rank, "+
+			"EchelonL/R, Custom) are NOT here — they're in --action.")
 	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
 	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
 	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")

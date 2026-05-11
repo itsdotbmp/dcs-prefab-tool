@@ -25,7 +25,15 @@ func meWaypointSetActionFlags() (*flag.FlagSet, *meWaypointSetActionOpts) {
 	fs.StringVar(&opts.GroupName, "group-name", "", "group name (mutually exclusive with --group-id)")
 	fs.IntVar(&opts.GroupID, "group-id", 0, "group id (mutually exclusive with --group-name)")
 	fs.IntVar(&opts.Index, "index", -1, "waypoint index (0-based; required)")
-	fs.StringVar(&opts.Action, "action", "", "waypoint action (sms.waypoint.ACTION: Turning Point, Fly Over Point, From Parking Area, From Parking Area Hot, From Ground Area, From Ground Area Hot, From Runway, Landing, LandingReFuAr, Off Road, On Road)")
+	fs.StringVar(&opts.Action, "action", "",
+		"waypoint action — how the unit traverses or arrives. Legal: "+
+			"AIR: \"Turning Point\", \"Fly Over Point\", \"From Parking Area\", "+
+			"\"From Parking Area Hot\", \"From Ground Area\", \"From Ground Area Hot\", "+
+			"\"From Runway\", \"Landing\", \"LandingReFuAr\". "+
+			"GROUND/SHIP TRAVERSAL: \"Off Road\", \"On Road\", \"On Railroads\". "+
+			"GROUND FORMATIONS (all need --type=\"Turning Point\"): \"Rank\" (line abreast), "+
+			"\"Cone\", \"Vee\", \"Diamond\", \"EchelonL\", \"EchelonR\", \"Custom\" "+
+			"(pairs with --formation-template <saved-template-name>).")
 	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
 	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
 	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")

@@ -5689,22 +5689,42 @@ local CATEGORY_DEFAULTS = {
     static =     { alt = 0,    alt_type = 'BARO', speed = 0,   type = 'Turning Point', action = 'Off Road' },
 }
 
--- Enum validation tables. Mirror framework/waypoint.lua + framework/alt_type.lua.
--- The duplication is intentional: bridge runs in ME's Lua state, framework in
--- mission env — no shared runtime.
+-- Enum validation tables. Mirror framework/constants/waypoint.lua +
+-- framework/alt_type.lua. The duplication is intentional: bridge runs in
+-- ME's Lua state, framework in mission env — no shared runtime.
+--
+-- Canonical reference: DCS's own actions table at
+-- Scripts/utils_common.lua, where each ME UI mode declares its
+-- (type, action) pair. Notable: ground/ship formations (Cone, Vee,
+-- Diamond, Rank, Echelon*, Custom, Off Road, On Road) all live in
+-- ACTION, with TYPE always "Turning Point". The ME UI mis-labels its
+-- column as "TYPE" for these, but the .miz stores them in action.
 local WAYPOINT_TYPES = {
-    ['TakeOffParking'] = true, ['TakeOffParkingHot'] = true,
-    ['TakeOffGround'] = true,  ['TakeOffGroundHot'] = true,
-    ['Turning Point'] = true,  ['Land'] = true,
-    ['LandingReFuAr'] = true,
+    ['Turning Point'] = true,    -- turning-point + every ground-formation mode
+    ['TakeOff'] = true,          -- runway takeoff
+    ['TakeOffParking'] = true,   -- cold parking-spot takeoff
+    ['TakeOffParkingHot'] = true,
+    ['TakeOffGround'] = true,    -- ground (FOB) takeoff, cold
+    ['TakeOffGroundHot'] = true,
+    ['Land'] = true,             -- landing
+    ['LandingReFuAr'] = true,    -- landing → refuel/rearm → continue
+    ['On Railroads'] = true,     -- trains
 }
 
 local WAYPOINT_ACTIONS = {
+    -- Air actions
     ['Turning Point'] = true,        ['Fly Over Point'] = true,
     ['From Parking Area'] = true,    ['From Parking Area Hot'] = true,
     ['From Ground Area'] = true,     ['From Ground Area Hot'] = true,
     ['From Runway'] = true,          ['Landing'] = true,
-    ['LandingReFuAr'] = true,        ['Off Road'] = true, ['On Road'] = true,
+    ['LandingReFuAr'] = true,
+    -- Ground/ship traversal + formations
+    ['Off Road'] = true,             ['On Road'] = true,
+    ['Rank'] = true,                 ['Cone'] = true,
+    ['Vee'] = true,                  ['Diamond'] = true,
+    ['EchelonL'] = true,             ['EchelonR'] = true,
+    ['Custom'] = true,               -- references wpt.formation_template by name
+    ['On Railroads'] = true,         -- trains
 }
 
 local ALT_TYPES = { BARO = true, RADIO = true }
