@@ -6705,6 +6705,26 @@ function M.unit_set_parking(args)
         return { ok = false, error = "stand '" .. args.stand .. "' at "
                 .. ad:getName() .. " is not helicopter-capable" }
     end
+    -- Size check. The ME's panel_route.updateParking() calls
+    -- mp.getRightParkingAirport which removes stands too small for the
+    -- group's airframe (width/length/height). If our target stand fails
+    -- that check, the next panel refresh will silently reassign the
+    -- unit to a different stand — visible as "I asked for stand 11 but
+    -- the plane ended up on stand 27". Run the same filter ourselves
+    -- and refuse upfront with a discriminating error.
+    if type(mp.getRightParkingAirport) == 'function' then
+        local filtered = {}
+        for k, v in pairs(stands) do filtered[k] = v end
+        filtered = mp.getRightParkingAirport(filtered, g) or filtered
+        if filtered[match.crossroad_index] == nil then
+            local sw = tonumber(sp.WIDTH) or 0
+            local sl = tonumber(sp.LENGTH) or 0
+            return { ok = false, error = string.format(
+                "stand '%s' at %s (%dx%d m) is too small for %s — try a larger stand",
+                args.stand, ad:getName(), sw, sl, g.units[1] and g.units[1].type or '?')
+            }
+        end
+    end
     u.parking    = match.crossroad_index
     u.parking_id = match.name
     ensure_map_objects(g)
