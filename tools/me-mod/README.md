@@ -24,11 +24,11 @@ Custom in-editor extension that adds a **Prefab Manager** to DCS World's Mission
   <img src="../../assets/prefab-manager.png" alt="dcs-sms Prefab Manager — library on the left, click-to-place in progress on the map" width="900">
 </p>
 
-## Audience
+## 🎯 Audience
 
 You design DCS missions in the Mission Editor and want to reuse pieces of one mission in another.
 
-## Features
+## ✨ Features
 
 ### Scope
 
@@ -55,7 +55,7 @@ You design DCS missions in the Mission Editor and want to reuse pieces of one mi
 - Link 16 references preserverd.
 - References to units not present in the prefab are nil'd (cross-mission references that wouldn't resolve).
 
-## Install
+## 📥 Install
 
 Save `dcs-sms.exe` anywhere convenient (Downloads, Desktop, `C:\Tools`, wherever — the .exe doesn't write anything to that folder; it just needs to be where you can run it from). Then **double-click it**. A console window opens with a small menu — type `1` and press Enter to install:
 
@@ -103,7 +103,7 @@ After installing, **restart DCS** (a full restart, not just closing the Mission 
 
 For the binary itself, see [`tools/cmd/dcs-sms/README.md`](../cmd/dcs-sms/README.md).
 
-## Alternative install: OVGME (no `.exe`)
+## 🔧 Alternative install: OVGME (no `.exe`)
 
 If your environment refuses to run unsigned binaries (e.g. corporate machine, locked-down browser), each release also ships an OVGME-friendly zip — `dcs-sms-me-mod-vX.Y.Z.zip` — alongside `dcs-sms.exe` on the [Releases page](https://github.com/nielsvaes/dcs-sms/releases/latest).
 
@@ -123,7 +123,7 @@ Uninstall: disable the mod in OVGME (removes the Lua files), and delete the `req
 
 The `dcs-sms.exe install-me-mod` path is still the recommended install when you can use it — it patches `MissionEditor.lua` automatically and supports `dcs-sms.exe update` / `dcs-sms.exe uninstall-me-mod`. The OVGME zip is the fallback.
 
-## Update
+## ⬆️ Update
 
 The `dcs-sms.exe` you have can update itself in place — no manual re-download needed:
 
@@ -140,7 +140,7 @@ After updating, **fully quit DCS and start it again** — Lua files in `MissionE
 
 If you'd rather grab the binary by hand: [download the new `dcs-sms.exe`](https://github.com/nielsvaes/dcs-sms/releases/latest/download/dcs-sms.exe) directly, drop it over the old one, and run `dcs-sms.exe install-me-mod`. Same end state.
 
-## Uninstall
+## 🗑️ Uninstall
 
 ```powershell
 dcs-sms.exe uninstall-me-mod
@@ -148,7 +148,7 @@ dcs-sms.exe uninstall-me-mod
 
 Removes the patch block from `MissionEditor.lua` (surgically, by markers; falls back to backup-restore if the markers were edited away), deletes the modules directory, and deletes the backup.
 
-## Troubleshooting
+## 🛟 Troubleshooting
 
 ### Windows SmartScreen says "Windows protected your PC"
 
@@ -210,7 +210,7 @@ The path is cached to `%AppData%\dcs-sms\config.toml` for next time, so you only
 
 Check `<Saved Games>\DCS\Logs\dcs.log` for any `[sms.me]` lines around the time of the issue, then [open a bug report](https://github.com/nielsvaes/dcs-sms/issues/new?template=bug_report.yml) — paste the relevant log lines and the version number from the Prefab Manager title bar.
 
-## Prefab Manager
+## 🏗️ Prefab Manager
 
 The mod is one floating window — the **Prefab Manager** — opened from **DCS-SMS → Prefab Manager** in the editor's top menu bar.
 
@@ -283,18 +283,18 @@ Apply is refused across theatres (a Caucasus airbase prefab can't be applied on 
 - **Undo** — `Ctrl-Z` with the Manager window focused undoes the most recent placement (groups, zones, drawings, and airbase splices all restored together).
 - **Library** — Reload (rescan disk), Rename, Delete, live name+theatre search, click-to-sort columns.
 
-## License
+## 📜 License
 
 The ME-mod is licensed under the [GNU General Public License, version 3](../LICENSE) (covering everything under `tools/`). You may use, modify, and distribute it, but derivative works must also be GPL v3 and ship with source.
 
 The framework (`framework/`) is MIT-licensed separately so mission makers can embed it freely. See [`LICENSE.md`](../../LICENSE.md) at the repo root for the full rationale.
 
-## Versioning
+## 🏷️ Versioning
 
 The ME-mod ships under tags `me-mod-v0.x.y`. The canonical version string lives at [`lua/dcs_sms_me/version.lua`](lua/dcs_sms_me/version.lua). See [`AGENTS.md` §11](../../AGENTS.md#11-versioning-and-releases) for the full rules.
 
 - [`CHANGELOG.md`](../../CHANGELOG.md) — release history; the **ME-mod** section tracks `me-mod-v*` tags.
 
-## Manual smoke checklist
+## ✅ Manual smoke checklist
 
 For the release-gate procedure (run before tagging a `me-mod-v*` release), see [`docs/release-gate/me-mod-smoke.md`](../../docs/release-gate/me-mod-smoke.md).
