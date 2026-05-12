@@ -95,6 +95,38 @@ assert_parity('zones+drawings', {
     drawings = { { name='D1', primitiveType='Polygon', mapData={ x=300, y=400 }, points={ {x=0,y=0}, {x=10,y=0}, {x=10,y=10} } } },
 }, {name='zd'})
 
+-- Case 7: mapObjects (the ME's render-side widget cache) gets stripped
+-- during distill. Carrying it over caused GH#56 (duplicate target-zone
+-- triangles on placement). Both copies must drop it.
+do
+    local with_mo = {
+        groups = {
+            {
+                name = 'G1', x = 0, y = 0,
+                mapObjects = {
+                    route = {
+                        points = { { x=0, y=0, id=12, classKey='RoutePoint' } },
+                        targetZones = { [4] = { { id=65, classKey='S00000005' } } },
+                    },
+                    units = {}, zones = {},
+                },
+                units = { { name='U1', type='F-16C_50', x=0, y=0, heading=0 } },
+            },
+        },
+    }
+    local memod_out = memod_distill(with_mo, {name='strip-mo'})
+    local fw_out    = fw_distill(with_mo,    {name='strip-mo'})
+    check('mapObjects stripped (me-mod)',
+          memod_out and memod_out.groups and memod_out.groups[1]
+              and memod_out.groups[1].mapObjects == nil,
+          'me-mod distill left mapObjects in the output')
+    check('mapObjects stripped (framework)',
+          fw_out and fw_out.groups and fw_out.groups[1]
+              and fw_out.groups[1].mapObjects == nil,
+          'framework distill left mapObjects in the output')
+    assert_parity('mapObjects parity', with_mo, {name='strip-mo'})
+end
+
 if failures > 0 then
     print(string.format('%d failure(s)', failures))
     os.exit(1)

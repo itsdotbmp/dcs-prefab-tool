@@ -91,6 +91,15 @@ local function strip_back_refs(value, visited)
                 end
             end
             -- Drop the boss field entirely.
+        elseif k == 'mapObjects' then
+            -- Drop render-side cache. mapObjects holds widget ids
+            -- (`id=65, classKey='S00...'`) and userObject back-pointers
+            -- bound to a specific live mission. Carrying them into the
+            -- saved prefab leaves duplicate route / target-zone markers
+            -- on placement (GH#56: dragging the Search Then Engage zone
+            -- triangle moves the waypoint instead). The ME regenerates
+            -- mapObjects from `route.points` etc. when the placed group
+            -- is selected.
         else
             local cv, sub_country = strip_back_refs(v, visited)
             out[k] = cv

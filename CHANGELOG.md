@@ -105,6 +105,19 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.7.2] — Unreleased
+
+**Fixed**
+- Prefab save no longer carries the source mission's `mapObjects`
+  render-side cache into the saved file, and prefab placement no longer
+  keeps any pre-existing `mapObjects` it finds on an injected group. The
+  ME regenerates this cache from `route.points` on first selection, so
+  carrying it over produced duplicate route widgets — most visibly, two
+  Search-Then-Engage-in-Zone triangles on placement, and dragging the
+  triangle moved the parent waypoint instead of the zone (GH#56). The
+  fix is symmetric: new prefabs are written clean, and existing prefabs
+  with baked `mapObjects` are sanitised on the way in.
+
 ### [0.7.1] — Unreleased
 
 **Added**

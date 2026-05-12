@@ -759,7 +759,12 @@ local function inject_group(group, ctx)
         Mission.group_by_id[group.groupId] = group
     end
     group.boss = country
-    group.mapObjects = group.mapObjects or { units = {}, zones = {}, route = {} }
+    -- Always reset mapObjects to empty stubs. Older prefabs (pre-GH#56)
+    -- baked the source mission's render-side widget cache into the file;
+    -- carrying that over here leaves duplicate target-zone markers on
+    -- the map (see GH#56). The ME's create_group_map_objects rebuilds
+    -- from `route.points` etc. when the placed group is first selected.
+    group.mapObjects = { units = {}, zones = {}, route = {} }
 
     -- Color (best-effort — non-static groups carry color from coalition)
     if type(Mission.countryCoalition) == 'table'
