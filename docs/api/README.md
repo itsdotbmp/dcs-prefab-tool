@@ -6,7 +6,7 @@
 
 Per-module reference with worked code examples. Inspired by Autodesk Maya's MEL / Python command docs: every public function gets a signature, a description, an arguments table, a return value, and at least one runnable example.
 
-For the framework's cross-cutting rules (failure model, conventions, handle pattern, loading order), see [`AGENTS.md`](../../AGENTS.md). For copy-and-paste recipes that combine multiple modules, see [`examples.md`](examples.md).
+For the framework's cross-cutting rules (failure model, conventions, handle pattern, loading order), see [`AGENTS.md`](../../framework/AGENTS.md). For copy-and-paste recipes that combine multiple modules, see [`examples.md`](examples.md).
 
 ## Loading the framework
 
@@ -80,7 +80,7 @@ For builders that take an `opts` table, document the **full** options table:
 | ... | ... | ... | ... |
 
 **Returns** — `<return type>`, plus `nil` + log on failure (per the
-[framework failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw)).
+[framework failure model](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw)).
 Mention silent-nil paths explicitly when they exist.
 
 **Example**
@@ -114,8 +114,8 @@ These rules apply to everyone (humans and agents) writing or updating these page
 4. **Larger is fine for `sms.task`.** Task builders accept rich `opts` tables; show the full table with sensible defaults, then add a second snippet that shows the task being applied.
 5. **Document the full options table.** Every `opts` key the module reads must be listed with type, default, and meaning. If a key is "passthrough to DCS" (the framework doesn't introspect it), say so.
 6. **Units are framework-public.** Degrees for headings, meters for altitudes, m/s for speeds, lowercase strings for coalitions / categories. Match what `AGENTS.md` §4 promises.
-7. **Failure model is implicit.** Don't restate "returns nil + log on bad input" for every function — link once to [§3](../../AGENTS.md#3-failure-model-log--nil-never-throw) at the top of the page. Do call out silent-nil paths (e.g. `sms.weapon:get_target()`).
-8. **Cross-link with relative paths.** `[sms.group](group.md)`, `[failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw)`. Don't hardcode absolute paths or GitHub URLs.
+7. **Failure model is implicit.** Don't restate "returns nil + log on bad input" for every function — link once to [§3](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw) at the top of the page. Do call out silent-nil paths (e.g. `sms.weapon:get_target()`).
+8. **Cross-link with relative paths.** `[sms.group](group.md)`, `[failure model](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw)`. Don't hardcode absolute paths or GitHub URLs.
 9. **Keep it correct over keeping it short.** Longer pages with right examples beat tight pages with wrong ones.
 
 ## Examples page

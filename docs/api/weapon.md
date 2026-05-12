@@ -21,8 +21,8 @@ extrapolated via `land.getIP` along the last-known forward axis (with
 last-known position as fallback), the per-handle `on_impact` callback fires,
 and a `sms.events.WEAPON_IMPACT` signal is emitted on the bus.
 
-This page is the canonical reference for `sms.weapon`. For the cross-cutting rules every method follows, see [AGENTS.md §3 failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw), [§4 conventions](../../AGENTS.md#4-conventions-and-units), and [§5 entity handles](../../AGENTS.md#5-entity-handles--the-universal-pattern).
-All public calls follow the [framework failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw)
+This page is the canonical reference for `sms.weapon`. For the cross-cutting rules every method follows, see [AGENTS.md §3 failure model](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw), [§4 conventions](../../framework/AGENTS.md#4-conventions-and-units), and [§5 entity handles](../../framework/AGENTS.md#5-entity-handles--the-universal-pattern).
+All public calls follow the [framework failure model](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw)
 — bad input or wrong-state calls log via `[sms.weapon]` and return `nil` /
 `false` rather than throwing. Silent-nil paths (calls that legitimately return
 `nil` without logging) are called out per function below.

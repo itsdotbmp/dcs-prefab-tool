@@ -300,7 +300,7 @@ The framework (`framework/`) is MIT-licensed separately so mission makers can em
 
 ## 🏷️ Versioning
 
-The ME-mod ships under tags `me-mod-v0.x.y`. The canonical version string lives at [`lua/dcs_sms_me/version.lua`](lua/dcs_sms_me/version.lua). See [`AGENTS.md` §11](../../AGENTS.md#11-versioning-and-releases) for the full rules.
+The ME-mod ships under tags `me-mod-v0.x.y`. The canonical version string lives at [`lua/dcs_sms_me/version.lua`](lua/dcs_sms_me/version.lua). See [`AGENTS.md` §4](../../AGENTS.md#4-versioning-and-releases) for the full rules.
 
 - [`CHANGELOG.md`](../../CHANGELOG.md) — release history; the **ME-mod** section tracks `me-mod-v*` tags.
 

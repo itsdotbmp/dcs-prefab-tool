@@ -8,10 +8,13 @@ description: Use whenever the user wants to do anything in DCS World — Mission
 `dcs-sms.exe` is on the user's PATH. It can drive a running DCS mission **or**
 the Mission Editor (ME).
 
-- **Mission Editor:** the user must enable *Options → Misc → "Allow External Execution"*
-  once. After that, `dcs-sms me <noun> <verb> ...` controls the ME (open / save
-  .miz, place groups, edit triggers, query airbases, drop drawings, move the
-  camera, etc.).
+- **Mission Editor:** the user must open the ME and click the
+  *DCS-SMS → External execution: OFF* item in the editor's top menubar
+  to flip it ON. This is session-only — it defaults to OFF at every DCS
+  launch, so if `dcs-sms me ...` returns exit code 4, ask the user to
+  toggle it on. After that, `dcs-sms me <noun> <verb> ...` controls the
+  ME (open / save .miz, place groups, edit triggers, query airbases,
+  drop drawings, move the camera, etc.).
 - **Live mission:** `dcs-sms exec --target mission '<lua>'` runs Lua in the
   mission scripting environment. `dcs-sms status` confirms the hook is alive
   and a mission is loaded.

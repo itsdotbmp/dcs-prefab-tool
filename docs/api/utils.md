@@ -2,9 +2,9 @@
 
 `sms.utils` is the framework's small grab-bag of pure-functional helpers that other modules either need internally or want to expose to mission code. Scope is deliberately narrow: unit conversions (deg/rad, ft/m), vec3 maths (length, distance, bearing), heading wrapping, plus a handful of shared validation and lookup helpers (`is_vec3`, `resolve_country`, `coalition_int_to_str`, `deep_copy`). This is **not** a generic stdlib — new helpers land here only when there are real in-tree callers and the helper is DCS-shaped enough to deserve a public name.
 
-All functions follow the framework's [failure model: log + nil, never throw](../../AGENTS.md#3-failure-model-log--nil-never-throw). A handful are intentionally **silent** on bad input — they return `nil` without logging because callers craft their own contextual error message. These are called out per-function below.
+All functions follow the framework's [failure model: log + nil, never throw](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw). A handful are intentionally **silent** on bad input — they return `nil` without logging because callers craft their own contextual error message. These are called out per-function below.
 
-**Units (public API):** headings in **degrees** (0=north, 90=east, clockwise); altitudes in **meters**; coalitions as lowercase strings (`"red"` / `"blue"` / `"neutral"`). See [`AGENTS.md` §4](../../AGENTS.md#4-conventions-and-units).
+**Units (public API):** headings in **degrees** (0=north, 90=east, clockwise); altitudes in **meters**; coalitions as lowercase strings (`"red"` / `"blue"` / `"neutral"`). See [`AGENTS.md` §4](../../framework/AGENTS.md#4-conventions-and-units).
 
 ## Loading
 

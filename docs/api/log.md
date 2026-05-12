@@ -2,7 +2,7 @@
 
 `sms.log` is the framework's logging surface. It exposes four severity levels — `debug` < `info` < `warn` < `error` — each routed to a DCS `env.*` sink, plus a per-module *tagged logger* factory so every framework module can log with a consistent `[sms.<module>]` prefix.
 
-Every `sms.*` module uses this logger to honour the framework's [failure model: log + nil, never throw](../../AGENTS.md#3-failure-model-log--nil-never-throw). The logger itself is also designed to be cheap and lossy: calls below the runtime threshold are dropped before any string formatting touches `env.*`, so verbose `debug` logs in hot loops are effectively free in production.
+Every `sms.*` module uses this logger to honour the framework's [failure model: log + nil, never throw](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw). The logger itself is also designed to be cheap and lossy: calls below the runtime threshold are dropped before any string formatting touches `env.*`, so verbose `debug` logs in hot loops are effectively free in production.
 
 **Sink mapping.** Severity levels map onto DCS sinks as follows:
 
@@ -23,7 +23,7 @@ Requires `sms.lua`. Load order: `sms.lua → log.lua` (early — every other fra
 
 ## The warn-vs-error contract
 
-Picking the right level matters. Quoting [AGENTS.md §3](../../AGENTS.md#3-failure-model-log--nil-never-throw) verbatim:
+Picking the right level matters. Quoting [AGENTS.md §3](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw) verbatim:
 
 > - **`log.warn`** — caller misuse. The API user passed garbage, named a non-existent entity, called an air-only verb on a ground group, requested an unknown enum, called against a destroyed handle, etc. The caller can fix it by changing what they pass or what state they call against. Most framework rejection paths are warns.
 > - **`log.error`** — real failure that the caller couldn't have prevented. DCS rejected something the framework expected to succeed (`coalition.addGroup` raised, `addStaticObject` accepted but not findable post-call), DCS returned a value outside our known enum, an internal invariant was violated, or `pcall` caught a user callback raising during dispatch.

@@ -2,9 +2,9 @@
 
 `sms.unit` is the per-unit entity handle. It mirrors [`sms.group`](group.md) but operates on a single DCS unit: position, heading, pitch, altitude (ASL or AGL), parent group lookup, programmatic destroy, and event sugar.
 
-A handle is a small `{name = "..."}` table that re-resolves through `Unit.getByName` on every method call, so it stays correct after the underlying unit dies. Method-style (`u:get_position()`), module-style (`sms.unit.get_position(u)`), and bare-name (`sms.unit.get_position("Bandit-1")`) calls all work — see [§5 entity handles](../../AGENTS.md#5-entity-handles--the-universal-pattern) for the universal pattern.
+A handle is a small `{name = "..."}` table that re-resolves through `Unit.getByName` on every method call, so it stays correct after the underlying unit dies. Method-style (`u:get_position()`), module-style (`sms.unit.get_position(u)`), and bare-name (`sms.unit.get_position("Bandit-1")`) calls all work — see [§5 entity handles](../../framework/AGENTS.md#5-entity-handles--the-universal-pattern) for the universal pattern.
 
-All methods follow the framework's [failure model: log + nil, never throw](../../AGENTS.md#3-failure-model-log--nil-never-throw). "Returns X" implicitly means "returns X | nil + log on bad input or dead unit".
+All methods follow the framework's [failure model: log + nil, never throw](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw). "Returns X" implicitly means "returns X | nil + log on bad input or dead unit".
 
 **Units (public API):** headings in **degrees** (0=north, 90=east, clockwise, 0–360); pitch in **degrees** (positive = nose up); altitudes in **meters**; coalitions as lowercase strings (`"red"` / `"blue"` / `"neutral"`).
 

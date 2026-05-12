@@ -95,7 +95,7 @@ The `country` field on `sms.group.create` and `sms.static.create` configs is ann
 - `country = sms.K.countries.USA` — autocompleted, type-safe.
 - `country = "USA"` — accepted, autocompleted from the alias.
 - `country = "United Kingdom"` — accepted as `string`; resolves at runtime via `resolve_country`.
-- `country = "USAa"` — passes the type checker as `string`, but `resolve_country` returns `nil` and the spawn fails with a `log.warn` per the [framework failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw).
+- `country = "USAa"` — passes the type checker as `string`, but `resolve_country` returns `nil` and the spawn fails with a `log.warn` per the [framework failure model](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw).
 
 | Constant | Wire string |
 |---|---|
@@ -662,4 +662,4 @@ See [`statics.md`](statics.md) for navigation patterns and the `origin_of` API.
 
 ---
 
-**See also** — [`AGENTS.md`](../../AGENTS.md) §4 for wire-format conventions; [`docs/api/options.md`](options.md) for the builder functions that consume the option-related constants; [`docs/api/group.md`](group.md) for spawn config examples that thread `sms.K.countries.*` and `sms.K.category.*`.
+**See also** — [`AGENTS.md`](../../framework/AGENTS.md) §4 for wire-format conventions; [`docs/api/options.md`](options.md) for the builder functions that consume the option-related constants; [`docs/api/group.md`](group.md) for spawn config examples that thread `sms.K.countries.*` and `sms.K.category.*`.

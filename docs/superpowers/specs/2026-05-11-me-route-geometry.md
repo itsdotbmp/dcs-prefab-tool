@@ -198,7 +198,7 @@ Each Go verb file gets a `_test.go` covering: missing required flag → exit 2, 
 
 ### D13 — Version bump + CHANGELOG in the same change-set
 
-ME-mod 0.7.0 → 0.7.1 per the [AGENTS.md §11 versioning rule](../../../AGENTS.md#11-versioning-and-releases): any public-surface change bumps the in-source version in the same commit. `CHANGELOG.md` `[Unreleased]` section gets a new bullet under "ME-mod" listing the 18 new verbs.
+ME-mod 0.7.0 → 0.7.1 per the [AGENTS.md §4 versioning rule](../../../AGENTS.md#4-versioning-and-releases): any public-surface change bumps the in-source version in the same commit. `CHANGELOG.md` `[Unreleased]` section gets a new bullet under "ME-mod" listing the 18 new verbs.
 
 ### D14 — Doc autogen runs at the end
 

@@ -4,7 +4,7 @@
 
 Each builder returns a plain DCS-shaped command table `{id = ..., params = ...}` with a private `_sms_verb` tag (and optionally `_sms_air_only`) that the apply layer uses for log messages and category enforcement. The apply step is [`group:set_command(cmd)`](#applying-a-command).
 
-All builders follow the framework's [failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw) — log + return `nil` on bad input; never throw.
+All builders follow the framework's [failure model](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw) — log + return `nil` on bad input; never throw.
 
 ## Loading
 
@@ -30,7 +30,7 @@ All builders follow the framework's [failure model](../../AGENTS.md#3-failure-mo
 |---|---|---|
 | `cmd` | command table | Result of any `sms.commands.*` builder. Manually-built tables (no `_sms_verb` tag) are rejected. |
 
-**Returns** — `true` on success; `false` + log on bad handle, dead group, missing controller, air-only mismatch, or a DCS-side rejection. Per the [failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw), the mission script keeps running.
+**Returns** — `true` on success; `false` + log on bad handle, dead group, missing controller, air-only mismatch, or a DCS-side rejection. Per the [failure model](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw), the mission script keeps running.
 
 **Example**
 

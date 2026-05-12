@@ -2,11 +2,11 @@
 
 Lightweight handles for DCS static objects (hangars, FARP fuel depots, sling-loadable cargo, wreckage). Sibling of [`sms.unit`](unit.md): a callable lookup constructor for existing statics, plus two factories on the same module — no separate `sms.spawn_static`. Methods accept either a handle (`{name="..."}` table) or a raw name string interchangeably.
 
-All public calls follow the [framework failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw): bad input or missing entity is logged through `[sms.static]` and returns `nil` / `false`. Nothing in this module ever throws.
+All public calls follow the [framework failure model](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw): bad input or missing entity is logged through `[sms.static]` and returns `nil` / `false`. Nothing in this module ever throws.
 
 > **Heads up — `is_alive` semantics differ from [`sms.unit`](unit.md).** Statics spawned with `dead = true` are still addressable via `StaticObject.getByName` even though `:isExist()` returns `false` (they're in the world as wreckage). This module gates on `getByName`-presence so dead-spawned wreckage statics remain usable through the framework — see [`is_alive`](#smsstaticis_alives--bool) below for the rationale.
 
-See also: [`AGENTS.md` §3 failure model](../../AGENTS.md#3-failure-model-log--nil-never-throw), [`AGENTS.md` §4 conventions](../../AGENTS.md#4-conventions-and-units), [`AGENTS.md` §5 entity handles](../../AGENTS.md#5-entity-handles--the-universal-pattern).
+See also: [`AGENTS.md` §3 failure model](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw), [`AGENTS.md` §4 conventions](../../framework/AGENTS.md#4-conventions-and-units), [`AGENTS.md` §5 entity handles](../../framework/AGENTS.md#5-entity-handles--the-universal-pattern).
 
 ## Loading
 

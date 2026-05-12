@@ -4,7 +4,7 @@
 
 The module is a near carbon-copy of [`sms.task`](task.md)'s build/apply split, with **one deviation**: ROE cannot resolve to a single DCS option `id` at build time, because `AI.Option.Air.id.ROE`, `AI.Option.Ground.id.ROE`, and `AI.Option.Naval.id.ROE` are three different ints with three different value sets. [`sms.options.roe`](#smsoptionsroevalue--option) returns an `id`-less table tagged with `_sms_roe = true`; the apply layer reads the group's category and dispatches to the right DCS enum + value table. This is documented in detail under [ROE category dispatch](#roe-category-dispatch).
 
-The framework failure model — log + return `nil` (builders) or `false` (apply), never throw — is described in [`AGENTS.md` §3](../../AGENTS.md#3-failure-model-log--nil-never-throw); it is **not** restated per-function below.
+The framework failure model — log + return `nil` (builders) or `false` (apply), never throw — is described in [`AGENTS.md` §3](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw); it is **not** restated per-function below.
 
 ## Loading
 
@@ -14,7 +14,7 @@ The framework failure model — log + return `nil` (builders) or `false` (apply)
 
 These apply to **every** builder; they are not repeated in each row.
 
-- **String values are lowercase + underscores.** `"weapon_free"`, `"open_fire_weapon_free"`, `"for_continuous_search"`, etc. Match the framework-wide convention in [`AGENTS.md` §4](../../AGENTS.md#4-conventions-and-units).
+- **String values are lowercase + underscores.** `"weapon_free"`, `"open_fire_weapon_free"`, `"for_continuous_search"`, etc. Match the framework-wide convention in [`AGENTS.md` §4](../../framework/AGENTS.md#4-conventions-and-units).
 - **Constant tables are UPPERCASE.** `sms.K.roe.WEAPON_FREE` resolves to the string `"weapon_free"`. Both forms are accepted by every builder; pick whichever reads better at the call site.
 - **Category gates** are enforced at apply time. An air-only option (e.g. `rtb_on_bingo`) applied to a ground group logs a warning and returns `false`. Same for ground-only options (`alarm_state`, `disperse_on_attack`) on aircraft.
 - **Distances** are meters; **durations** are seconds. (Both are passed through to DCS unchanged.)

@@ -4,7 +4,7 @@
 
 Each rule owns its own `sms.timer.every` handle — there is **no shared scheduler**. The "manager" is a passive registry indexed by name. Construction auto-registers the rule and starts its timer; `:stop()` cancels and unregisters. Constructing a new rule with a name already in the registry replaces the old one (same-name semantics that match DCS's own behavior).
 
-All public functions follow the framework's [failure model: log + nil, never throw](../../AGENTS.md#3-failure-model-log--nil-never-throw). Throws inside `condition` / `dev_condition` / `action` are caught with `pcall` and logged at `error`; the state machine treats a throw as "no fire this tick" and never aborts the framework.
+All public functions follow the framework's [failure model: log + nil, never throw](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw). Throws inside `condition` / `dev_condition` / `action` are caught with `pcall` and logged at `error`; the state machine treats a throw as "no fire this tick" and never aborts the framework.
 
 ## Loading
 

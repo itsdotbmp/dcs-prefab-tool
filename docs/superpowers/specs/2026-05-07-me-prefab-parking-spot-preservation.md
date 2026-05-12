@@ -157,7 +157,7 @@ Prong 1 sidesteps all of these by writing the exact `parking_id` back. The user'
 ## Affected files (implementation surface)
 
 - **`tools/me-mod/lua/dcs_sms_me/prefab_ops.lua`** — `inject_group` signature gains a `ctx` parameter; the parking-strip is gated; new Pass F appended after Pass E in `M.place`. Update the comment at lines 719-720 to describe the new conditional. Update the comment block at lines 1029-1046 to mention Pass F.
-- **`tools/me-mod/lua/dcs_sms_me/version.lua`** — bump `0.3.2` → `0.3.3` (bugfix). Per [`AGENTS.md §11`](../../AGENTS.md#11-versioning-and-releases) the in-source version bump rides in the same commit as the change.
+- **`tools/me-mod/lua/dcs_sms_me/version.lua`** — bump `0.3.2` → `0.3.3` (bugfix). Per [`AGENTS.md §4`](../../../AGENTS.md#4-versioning-and-releases) the in-source version bump rides in the same commit as the change.
 - **`CHANGELOG.md`** — add a `me-mod v0.3.3` entry under the existing me-mod section: "fix(me-mod): preserve parking-spot binding for `Take Off From Ramp` aircraft on prefab placement (#37)".
 - **No `AGENTS.md` change.** No public `sms.*` surface change.
 - **No `docs/api/` change.** Same reason.

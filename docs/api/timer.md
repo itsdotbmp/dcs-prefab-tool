@@ -6,7 +6,7 @@ All scheduling is **sim-time-based**: the clock ticks with the DCS simulation an
 
 `after` / `every` return a small **handle** (private metatable, identity-checked). Method-style (`h:stop()`) and module-style (`sms.timer.stop(h)`) calls both work. User errors raised inside the scheduled `fn` are caught via `pcall` and logged at `error` level — bad user code never breaks the framework.
 
-All functions follow the framework's [failure model: log + nil, never throw](../../AGENTS.md#3-failure-model-log--nil-never-throw). "Returns X" implicitly means "returns X | nil + log on bad input".
+All functions follow the framework's [failure model: log + nil, never throw](../../framework/AGENTS.md#3-failure-model-log--nil-never-throw). "Returns X" implicitly means "returns X | nil + log on bad input".
 
 ## Loading
 

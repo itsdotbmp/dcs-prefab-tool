@@ -94,4 +94,4 @@ The wider repo is split-licensed: the `tools/` tree (CLI, ME-mod, in-DCS hook) s
 
 ## Versioning
 
-The framework ships under tags `framework-v0.x.y`. The canonical version string is `sms.version` in [`sms.lua`](sms.lua). See [`AGENTS.md` §11](../AGENTS.md#11-versioning-and-releases) for the full versioning rules.
+The framework ships under tags `framework-v0.x.y`. The canonical version string is `sms.version` in [`sms.lua`](sms.lua). See [`AGENTS.md` §4](../AGENTS.md#4-versioning-and-releases) for the full versioning rules.

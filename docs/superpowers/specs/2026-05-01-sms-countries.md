@@ -53,7 +53,7 @@ After this work:
 - **Lua 5.1.** The generated file runs inside the DCS mission environment.
 - **Idempotent load.** `sms.countries = sms.countries or {}` so reloading the module doesn't clobber any consumer's local references.
 - **No throws.** The runtime drift check must not raise. If `country` global is somehow missing or `country.id` isn't a table (running outside DCS), the check is a silent no-op.
-- **Failure model.** Per [`AGENTS.md` §3](../../../AGENTS.md#3-failure-model-log--nil-never-throw): no public function on this module logs at error or returns nil for caller misuse — there are no public functions, just the table. The drift warning is `log.warn` exactly once at load time.
+- **Failure model.** Per [`AGENTS.md` §3](../../../framework/AGENTS.md#3-failure-model-log--nil-never-throw): no public function on this module logs at error or returns nil for caller misuse — there are no public functions, just the table. The drift warning is `log.warn` exactly once at load time.
 - **Drop-in.** Existing call sites (`country = "USA"`) continue to work. The framework's `resolve_country` accepts both forms.
 
 ## Decisions

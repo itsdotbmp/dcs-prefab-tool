@@ -215,7 +215,7 @@ The framework (`framework/`) is MIT-licensed separately so mission makers can em
 
 ## Versioning
 
-The CLI binary is bundled with each ME-mod release (`me-mod-v0.x.y` tag). It does not have its own version track. See [`AGENTS.md` §11](../../../AGENTS.md#11-versioning-and-releases).
+The CLI binary is bundled with each ME-mod release (`me-mod-v0.x.y` tag). It does not have its own version track. See [`AGENTS.md` §4](../../../AGENTS.md#4-versioning-and-releases).
 
 ## Manual smoke checklist
 
