@@ -80,6 +80,9 @@ body:
     id: notes
     attributes:
       label: Anything else?
-      description: Screenshots, theories, "this used to work in v0.1.0", etc.
+      description: |
+        Screenshots, theories, "this used to work in v0.1.0", etc.
+
+        Attaching a `.prefab`? GitHub doesn't accept that extension directly — zip it and drop the `.zip` here, or paste its contents in a ```lua fenced block.
     validations:
       required: false
