@@ -91,15 +91,24 @@ local function strip_back_refs(value, visited)
                 end
             end
             -- Drop the boss field entirely.
-        elseif k == 'mapObjects' then
-            -- Drop render-side cache. mapObjects holds widget ids
-            -- (`id=65, classKey='S00...'`) and userObject back-pointers
-            -- bound to a specific live mission. Carrying them into the
-            -- saved prefab leaves duplicate route / target-zone markers
-            -- on placement (GH#56: dragging the Search Then Engage zone
-            -- triangle moves the waypoint instead). The ME regenerates
-            -- mapObjects from `route.points` etc. when the placed group
-            -- is selected.
+        elseif k == 'mapObjects' or k == 'targets' then
+            -- Drop render-side caches. Two separate caches feed the same
+            -- bug class:
+            --
+            --   * mapObjects — group-level widget cache (route line,
+            --     waypoint icons, target zones). Holds widget ids and
+            --     userObject back-pointers bound to a specific live
+            --     mission.
+            --   * targets — per-waypoint mark cache for zone-bearing
+            --     tasks (Search Then Engage In Zone, AttackTargetsInZone,
+            --     ...). me_action_map_objects rebuilds it via insert_target
+            --     when the actions panel first shows the task.
+            --
+            -- Carrying either into a saved prefab leaves duplicate
+            -- route / target-zone markers on placement (GH#56: dragging
+            -- the Search Then Engage zone triangle moves the waypoint
+            -- instead). The placement-side inject_group also resets both
+            -- defensively for prefabs that pre-date this fix.
         else
             local cv, sub_country = strip_back_refs(v, visited)
             out[k] = cv

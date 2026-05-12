@@ -809,13 +809,22 @@ local function inject_group(group, ctx)
         end
     end
 
-    -- Set the boss back-link on every route waypoint. linkUnit / helipadId /
-    -- airdromeId / nested task params were already handled by _remap_ids in
-    -- M.place's pipeline.
+    -- Set the boss back-link on every route waypoint, and reset wpt.targets
+    -- to empty. wpt.targets is the editor's denormalised mark cache for
+    -- "task-with-a-zone" actions (Search Then Engage In Zone, AttackTargets-
+    -- InZone, etc.) — it's a render-side artifact that me_action_map_objects
+    -- rebuilds via insert_target when the actions panel first shows the
+    -- task. Carrying the source mission's entries over would give two
+    -- widgets per zone task (one from the data, one freshly inserted by
+    -- mark.set when the user opens the panel for the placed group). DCS's
+    -- own duplicate-group at me_copy_paste.lua:306 does the same reset.
+    -- linkUnit / helipadId / airdromeId / nested task params were already
+    -- handled by _remap_ids in M.place's pipeline.
     if type(group.route) == 'table' and type(group.route.points) == 'table' then
         for _, wpt in pairs(group.route.points) do
             if type(wpt) == 'table' then
                 wpt.boss = group
+                wpt.targets = {}
             end
         end
     end
@@ -833,6 +842,37 @@ local function inject_group(group, ctx)
         -- Already in the country's group table; visuals failed though.
         return group.groupId or true,
             'create_group_map_objects: ' .. tostring(cgmo_err)
+    end
+
+    -- Replay actionMapObjects.onTaskShow for every sub-task in the group's
+    -- route. This is what me_actions_listbox.showTasksMapObjects does when
+    -- the user clicks the group in the ME; running it here makes zone /
+    -- mark widgets visible immediately on placement instead of only after
+    -- the user touches the group. It also pre-populates the per-task
+    -- elements[task].mark linkage so the next mark.set call (e.g. user
+    -- double-clicks the task in the actions panel) moves the existing
+    -- widget rather than inserting a second one.
+    local ok_amo, actionMapObjects = pcall(require, 'me_action_map_objects')
+    if ok_amo and actionMapObjects
+        and type(actionMapObjects.onTaskShow) == 'function'
+        and type(group.route) == 'table'
+        and type(group.route.points) == 'table'
+    then
+        for _, wpt in ipairs(group.route.points) do
+            if type(wpt) == 'table' and type(wpt.task) == 'table'
+                and type(wpt.task.params) == 'table'
+                and type(wpt.task.params.tasks) == 'table'
+            then
+                for _, subtask in ipairs(wpt.task.params.tasks) do
+                    pcall(actionMapObjects.onTaskShow, group, wpt, subtask)
+                end
+            end
+        end
+        if type(group.tasks) == 'table' and group.route.points[1] then
+            for _, subtask in ipairs(group.tasks) do
+                pcall(actionMapObjects.onTaskShow, group, group.route.points[1], subtask)
+            end
+        end
     end
 
     return group.groupId or true

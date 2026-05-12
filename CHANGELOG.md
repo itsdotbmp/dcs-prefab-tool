@@ -108,15 +108,20 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 ### [0.7.2] — Unreleased
 
 **Fixed**
-- Prefab save no longer carries the source mission's `mapObjects`
-  render-side cache into the saved file, and prefab placement no longer
-  keeps any pre-existing `mapObjects` it finds on an injected group. The
-  ME regenerates this cache from `route.points` on first selection, so
-  carrying it over produced duplicate route widgets — most visibly, two
-  Search-Then-Engage-in-Zone triangles on placement, and dragging the
+- Prefabs with a Search Then Engage In Zone (or any other zone-bearing
+  enroute task) placed two zone widgets per task, and dragging the
   triangle moved the parent waypoint instead of the zone (GH#56). The
-  fix is symmetric: new prefabs are written clean, and existing prefabs
-  with baked `mapObjects` are sanitised on the way in.
+  bug had two render-side caches feeding into it — `group.mapObjects`
+  (the group-level widget cache) and `wpt.targets` (the per-waypoint
+  mark cache for zone tasks). `prefab_distill` now strips both during
+  save (mirroring how it already strips `boss` back-refs), and
+  `inject_group` resets both unconditionally on placement so prefabs
+  that pre-date this fix sanitise on the way in. After placement, the
+  ME's own `me_action_map_objects.onTaskShow` is replayed for every
+  sub-task so zone widgets appear immediately and the per-task
+  `elements[task].mark` linkage is in place — meaning a later
+  double-click in the actions panel moves the existing widget instead
+  of inserting a second one.
 
 ### [0.7.1] — Unreleased
 
