@@ -179,6 +179,23 @@ Almost always: you closed and re-opened the Mission Editor without restarting DC
 
 Quit DCS World entirely (close it from the main menu, or kill it via Steam → right-click DCS → Manage → Stop). Start it again. Open the Mission Editor — the **DCS-SMS** menu should now be there.
 
+### Install failed with "Access is denied"
+
+If the installer prints something like:
+
+```
+dcs-sms install-me-mod: mkdir modules: mkdir C:\Program Files\Eagle Dynamics\DCS World\MissionEditor\modules\dcs_sms_me: Access is denied.
+```
+
+your DCS lives under `C:\Program Files\...`, and Windows requires Administrator rights to write there. The installer itself isn't doing anything privileged — it's just creating a folder and copying files into the DCS install directory — but Windows protects everything under `Program Files` by default.
+
+Two options:
+
+- **Run as Administrator.** Right-click `dcs-sms.exe` → **Run as administrator**, then pick **1** from the menu. (CLI equivalent: open CMD/PowerShell *as Administrator* in the folder where `dcs-sms.exe` lives, then `dcs-sms.exe install-me-mod`.)
+- **Use the [OVGME-friendly install](#alternative-install-ovgme-no-exe) instead.** You'll still need to run Notepad as Administrator for the one-line edit to `MissionEditor.lua` in step 3, but the rest is handled by OVGME.
+
+If your DCS is installed *outside* `Program Files` (e.g. `D:\Eagle Dynamics\DCS World`), elevation is not required — the install runs fine as a normal user.
+
 ### "DCS install path not found"
 
 Auto-detect couldn't find DCS at the standard path. Pass `--dcs-path` once with the full path to your DCS install folder (the one containing `bin/`, `MissionEditor/`, and `Scripts/`):
