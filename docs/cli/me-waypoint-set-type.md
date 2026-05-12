@@ -20,7 +20,7 @@ dcs-sms me waypoint set-type [flags]
 | `--pretty` | bool | `false` | indent JSON output |
 | `--saved-games` | string | `""` | override Saved Games path |
 | `--timeout` | duration | `30s` | wall-clock timeout |
-| `--type` | string | `""` | waypoint type (sms.waypoint.TYPE: TakeOffParking, TakeOffParkingHot, TakeOffGround, TakeOffGroundHot, Turning Point, Land, LandingReFuAr) |
+| `--type` | string | `""` | waypoint type — the flight-phase / arrival/departure mode. Legal: "Turning Point" (used by every turning-point + ground-formation mode), "TakeOff" (from runway), "TakeOffParking", "TakeOffParkingHot", "TakeOffGround", "TakeOffGroundHot", "Land", "LandingReFuAr", "On Railroads". Ground formations (Off Road, Cone, Vee, Diamond, Rank, EchelonL/R, Custom) are NOT here — they're in --action. |
 
 ---
 

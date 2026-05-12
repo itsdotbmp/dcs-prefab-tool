@@ -83,9 +83,11 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | [`me group set-formation`](me-group-set-formation.md) | set a group's formation |
 | [`me group set-frequency`](me-group-set-frequency.md) | set a group's radio frequency in MHz |
 | [`me group set-hidden`](me-group-set-hidden.md) | toggle whether a group is hidden in the ME view |
+| [`me group set-late-activation`](me-group-set-late-activation.md) | toggle a group's lateActivation flag (deferred spawn) |
 | [`me group set-name`](me-group-set-name.md) | rename a group |
 | [`me group set-pos`](me-group-set-pos.md) | move a group to a new north/east coordinate |
 | [`me group set-task`](me-group-set-task.md) | set a group's role/task (e.g. CAP, CAS, Escort) |
+| [`me group set-uncontrolled`](me-group-set-uncontrolled.md) | toggle a group's uncontrolled flag (spawns without AI controller) |
 
 ## me resources
 
@@ -140,6 +142,7 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | [`me unit set-loadout`](me-unit-set-loadout.md) | apply a named loadout preset to a unit |
 | [`me unit set-name`](me-unit-set-name.md) | rename a unit |
 | [`me unit set-onboard-num`](me-unit-set-onboard-num.md) | set a unit's display onboard number |
+| [`me unit set-parking`](me-unit-set-parking.md) | pin a unit to a specific named parking stand at an airbase (sets parking + parking_id, moves the unit to the stand) |
 | [`me unit set-pos`](me-unit-set-pos.md) | move a unit to a new north/east coordinate |
 | [`me unit set-skill`](me-unit-set-skill.md) | set a unit's AI skill (Average, Good, High, Excellent, Random, Player) |
 
@@ -150,12 +153,14 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | [`me waypoint add`](me-waypoint-add.md) | append a waypoint to a group's route (inherits unset fields from previous WP) |
 | [`me waypoint get`](me-waypoint-get.md) | get a single waypoint's full field set |
 | [`me waypoint insert`](me-waypoint-insert.md) | insert a waypoint at index N (shifts subsequent WPs up; --before K appends) |
+| [`me waypoint link-airbase`](me-waypoint-link-airbase.md) | link a waypoint to a specific airbase (sets airdromeId + moves WP to airbase position) |
 | [`me waypoint remove`](me-waypoint-remove.md) | remove a waypoint from a group's route (air groups: refused if it'd leave 0 WPs) |
 | [`me waypoint set-action`](me-waypoint-set-action.md) | set a waypoint's action (sms.waypoint.ACTION enum) |
 | [`me waypoint set-alt`](me-waypoint-set-alt.md) | set a waypoint's altitude (optionally also its alt-type) |
 | [`me waypoint set-eta`](me-waypoint-set-eta.md) | set a waypoint's ETA in seconds (mission-relative) |
 | [`me waypoint set-eta-locked`](me-waypoint-set-eta-locked.md) | set a waypoint's ETA_locked flag |
-| [`me waypoint set-formation`](me-waypoint-set-formation.md) | set a waypoint's formation_template string |
+| [`me waypoint set-formation`](me-waypoint-set-formation.md) | set a waypoint's formation_template (name of saved Custom formation; preset formations use --action) |
+| [`me waypoint set-mode`](me-waypoint-set-mode.md) | set a waypoint's type+action together via ME-style picker name (Landing, Takeoff from parking, Off road, Cone, …) |
 | [`me waypoint set-name`](me-waypoint-set-name.md) | set a waypoint's display name (empty string allowed) |
 | [`me waypoint set-pos`](me-waypoint-set-pos.md) | move a waypoint to a new north/east coordinate |
 | [`me waypoint set-speed`](me-waypoint-set-speed.md) | set a waypoint's speed (m/s) |
