@@ -67,6 +67,72 @@ func TestStatusMissingHookFile(t *testing.T) {
 	}
 }
 
+func TestStatusJSONShowsNewFields(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "dcs-sms", "state")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	st := proto.HookState{
+		HookVersion:      "0.2.0",
+		State:            "in_mission_editor",
+		MissionLoaded:    false,
+		GuiBridgeEnabled: true,
+		TickSource:       "update_manager",
+		LastFrame:        99,
+		LastFrameAt:      time.Now().UTC().Format(time.RFC3339Nano),
+		LastTick:         99,
+		LastTickAt:       time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	data, _ := json.Marshal(st)
+	if err := os.WriteFile(filepath.Join(stateDir, "hook.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("DCS_SMS_SAVED_GAMES", root)
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := statusCmd([]string{"--json"}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("status exit %d, stderr=%s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{`"state":"in_mission_editor"`, `"gui_bridge_enabled":true`, `"tick_source":"update_manager"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in JSON output, got: %s", want, out)
+		}
+	}
+}
+
+func TestStatusTextShowsNewFields(t *testing.T) {
+	root := t.TempDir()
+	stateDir := filepath.Join(root, "dcs-sms", "state")
+	_ = os.MkdirAll(stateDir, 0o755)
+	st := proto.HookState{
+		HookVersion:      "0.2.0",
+		State:            "in_mission_editor",
+		GuiBridgeEnabled: true,
+		TickSource:       "update_manager",
+		LastFrameAt:      time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	data, _ := json.Marshal(st)
+	_ = os.WriteFile(filepath.Join(stateDir, "hook.json"), data, 0o644)
+
+	t.Setenv("DCS_SMS_SAVED_GAMES", root)
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	code := statusCmd(nil, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("status exit %d, stderr=%s", code, stderr.String())
+	}
+	out := stdout.String()
+	for _, want := range []string{"in_mission_editor", "update_manager"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in text output, got: %s", want, out)
+		}
+	}
+}
+
 func TestStatusStaleHeartbeat(t *testing.T) {
 	root := t.TempDir()
 	stateDir := filepath.Join(root, "dcs-sms", "state")

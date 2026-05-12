@@ -20,32 +20,51 @@ import (
 // given. Tests swap this out to inject input.
 var stdinReader io.Reader = os.Stdin
 
+type execOpts struct {
+	File       string
+	Code       string
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+	Wait       bool
+	Target     string
+}
+
+func execFlags() (*flag.FlagSet, *execOpts) {
+	opts := &execOpts{}
+	fs := flag.NewFlagSet("exec", flag.ContinueOnError)
+	fs.StringVar(&opts.File, "file", "", "path to a .lua file")
+	fs.StringVar(&opts.Code, "code", "", "Lua code (inline)")
+	fs.DurationVar(&opts.Timeout, "timeout", 5*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	fs.BoolVar(&opts.Wait, "wait", false, "if hook isn't ready, poll until it is or --timeout elapses")
+	fs.StringVar(&opts.Target, "target", "auto", "execution target: mission | gui | auto")
+	return fs, opts
+}
+
 func init() {
-	register("exec", execCmd)
+	registerInfo("exec", cmdInfo{
+		Run:      execCmd,
+		Flags:    flagsOnly(execFlags),
+		Synopsis: "execute a Lua snippet (use --target mission|gui|auto, default auto)",
+	})
 }
 
 func execCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("exec", flag.ContinueOnError)
+	fs, opts := execFlags()
 	fs.SetOutput(stderr)
-	var (
-		flagFile       = fs.String("file", "", "path to a .lua file")
-		flagCode       = fs.String("code", "", "Lua code (inline)")
-		flagTimeout    = fs.Duration("timeout", 5*time.Second, "wall-clock timeout")
-		flagPretty     = fs.Bool("pretty", false, "indent JSON output")
-		flagSavedGames = fs.String("saved-games", "", "override Saved Games path")
-		flagWait       = fs.Bool("wait", false, "if hook isn't ready, poll until it is or --timeout elapses")
-	)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	code, err := readCode(*flagFile, *flagCode, stdinReader)
+	code, err := readCode(opts.File, opts.Code, stdinReader)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms exec:", err)
 		return 2
 	}
 
-	root, err := resolveRoot(*flagSavedGames)
+	root, err := resolveRoot(opts.SavedGames)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms exec:", err)
 		return 3
@@ -56,7 +75,7 @@ func execCmd(args []string, stdout, stderr io.Writer) int {
 		return 3
 	}
 
-	if err := waitForHook(mb.State(), *flagWait, *flagTimeout); err != nil {
+	if err := waitForHook(mb.State(), opts.Wait, opts.Timeout); err != nil {
 		fmt.Fprintln(stderr, "dcs-sms exec:", err)
 		return 3
 	}
@@ -65,11 +84,22 @@ func execCmd(args []string, stdout, stderr io.Writer) int {
 	// runs. Errors here are non-fatal — we'd rather proceed than refuse.
 	_ = mb.SweepOutboxOlderThan(60 * time.Second)
 
+	// Resolve --target against the current hook state. RouteForTarget returns
+	// "mission" or "gui" on success, or an error describing why the requested
+	// target isn't usable right now (e.g. gui bridge disabled).
+	hookState, _ := hookstatus.ReadMerged(mb.State())
+	target, err := hookstatus.RouteForTarget(opts.Target, hookState)
+	if err != nil {
+		fmt.Fprintln(stderr, "dcs-sms exec:", err)
+		return 4
+	}
+
 	req := proto.ExecRequest{
 		ID:        mailbox.NewID(),
 		Kind:      "exec",
+		Target:    target,
 		Code:      code,
-		TimeoutMs: int(flagTimeout.Milliseconds()),
+		TimeoutMs: int(opts.Timeout.Milliseconds()),
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	}
 
@@ -78,10 +108,10 @@ func execCmd(args []string, stdout, stderr io.Writer) int {
 		return 3
 	}
 
-	resp, err := pollResponse(mb, req.ID, *flagTimeout)
+	resp, err := pollResponse(mb, req.ID, opts.Timeout)
 	if err != nil {
 		if errors.Is(err, errPollTimeout) {
-			fmt.Fprintln(stderr, "dcs-sms exec: timeout — no response within", *flagTimeout)
+			fmt.Fprintln(stderr, "dcs-sms exec: timeout — no response within", opts.Timeout)
 			return 2
 		}
 		fmt.Fprintln(stderr, "dcs-sms exec: poll:", err)
@@ -89,7 +119,7 @@ func execCmd(args []string, stdout, stderr io.Writer) int {
 	}
 
 	var data []byte
-	if *flagPretty {
+	if opts.Pretty {
 		data, _ = json.MarshalIndent(resp, "", "  ")
 	} else {
 		data, _ = json.Marshal(resp)
@@ -177,23 +207,21 @@ func pollResponse(mb *mailbox.Mailbox, id string, timeout time.Duration) (proto.
 	}
 }
 
-// waitForHook returns nil if the hook heartbeat is fresh. If wait is true,
-// it polls every 50ms until fresh or timeout. If wait is false and the hook
-// isn't fresh, it returns immediately with an error.
+// waitForHook returns nil if the hook heartbeat is fresh. The mission_loaded
+// gate is no longer applied here — RouteForTarget is the source of truth for
+// "is the user's chosen target usable right now". This lets `--target gui`
+// work in the ME / main menu where mission_loaded is false.
+//
+// If wait is true, polls every 50ms until fresh or timeout. If wait is false
+// and the hook isn't fresh, returns immediately with an error.
 func waitForHook(stateDir string, wait bool, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
-		st, err := hookstatus.Read(stateDir)
+		st, err := hookstatus.ReadMerged(stateDir)
 		if err == nil && hookstatus.IsFresh(st, 2*time.Second, time.Now()) {
-			if !st.MissionLoaded {
-				if !wait {
-					return errors.New("hook is running but no mission loaded — load a mission or pass --wait")
-				}
-				// fall through to wait
-			} else {
-				return nil
-			}
-		} else if !wait {
+			return nil
+		}
+		if !wait {
 			if err != nil {
 				return fmt.Errorf("hook not ready (%v) — start DCS or pass --wait", err)
 			}

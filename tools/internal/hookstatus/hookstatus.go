@@ -14,7 +14,11 @@ import (
 
 // Read parses state/hook.json from the state directory.
 func Read(stateDir string) (proto.HookState, error) {
-	path := filepath.Join(stateDir, "hook.json")
+	return readOne(filepath.Join(stateDir, "hook.json"))
+}
+
+// readOne is the workhorse: parses one heartbeat file or returns an error.
+func readOne(path string) (proto.HookState, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return proto.HookState{}, fmt.Errorf("read %s: %w", path, err)
@@ -24,6 +28,89 @@ func Read(stateDir string) (proto.HookState, error) {
 		return proto.HookState{}, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return st, nil
+}
+
+// ReadMerged reads both state/hook.json (written by the dcs-sms hook in the
+// Hooks/ env, in-mission only) and state/me.json (written by the ME-mod's
+// bridge.lua, always-on while DCS is up). Merges them into a single HookState
+// that callers can use as a unified view of the bridge.
+//
+// Merge rules:
+//   - mission_loaded / mission_name: from hook.json (only the hook knows).
+//   - gui_bridge_enabled: from me.json (only the ME-mod knows the toggle).
+//   - state: prefer "in_mission" if hook says so, otherwise me.json's value.
+//   - tick fields: whichever heartbeat is most recent.
+//   - hook_version: me.json's takes precedence (it's the active ticker), with
+//     hook.json's as fallback.
+//
+// Returns the most informative state available. If neither file is present,
+// returns an error. If only one is present, returns that one as-is.
+func ReadMerged(stateDir string) (proto.HookState, error) {
+	hook, hookErr := readOne(filepath.Join(stateDir, "hook.json"))
+	me, meErr := readOne(filepath.Join(stateDir, "me.json"))
+
+	if hookErr != nil && meErr != nil {
+		return proto.HookState{}, fmt.Errorf("no heartbeat found (hook: %v; me: %v)", hookErr, meErr)
+	}
+	if hookErr != nil {
+		return me, nil
+	}
+	if meErr != nil {
+		return hook, nil
+	}
+
+	merged := proto.HookState{
+		MissionLoaded:    hook.MissionLoaded,
+		MissionName:      hook.MissionName,
+		GuiBridgeEnabled: me.GuiBridgeEnabled,
+	}
+
+	// State: prefer "in_mission" if the hook says so (or implies it via the
+	// legacy mission_loaded flag). Otherwise defer to ME-mod's view.
+	if hook.State == "in_mission" || (hook.State == "" && hook.MissionLoaded) {
+		merged.State = "in_mission"
+	} else {
+		merged.State = me.State
+	}
+
+	// hook_version: ME-mod is the active ticker, surface its version first.
+	if me.HookVersion != "" {
+		merged.HookVersion = me.HookVersion
+	} else {
+		merged.HookVersion = hook.HookVersion
+	}
+
+	// tick_source: ME-mod ticks via UpdateManager almost always, hook only
+	// during sim. Prefer ME-mod's reported tick_source.
+	if me.TickSource != "" {
+		merged.TickSource = me.TickSource
+	} else {
+		merged.TickSource = hook.TickSource
+	}
+
+	// Pick the most recent heartbeat for tick fields. ISO 8601 string compare
+	// is correct for fixed-format timestamps.
+	hookAt := hook.LastTickAt
+	if hookAt == "" {
+		hookAt = hook.LastFrameAt
+	}
+	meAt := me.LastTickAt
+	if meAt == "" {
+		meAt = me.LastFrameAt
+	}
+	if meAt > hookAt {
+		merged.LastTick = me.LastTick
+		merged.LastTickAt = me.LastTickAt
+		merged.LastFrame = me.LastFrame
+		merged.LastFrameAt = me.LastFrameAt
+	} else {
+		merged.LastTick = hook.LastTick
+		merged.LastTickAt = hook.LastTickAt
+		merged.LastFrame = hook.LastFrame
+		merged.LastFrameAt = hook.LastFrameAt
+	}
+
+	return merged, nil
 }
 
 // IsFresh returns true when st.LastFrameAt is within maxAge of now,
@@ -46,4 +133,40 @@ func IsFresh(st proto.HookState, maxAge time.Duration, now time.Time) bool {
 		diff = -diff
 	}
 	return diff <= maxAge
+}
+
+// RouteForTarget resolves the user's --target flag against the current hook
+// state. Returns the concrete target the request should carry ("mission" or
+// "gui"), or an error describing why the requested route isn't usable right
+// now.
+//
+// requested values: "mission", "gui", "auto", or "" (treated as "auto").
+func RouteForTarget(requested string, st proto.HookState) (string, error) {
+	switch requested {
+	case "mission":
+		return "mission", nil
+	case "gui":
+		if !st.GuiBridgeEnabled {
+			return "", fmt.Errorf("gui bridge is disabled — open the DCS-SMS menu in the Mission Editor and toggle 'External execution' on")
+		}
+		return "gui", nil
+	case "", "auto":
+		// Auto-routing decision tree. Order matters: prefer "mission" when
+		// a sim is running (exec speed via onSimulationFrame), fall through
+		// to "gui" when the user is in the ME or main menu.
+		if st.State == "in_mission" || (st.State == "" && st.MissionLoaded) {
+			return "mission", nil
+		}
+		if st.State == "in_mission_editor" || st.State == "at_main_menu" {
+			if !st.GuiBridgeEnabled {
+				return "", fmt.Errorf("DCS is in the %s but the gui bridge is disabled — toggle 'External execution' on in the DCS-SMS menu", st.State)
+			}
+			return "gui", nil
+		}
+		// State "loading_mission", "starting", "stopping" or unknown.
+		// Legacy hook with mission unloaded and no state info also lands here.
+		return "", fmt.Errorf("hook reports state=%q (mission_loaded=%v) — no target available right now; pass --target mission or --target gui explicitly", st.State, st.MissionLoaded)
+	default:
+		return "", fmt.Errorf("unknown --target %q (allowed: mission, gui, auto)", requested)
+	}
 }

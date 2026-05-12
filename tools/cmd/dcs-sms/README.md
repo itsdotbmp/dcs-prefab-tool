@@ -88,6 +88,26 @@ dcs-sms.exe exec --file framework/load_all.lua
 
 `--timeout 2s` caps wait time. **Note:** if the snippet hangs DCS (e.g. infinite loop), the timeout will return but DCS itself needs to be killed via Task Manager. This is a documented limitation.
 
+##### `--target mission|gui|auto`
+
+`exec` defaults to `--target auto`, which routes based on the hook's heartbeat:
+
+- If a mission is running → `target=mission` (snippet runs in the mission scripting env, sandboxed).
+- If the user is in the Mission Editor or main menu → `target=gui` (snippet runs in the shared GUI/ME Lua state and can read/write the editable mission). Requires the ME-mod's "External execution" toggle to be on.
+
+Pass `--target mission` or `--target gui` explicitly to override. Exit code `4` means the requested target isn't usable right now (e.g. `--target gui` while the ME-mod toggle is off).
+
+```sh
+# Auto-routed (recommended for most uses)
+dcs-sms.exe exec --code "return _VERSION"
+
+# Force the mission scripting env (will fail outside a running mission)
+dcs-sms.exe exec --target mission --code "return Unit.getByName('Tanker-1'):getName()"
+
+# Force the GUI/ME state (read the editable mission's theatre)
+dcs-sms.exe exec --target gui --code "return mission.theatre"
+```
+
 #### `tail-log`
 
 Prints the last N lines of `dcs.log` (default 50).
@@ -114,6 +134,41 @@ Reverses the install — removes the patch block, deletes the modules directory,
 
 ```sh
 dcs-sms.exe uninstall-me-mod
+```
+
+### AI agent skills — teach Claude / Codex / Gemini about the CLI
+
+#### `install-ai-skill`
+
+Drops a small "skill" file into your AI agent's user-level config directory so
+the agent learns that `dcs-sms.exe` is on PATH and how to drive DCS via it.
+Three agents are supported:
+
+- **Claude Code** → `~/.claude/skills/dcs-sms/SKILL.md`
+- **OpenAI Codex CLI** → `~/.agents/skills/dcs-sms/SKILL.md`
+- **Google Gemini CLI** → `~/.gemini/commands/dcs-sms.toml` + `~/.gemini/skills/dcs-sms/SKILL.md`
+
+```sh
+dcs-sms.exe install-ai-skill --agent=claude    # one agent
+dcs-sms.exe install-ai-skill --agent=all       # all three at once
+dcs-sms.exe uninstall-ai-skill --agent=gemini  # remove
+```
+
+The skill is short on purpose — it tells the agent the CLI exists and points
+it at `--help` for self-discovery. After install, `/dcs-sms` works as a slash
+command on Claude and Gemini; on Codex use `$dcs-sms` or the `/skills`
+picker. The agents also auto-activate the skill when you mention DCS work in
+plain English.
+
+The interactive menu (double-click `dcs-sms.exe`) exposes the same
+operation as option 5.
+
+#### `uninstall-ai-skill`
+
+Reverses the install for the chosen agent (or all of them with `--agent=all`).
+
+```sh
+dcs-sms.exe uninstall-ai-skill --agent=claude
 ```
 
 ### Framework data — for contributors

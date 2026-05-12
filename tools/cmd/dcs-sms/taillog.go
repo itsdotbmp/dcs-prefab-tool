@@ -12,23 +12,41 @@ import (
 	"github.com/nielsvaes/dcs-sms/tools/internal/logtail"
 )
 
+type tailLogOpts struct {
+	Since      string
+	Grep       string
+	N          int
+	JSON       bool
+	SavedGames string
+}
+
+func tailLogFlags() (*flag.FlagSet, *tailLogOpts) {
+	opts := &tailLogOpts{}
+	fs := flag.NewFlagSet("tail-log", flag.ContinueOnError)
+	fs.StringVar(&opts.Since, "since", "cursor", `"cursor" (default), "0" (whole file), or a duration like "30s"`)
+	fs.StringVar(&opts.Grep, "grep", "", "regex to filter lines")
+	fs.IntVar(&opts.N, "n", 0, "emit only the last N matching lines")
+	fs.BoolVar(&opts.JSON, "json", false, "emit one JSON object per line")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
 func init() {
-	register("tail-log", tailLogCmd)
+	registerInfo("tail-log", cmdInfo{
+		Run:      tailLogCmd,
+		Flags:    flagsOnly(tailLogFlags),
+		Synopsis: "read recent lines from dcs.log",
+	})
 }
 
 func tailLogCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("tail-log", flag.ContinueOnError)
+	fs, opts := tailLogFlags()
 	fs.SetOutput(stderr)
-	flagSince := fs.String("since", "cursor", `"cursor" (default), "0" (whole file), or a duration like "30s"`)
-	flagGrep := fs.String("grep", "", "regex to filter lines")
-	flagN := fs.Int("n", 0, "emit only the last N matching lines")
-	flagJSON := fs.Bool("json", false, "emit one JSON object per line")
-	flagSavedGames := fs.String("saved-games", "", "override Saved Games path")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	root, err := resolveRoot(*flagSavedGames)
+	root, err := resolveRoot(opts.SavedGames)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms tail-log:", err)
 		return 3
@@ -37,26 +55,26 @@ func tailLogCmd(args []string, stdout, stderr io.Writer) int {
 	cursorPath := filepath.Join(root, "dcs-sms", "state", "log-cursor")
 	r := &logtail.Reader{LogPath: logPath, CursorPath: cursorPath}
 
-	from, err := resolveSince(*flagSince, logPath, r)
+	from, err := resolveSince(opts.Since, logPath, r)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms tail-log:", err)
 		return 2
 	}
 
-	lines, newOffset, err := r.ReadFrom(from, *flagGrep, *flagN)
+	lines, newOffset, err := r.ReadFrom(from, opts.Grep, opts.N)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms tail-log:", err)
 		return 3
 	}
 	for _, line := range lines {
-		if *flagJSON {
+		if opts.JSON {
 			data, _ := json.Marshal(map[string]string{"line": line})
 			fmt.Fprintln(stdout, string(data))
 		} else {
 			fmt.Fprintln(stdout, line)
 		}
 	}
-	if *flagSince == "cursor" {
+	if opts.Since == "cursor" {
 		if err := r.WriteCursor(newOffset); err != nil {
 			fmt.Fprintln(stderr, "dcs-sms tail-log: warning: failed to update cursor:", err)
 		}

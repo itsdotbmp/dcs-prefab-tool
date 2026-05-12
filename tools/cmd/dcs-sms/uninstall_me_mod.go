@@ -13,20 +13,34 @@ import (
 	memod "github.com/nielsvaes/dcs-sms/tools/me-mod/lua"
 )
 
+type uninstallMeModOpts struct {
+	DCSPath string
+}
+
+func uninstallMeModFlags() (*flag.FlagSet, *uninstallMeModOpts) {
+	opts := &uninstallMeModOpts{}
+	fs := flag.NewFlagSet("uninstall-me-mod", flag.ContinueOnError)
+	fs.StringVar(&opts.DCSPath, "dcs-path", "", "override DCS install path")
+	return fs, opts
+}
+
 func init() {
-	register("uninstall-me-mod", uninstallMeModCmd)
+	registerInfo("uninstall-me-mod", cmdInfo{
+		Run:      uninstallMeModCmd,
+		Flags:    flagsOnly(uninstallMeModFlags),
+		Synopsis: "remove the Mission Editor mod (revert MissionEditor.lua, delete modules)",
+	})
 }
 
 func uninstallMeModCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("uninstall-me-mod", flag.ContinueOnError)
+	fs, opts := uninstallMeModFlags()
 	fs.SetOutput(stderr)
-	flagDCSPath := fs.String("dcs-path", "", "override DCS install path")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
 	cfg, _ := dcspath.DefaultConfigPath()
-	install, err := dcspath.DiscoverInstall(*flagDCSPath, cfg)
+	install, err := dcspath.DiscoverInstall(opts.DCSPath, cfg)
 	if err != nil {
 		fmt.Fprintln(stderr, "dcs-sms uninstall-me-mod:", err)
 		return 3

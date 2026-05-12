@@ -31,7 +31,7 @@ func TestInstallMeMod_CopiesModuleFiles(t *testing.T) {
 		t.Fatalf("exit %d, stderr: %s", code, stderr.String())
 	}
 	moduleDir := filepath.Join(install, "MissionEditor", "modules", "dcs_sms_me")
-	for _, name := range []string{"init.lua", "window.lua", "selection.lua", "serializer.lua", "paths.lua"} {
+	for _, name := range []string{"init.lua", "prefab_manager.lua", "selection.lua", "serializer.lua", "paths.lua"} {
 		p := filepath.Join(moduleDir, name)
 		if info, err := os.Stat(p); err != nil || info.Size() == 0 {
 			t.Errorf("expected %s present and non-empty: %v", p, err)

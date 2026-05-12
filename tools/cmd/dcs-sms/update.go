@@ -12,8 +12,23 @@ import (
 	"time"
 )
 
+type updateOpts struct {
+	Check bool
+}
+
+func updateFlags() (*flag.FlagSet, *updateOpts) {
+	opts := &updateOpts{}
+	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	fs.BoolVar(&opts.Check, "check", false, "report whether an update is available without downloading")
+	return fs, opts
+}
+
 func init() {
-	register("update", updateCmd)
+	registerInfo("update", cmdInfo{
+		Run:      updateCmd,
+		Flags:    flagsOnly(updateFlags),
+		Synopsis: "download the latest dcs-sms.exe from GitHub and replace this binary",
+	})
 }
 
 // updateCmd is the entry point for `dcs-sms update`.
@@ -27,9 +42,8 @@ func init() {
 //     If --check: print availability.
 //     Otherwise: download the asset and swap in place.
 func updateCmd(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("update", flag.ContinueOnError)
+	fs, opts := updateFlags()
 	fs.SetOutput(stderr)
-	flagCheck := fs.Bool("check", false, "report whether an update is available without downloading")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -58,7 +72,7 @@ func updateCmd(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 
-	if *flagCheck {
+	if opts.Check {
 		fmt.Fprintf(stdout, "Update available: v%s → v%s\n", version, latestVer)
 		fmt.Fprintln(stdout, "Run `dcs-sms.exe update` to install.")
 		return 0

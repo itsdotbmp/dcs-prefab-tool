@@ -8,6 +8,16 @@
 [![Discord — Coconut Cockpit](https://img.shields.io/badge/discord-Coconut_Cockpit-5865F2?logo=discord&logoColor=white)](https://discord.gg/8tbdGY45hM)
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/F1F4PYTO7)
 
+<p align="center">
+  <a href="#components">Overview</a> ·
+  <a href="docs/api/">Framework</a> ·
+  <a href="docs/cli/">CLI</a> ·
+  <a href="tools/me-mod/README.md">ME-mod</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
+  <a href="AGENTS.md">Contributing</a> ·
+  <a href="#licensing">License</a>
+</p>
+
 DCS scripting framework, Mission Editor extension, and host-side tooling.
 
 ## Components
@@ -16,7 +26,9 @@ DCS scripting framework, Mission Editor extension, and host-side tooling.
 - **ME-mod** — DCS Mission Editor extension (Prefab Manager and more). [`tools/me-mod/README.md`](tools/me-mod/README.md)
 - **CLI / bridge** — host-side `dcs-sms.exe` for installing the above and live-poking a running mission. [`tools/cmd/dcs-sms/README.md`](tools/cmd/dcs-sms/README.md)
 
-> **Tip:** double-click `dcs-sms.exe` for an interactive menu (Install / Uninstall / Update / set DCS install path). The CLI invocations linked above still work too.
+> **Tip:** double-click `dcs-sms.exe` for an interactive menu (Install / Uninstall / Update / set DCS install path / install AI agent skill). The CLI invocations linked above still work too.
+>
+> Using an AI assistant for DCS work? `dcs-sms install-ai-skill --agent=all` teaches Claude Code / Codex CLI / Gemini CLI that the dcs-sms CLI exists.
 
 <p align="center">
   <img src="assets/dcs-sms-doubleclick.png" alt="dcs-sms.exe interactive menu — DCS install path line plus four numbered options" width="780">

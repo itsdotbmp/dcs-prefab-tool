@@ -1,0 +1,6 @@
+# Embed source files for tools/internal/aiskill must stay LF in the working
+# tree so the //go:embed bytes are deterministic across platforms. Tests
+# assert specific byte prefixes (e.g. "---\nname: dcs-sms\n") that break if
+# git's autocrlf flips them to CRLF on Windows checkouts.
+tools/internal/aiskill/source/*.md text eol=lf
+tools/internal/aiskill/source/*.toml text eol=lf

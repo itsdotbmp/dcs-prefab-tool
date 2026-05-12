@@ -13,16 +13,21 @@
 --
 -- type controls the kind of waypoint (turning point vs takeoff vs land).
 -- action controls how the unit traverses or arrives (turning point vs
--- fly-over vs from-parking-area-hot vs landing). Both have a
--- "Turning Point" entry but they live in separate enums because DCS
--- treats them as separate fields on the waypoint table.
+-- fly-over vs from-parking-area-hot vs landing, plus all ground-vehicle
+-- formations: Off Road, On Road, Rank, Cone, Vee, Diamond, EchelonL/R,
+-- Custom). Both have a "Turning Point" entry but they live in separate
+-- enums because DCS treats them as separate fields on the waypoint
+-- table.
 --
--- "TakeOff" is a DCS alias for "TakeOffParkingHot"; we expose only the
--- canonical TAKEOFF_PARKING_HOT (Decision D4 in the spec).
+-- Canonical reference: DCS's own actions table at
+-- Scripts/utils_common.lua. Notable: ground/ship formations (Cone, Vee,
+-- Diamond, etc.) all use type="Turning Point" and store the formation
+-- string in `action`. The ME UI labels its column as "TYPE" for these
+-- modes but the .miz writes them to action.
 --
--- OFF_ROAD and ON_ROAD are included on action because dcs-sms emits
--- "Off Road" for ground/ship/train waypoints in framework/group.lua
--- and framework/task.lua (Decision D6).
+-- TAKEOFF is the bare "TakeOff" string used by takeoff-from-runway
+-- waypoints; TAKEOFF_PARKING_HOT is a distinct value despite the ME
+-- treating "TakeOff" colloquially as an alias.
 --
 -- Loading order: sms.lua -> log.lua -> utils.lua -> constants.lua ->
 -- framework/constants/waypoint.lua.
@@ -41,31 +46,37 @@ local log = sms.log.module("sms.constants.waypoint")
 sms.constants.waypoint = sms.constants.waypoint or {}
 
 ---@class sms.constants.waypoint.type
+---@field TURNING_POINT        "Turning Point"
+---@field TAKEOFF              "TakeOff"
 ---@field TAKEOFF_PARKING      "TakeOffParking"
 ---@field TAKEOFF_PARKING_HOT  "TakeOffParkingHot"
 ---@field TAKEOFF_GROUND       "TakeOffGround"
 ---@field TAKEOFF_GROUND_HOT   "TakeOffGroundHot"
----@field TURNING_POINT        "Turning Point"
 ---@field LAND                 "Land"
 ---@field LANDING_REFUEL_REARM "LandingReFuAr"
+---@field ON_RAILROADS         "On Railroads"
 sms.constants.waypoint.type = sms.constants.waypoint.type or {}
 
 ---@alias sms.WaypointType
+---| "Turning Point"
+---| "TakeOff"
 ---| "TakeOffParking"
 ---| "TakeOffParkingHot"
 ---| "TakeOffGround"
 ---| "TakeOffGroundHot"
----| "Turning Point"
 ---| "Land"
 ---| "LandingReFuAr"
+---| "On Railroads"
 
+sms.constants.waypoint.type.TURNING_POINT        = "Turning Point"
+sms.constants.waypoint.type.TAKEOFF              = "TakeOff"
 sms.constants.waypoint.type.TAKEOFF_PARKING      = "TakeOffParking"
 sms.constants.waypoint.type.TAKEOFF_PARKING_HOT  = "TakeOffParkingHot"
 sms.constants.waypoint.type.TAKEOFF_GROUND       = "TakeOffGround"
 sms.constants.waypoint.type.TAKEOFF_GROUND_HOT   = "TakeOffGroundHot"
-sms.constants.waypoint.type.TURNING_POINT        = "Turning Point"
 sms.constants.waypoint.type.LAND                 = "Land"
 sms.constants.waypoint.type.LANDING_REFUEL_REARM = "LandingReFuAr"
+sms.constants.waypoint.type.ON_RAILROADS         = "On Railroads"
 
 ---@class sms.constants.waypoint.action
 ---@field TURNING_POINT         "Turning Point"
@@ -79,6 +90,14 @@ sms.constants.waypoint.type.LANDING_REFUEL_REARM = "LandingReFuAr"
 ---@field LANDING_REFUEL_REARM  "LandingReFuAr"
 ---@field OFF_ROAD              "Off Road"
 ---@field ON_ROAD               "On Road"
+---@field RANK                  "Rank"
+---@field CONE                  "Cone"
+---@field VEE                   "Vee"
+---@field DIAMOND               "Diamond"
+---@field ECHELON_LEFT          "EchelonL"
+---@field ECHELON_RIGHT         "EchelonR"
+---@field CUSTOM                "Custom"
+---@field ON_RAILROADS          "On Railroads"
 sms.constants.waypoint.action = sms.constants.waypoint.action or {}
 
 ---@alias sms.WaypointAction
@@ -93,6 +112,14 @@ sms.constants.waypoint.action = sms.constants.waypoint.action or {}
 ---| "LandingReFuAr"
 ---| "Off Road"
 ---| "On Road"
+---| "Rank"
+---| "Cone"
+---| "Vee"
+---| "Diamond"
+---| "EchelonL"
+---| "EchelonR"
+---| "Custom"
+---| "On Railroads"
 
 sms.constants.waypoint.action.TURNING_POINT         = "Turning Point"
 sms.constants.waypoint.action.FLY_OVER_POINT        = "Fly Over Point"
@@ -105,3 +132,11 @@ sms.constants.waypoint.action.LANDING               = "Landing"
 sms.constants.waypoint.action.LANDING_REFUEL_REARM  = "LandingReFuAr"
 sms.constants.waypoint.action.OFF_ROAD              = "Off Road"
 sms.constants.waypoint.action.ON_ROAD               = "On Road"
+sms.constants.waypoint.action.RANK                  = "Rank"
+sms.constants.waypoint.action.CONE                  = "Cone"
+sms.constants.waypoint.action.VEE                   = "Vee"
+sms.constants.waypoint.action.DIAMOND               = "Diamond"
+sms.constants.waypoint.action.ECHELON_LEFT          = "EchelonL"
+sms.constants.waypoint.action.ECHELON_RIGHT         = "EchelonR"
+sms.constants.waypoint.action.CUSTOM                = "Custom"
+sms.constants.waypoint.action.ON_RAILROADS          = "On Railroads"

@@ -81,7 +81,76 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ---
 
+## Tools / Hook
+
+### [hook 0.2.0] — 2026-05-08
+
+**Added**
+- `target` field on requests: `"mission"` (default — runs in the in-mission scripting env via `net.dostring_in`) or `"gui"` (handed off to the ME-mod's bridge — runs in the shared GUI/ME Lua state and reaches the editable mission table).
+- `dcs-sms exec --target gui|mission|auto`. Default is `auto` — picks `mission` if a sim is running, `gui` if the user is in the ME / main menu (and the ME-mod toggle is on).
+- New heartbeat fields: `state`, `gui_bridge_enabled`, `tick_source`, plus `last_tick`/`last_tick_at` aliasing `last_frame`/`last_frame_at`.
+- ME-mod writes its own heartbeat to `state/me.json`. CLI's `hookstatus.ReadMerged` fuses both heartbeats so the routing layer sees a unified view (mission state from the hook, gui state from the ME-mod).
+- New CLI exit code 4 (`exec`): `target=gui` requested but the ME-mod's "External execution" toggle is off.
+
+**Changed**
+- `dcs-sms exec` no longer rejects `mission_loaded=false` outright — `--target gui` works in the ME without a running mission. Routing decisions live in `RouteForTarget`.
+- The hook itself stays single-tick (`onSimulationFrame` only — Hooks/ env has no per-frame tick outside sim, runtime-tested). The `target=gui` poller lives in the ME-mod's `bridge.lua`, driven by `UpdateManager.add` in the ME env where it's actually wired.
+- The hook now skips `target=gui` requests in the inbox (leaves them for the ME-mod's poller to pick up) instead of trying to handle them itself.
+
+**Compatibility**
+- Heartbeat keeps `last_frame` / `last_frame_at` populated alongside `last_tick` / `last_tick_at` for one release.
+- Requests without a `target` field are treated as `target=mission` (today's behavior).
+
+---
+
 ## ME-mod
+
+### [0.7.1] — Unreleased
+
+**Added**
+- `me route list` — compact per-waypoint summary for a group's route (index, type, action, north/east, alt, alt_type, speed, name, eta, has_task flag).
+- `me route get` — full route table including each waypoint's complete field set; per-waypoint `task` subtree preserved verbatim.
+- `me route clear` — strip all waypoints from a group's route (refused for plane / helicopter groups).
+- `me waypoint add` — append a waypoint with `--north / --east` required; optional `--alt / --alt-type / --speed / --type / --action / --name / --eta / --speed-locked / --eta-locked / --formation-template`. Unset fields inherit from the previous waypoint, falling back to per-category defaults for empty routes.
+- `me waypoint insert` — insert at index `--before N`; same optional fields as `add`; inheritance source is the waypoint at index `N-1`.
+- `me waypoint remove` — delete the waypoint at `--index N`; refused for air groups if it would leave 0 waypoints.
+- `me waypoint get` — full field set of a single waypoint.
+- `me waypoint set-pos / set-alt / set-speed / set-type / set-action / set-name / set-eta / set-speed-locked / set-eta-locked / set-formation` — per-field setters. `set-alt` accepts an optional `--alt-type BARO|RADIO` so a single call covers the common "altitude + reference" edit.
+
+Eighteen verbs total. Indices are 0-based on the wire to match what the ME UI displays as "Waypoint 0, 1, 2 …"; Lua internals work in their native 1-based world. Speeds are in meters/sec (DCS native). Per-waypoint `task` fields are never mutated by any of these verbs — task assignment is the next sub-project.
+
+### [0.7.0] — Unreleased
+
+> Note: 0.6.0 was released on `main` with the interactive menu (see below).
+> The me-execution-bridge work that was being staged as 0.6.0 is rolled
+> forward to 0.7.0. Bullets cover the bridge.lua / External Execution
+> toggle (originally 0.5.0-track on this branch), the trigger reorder /
+> screenshot / camera / airbase / resources additions, and the AI agent
+> skill installer.
+
+**Added**
+- `bridge.lua` — an inbox poller running in the ME's Lua state, driven by `UpdateManager.add`. Handles `target=gui` execution requests from the `dcs-sms.exe` CLI: runs the user's Lua snippet directly via `loadstring + xpcall`, captures `print` output, returns results through the standard file-mailbox protocol. Writes its own heartbeat to `<SavedGames>/DCS/dcs-sms/state/me.json`.
+- "External execution: ON/OFF" item under the DCS-SMS top menu. Flipping it on enables the bridge's `target=gui` path so external tools (the `dcs-sms exec --target gui` CLI, Claude, etc.) can run Lua against the editable mission table from outside DCS. Default off at every DCS launch (session-only; no persistence).
+- `me trigger reorder` — move a trigger to a new position in `mission.trigrules` (by name).
+- `me trigger reorder-condition` — move a condition to a new position in a trigger's `rules` list.
+- `me trigger reorder-action` — move an action to a new position in a trigger's `actions` list.
+- `me trigger add-condition --predicate or` — pseudo-predicate that connects two surrounding conditions with logical OR. ED's panel exposes this via the OR button between rules; the bridge now resolves it through `add-condition`. Discoverable via `me trigger list-predicates` / `describe-predicate or`.
+- `dcs-sms screenshot [--out PATH] [--title SUBSTR]` — capture the running DCS window to a PNG via `PrintWindow + PW_RENDERFULLCONTENT`. Works in windowed, borderless windowed, and (verified) true exclusive fullscreen. Default output is `%TEMP%/dcs-sms-screenshot.png`. Windows-only.
+- `me camera focus { --name N | --lat L --lon L | --x X --y Y } [--scale S]` — pan the ME map to a point, optionally setting zoom (meters per screen unit) at the same time. `--name` resolves against `Mission.AirdromeController.getAirdromes()` (case-insensitive, exact match preferred, substring fallback). Coords use DCS world meters (x = north, y = east), same convention as the airdrome controller and the `Terrain.convertLatLonToMeters` return values.
+- `me camera get` — return the current map center as `{ x, y, lat, lon, scale }`.
+- `me airbase list [--coalition all|red|blue|neutrals]` — list every airbase on the current theatre (name, airdrome_number, coalition, x/y, lat/lon). Sorted alphabetically.
+- `me airbase get --name N [--filter plane|helicopter]` — full info for one airbase: position, coalition, frequencies (Hz + MHz), parking stands (each with name, crossroad_index, x/y/lat/lon, fit flags, dimensions), runways (course + both edges), warehouse / fueldepot counts. Match: case-insensitive exact preferred, substring fallback.
+- `me airbase set-coalition --name N --coalition red|blue|neutral` — change an airbase's coalition. Updates the warehouse entry's coalition field AND pushes through `AirdromeController.setAirdromeCoalition` so the live map display refreshes. `neutral` and `neutrals` both accepted on input; ED's canonical form is `neutrals` (lowercase plural).
+- `me resources get { --airbase N | --unit ID }` — read a warehouse / resources entry. Airbase mode reads `mission.AirportsEquipment.airports[airdrome_number]`; unit mode reads `mission.AirportsEquipment.warehouses[unitId]` and accepts a unit name (resolved via `mission.unit_by_name`) or numeric `unitId`. Returns the full entry: coalition, unlimited\* flags, OperatingLevel\_\*, fuel sub-tables (jet_fuel/gasoline/diesel/methanol_mixture), aircrafts (planes/helicopters keyed by display name), weapons (numerically indexed, each with wsType + initialAmount).
+- `me resources set { --airbase N | --unit ID } [mods]` — atomic warehouse mutation. Mods (any combination): `--clear` / `--unlimited` (top-level reset / set-all-unlimited; bool flags also accept `=false` to invert), per-category `--clear-aircrafts` / `--clear-fuel` / `--clear-munitions` and `--unlimited-aircrafts` / `--unlimited-fuel` / `--unlimited-munitions`, replenishment levels `--operating-level-air` / `--operating-level-fuel` / `--operating-level-eqp` (0..100 percent), and repeatable per-item flags `--fuel TYPE=N` (jet_fuel/gasoline/diesel/methanol_mixture, 0..100), `--aircraft "DISPLAY NAME"=N` (exact key match), `--weapon "FRAGMENT"=N` (substring match on weapon displayName via the new `dcs_sms_me/weapons_db` index, or full CLSID in `{...}` form for the rare ambiguous case). Atomic: validates all mods (resolves names, type-checks fuels) before any mutation; ambiguous weapon fragment fails the whole call.
+- `dcs_sms_me/weapons_db.lua` — new internal module; lazy index of ED's `DB.weapon_by_CLSID` keyed by lowercase displayName + CLSID. Exposes `find_by_name(needle)` returning `{found, ambiguous, candidates, entry}` and `find_by_clsid(clsid)`. Used by `me resources set` for `--weapon` resolution; available to future verbs that need wsType ↔ display-name mapping.
+- `dcs-sms install-ai-skill --agent=claude|codex|gemini|all` and matching `uninstall-ai-skill` subcommands. Drops a short `SKILL.md` (and a Gemini slash-command TOML) into the user's AI agent config dir so Claude Code, Codex CLI, and Gemini CLI all know `dcs-sms.exe` is on PATH and how to discover its commands. After install, `/dcs-sms` works as a slash command on Claude and Gemini; on Codex use `$dcs-sms` or the `/skills` picker. Interactive menu option 5 wires up the same install/uninstall flow with agent + action sub-prompts.
+
+All three reorder verbs accept the same five mutually-exclusive position flags: `--to-index N`, `--before X`, `--after X`, `--to-start`, `--to-end`. For `me trigger reorder`, `X` is a trigger name; for `reorder-condition` / `reorder-action`, `X` is a 1-based index into the parent trigger's list. Self-targeting (e.g. `--before T` where `T` is the source itself, or `--to-index <where-source-already-is>`) is an idempotent no-op (`moved: false`), not an error.
+
+**Fixed**
+- `dcs_sms_me/warehouse_ops.lua` — coalition-string mapping in `apply()` was keyed on `BLUE`/`RED`/`NEUTRAL` (uppercase singular), but ED emits lowercase strings (`blue`/`red`/`neutrals`) via `CoalitionController.*CoalitionName()`. The lookup never matched, so the AirdromeController push silently no-op'd: the warehouse table updated, but the live map display only refreshed after save + reopen. Now keyed on the canonical lowercase strings; map redraws immediately.
+- Trigger ref fields (unit / vehicle / aircarrier / drawObject combos) now resolve names to numeric ids before storage. Previously, `me trigger add-condition --predicate unit-altitude-lower unit=b1-1 ...` stored `entry.unit = "b1-1"` (a string), which the ME panel's combo couldn't match — and a subsequent panel interaction would nil the field via the bound `onChange` callback. Closes [#45](https://github.com/nielsvaes/dcs-sms/issues/45).
 
 ### 0.6.0 — 2026-05-09
 

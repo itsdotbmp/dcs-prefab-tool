@@ -1,0 +1,66 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"io"
+	"time"
+)
+
+type meZoneRemoveOpts struct {
+	Name       string
+	ID         int
+	Timeout    time.Duration
+	Pretty     bool
+	SavedGames string
+}
+
+func meZoneRemoveFlags() (*flag.FlagSet, *meZoneRemoveOpts) {
+	opts := &meZoneRemoveOpts{}
+	fs := flag.NewFlagSet("me zone remove", flag.ContinueOnError)
+	fs.StringVar(&opts.Name, "name", "", "zone name (exact match)")
+	fs.IntVar(&opts.ID, "id", 0, "zoneId (numeric)")
+	fs.DurationVar(&opts.Timeout, "timeout", 30*time.Second, "wall-clock timeout")
+	fs.BoolVar(&opts.Pretty, "pretty", false, "indent JSON output")
+	fs.StringVar(&opts.SavedGames, "saved-games", "", "override Saved Games path")
+	return fs, opts
+}
+
+func init() {
+	registerMeInfo("zone", "remove", cmdInfo{
+		Run:      meZoneRemoveCmd,
+		Flags:    flagsOnly(meZoneRemoveFlags),
+		Synopsis: "delete a zone from the open mission",
+	})
+}
+
+// meZoneRemoveCmd implements `dcs-sms me zone remove --name <n> | --id <n>`.
+//
+// Walks the trigger zone list and calls Mission.TriggerZoneData.removeTriggerZone
+// on the match. Exactly one of --name or --id is required.
+func meZoneRemoveCmd(args []string, stdout, stderr io.Writer) int {
+	fs, opts := meZoneRemoveFlags()
+	fs.SetOutput(stderr)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	hasName := opts.Name != ""
+	hasID := opts.ID != 0
+	if hasName == hasID { // both or neither
+		fmt.Fprintln(stderr, "dcs-sms me zone remove: pass exactly one of --name or --id")
+		return 2
+	}
+
+	var luaArgs string
+	if hasName {
+		luaArgs = fmt.Sprintf("{ name = %q }", opts.Name)
+	} else {
+		luaArgs = fmt.Sprintf("{ id = %d }", opts.ID)
+	}
+
+	resp, exitCode := runMeVerb("zone_remove", luaArgs, opts.Timeout, opts.SavedGames, stderr)
+	if exitCode != 0 {
+		return exitCode
+	}
+	return emitMeResponse(resp, opts.Pretty, stdout)
+}
