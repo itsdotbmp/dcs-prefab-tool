@@ -1707,7 +1707,7 @@ local function open_move_modal(row)
     end
     try_skin(picker, 'listBoxSkin_ME')
     raw:insertWidget(picker)
-    picker:setBounds(10, 40, 340, 250)
+    picker:setBounds(10, 40, 340, 220)
 
     -- Build the folder set + tree, render into the picker.
     local folder_set = walk_folders()
@@ -1767,12 +1767,34 @@ local function open_move_modal(row)
     end
     render_picker()
 
+    -- Pre-select the prefab's current folder so the user can see where it
+    -- lives and (typically) just confirm a different destination. Best-effort:
+    -- ListBox has a uniform setSelectedItem(index) setter; TreeView items
+    -- don't expose a select-by-handle API consistently across DCS versions,
+    -- so we attempt it but fall back silently if it doesn't take.
+    local current = row.folder or ''
+    local current_idx
+    for i = 1, #picker_paths do
+        if picker_paths[i] == current then current_idx = i; break end
+    end
+    if current_idx then
+        pcall(function()
+            if picker_uses_listbox then
+                if picker.setSelectedItem then picker:setSelectedItem(current_idx - 1) end
+            else
+                -- TreeView: try the common shapes; if none work, the user just
+                -- starts with no selection (same as the prior behaviour).
+                if picker.setSelectedItem then picker:setSelectedItem(current_idx - 1) end
+            end
+        end)
+    end
+
     local btn_move = Button.new(); btn_move:setText('Move')
     local btn_cancel = Button.new(); btn_cancel:setText('Cancel')
     try_skin(btn_move, 'dtc_button'); try_skin(btn_cancel, 'dtc_button')
     raw:insertWidget(btn_move);     raw:insertWidget(btn_cancel)
-    btn_move:setBounds(180, 300, 80, 22)
-    btn_cancel:setBounds(265, 300, 80, 22)
+    btn_move:setBounds(180, 270, 80, 22)
+    btn_cancel:setBounds(265, 270, 80, 22)
 
     local function selected_target()
         if picker_uses_listbox then
@@ -1790,7 +1812,7 @@ local function open_move_modal(row)
     btn_move:addChangeCallback(function()
         local target = selected_target()
         if target == nil then set_status('Pick a destination folder.', 'warning'); return end
-        if target == row.folder then set_status('Already in "' .. target .. '".', 'warning'); return end
+        if target == row.folder then set_status('Already in "' .. (target == '' and '(root)' or target) .. '".', 'warning'); return end
         -- Task 6 fix changed move_prefab to (source_folder, name, target_folder).
         local ok, new_path = prefab_ops.move_prefab(row.folder or '', row.name, target)
         if not ok then
