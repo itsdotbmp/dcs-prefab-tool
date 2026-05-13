@@ -10,7 +10,16 @@ end
 
 package.preload['lfs'] = function()
     return { writedir = function() return '' end, mkdir = function() return true end,
-             attributes = function() return nil end, dir = function() return function() return nil end end }
+             attributes = function(p)
+                 -- Stub: probe the real FS so move_prefab's existence and
+                 -- collision checks (lfs.attributes(source_path/target))
+                 -- behave correctly against files we create on disk.
+                 local f = io.open(p, 'r')
+                 if not f then return nil end
+                 f:close()
+                 return { mode = 'file' }
+             end,
+             dir = function() return function() return nil end end }
 end
 package.preload['dcs_sms_me.selection'] = function()
     return { snapshot = function() return { ok = true, groups = {}, statics = {}, zones = {}, drawings = {} } end }
@@ -29,23 +38,23 @@ local function check(l, ok) if ok then io.write('PASS ', l, '\n') else io.write(
 write(run_dir .. 'src\\hornet.prefab', 'return { meta = { name = "hornet" }, groups = {}, statics = {}, zones = {}, drawings = {} }')
 
 -- Happy path: move from src/ to dst/.
-local ok, path_or_err = prefab_ops.move_prefab(run_dir .. 'src\\hornet.prefab', 'hornet', 'dst')
+local ok, path_or_err = prefab_ops.move_prefab('src', 'hornet', 'dst')
 check('move ok', ok == true and io.open(run_dir .. 'dst\\hornet.prefab', 'r') ~= nil)
 check('original is gone', io.open(run_dir .. 'src\\hornet.prefab', 'r') == nil)
 
 -- Collision: target already exists.
 write(run_dir .. 'src\\hornet.prefab', 'return { meta = { name = "hornet" }, groups = {}, statics = {}, zones = {}, drawings = {} }')
-local ok2, err = prefab_ops.move_prefab(run_dir .. 'src\\hornet.prefab', 'hornet', 'dst')
+local ok2, err = prefab_ops.move_prefab('src', 'hornet', 'dst')
 check('collision rejected', ok2 == nil)
 check('collision error message', tostring(err):match('already exists') ~= nil)
 
 -- Move to root (folder = '').
-local ok3, path3 = prefab_ops.move_prefab(run_dir .. 'src\\hornet.prefab', 'hornet', '')
+local ok3, path3 = prefab_ops.move_prefab('src', 'hornet', '')
 check('move to root ok', ok3 == true)
 check('at root', io.open(run_dir .. 'hornet.prefab', 'r') ~= nil)
 
 -- Source missing.
-local ok4, err4 = prefab_ops.move_prefab(run_dir .. 'src\\does_not_exist.prefab', 'x', 'dst')
+local ok4, err4 = prefab_ops.move_prefab('src', 'does_not_exist', 'dst')
 check('missing source rejected', ok4 == nil and tostring(err4):match('not found') ~= nil)
 
 -- Cleanup

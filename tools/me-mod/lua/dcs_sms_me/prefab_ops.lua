@@ -141,21 +141,22 @@ function M.save_selection(name, place_at_origin, airbases, folder)
     return true, path
 end
 
--- Move a prefab file from its current location to <target_folder>/<name>.prefab.
--- target_folder is the in-memory '/'-form ('' = root). Refuses to overwrite.
+-- Move a prefab file from <source_folder>/<name>.prefab to
+-- <target_folder>/<name>.prefab. Both folders are in-memory '/'-form
+-- ('' = root). The prefab name is unchanged (rename-during-move is
+-- not supported; use a separate workflow for that).
 -- Returns true, new_path on success; nil, error_string on failure.
-function M.move_prefab(source_path, name, target_folder)
-    if type(source_path) ~= 'string' or source_path == '' then
-        return nil, 'source path required'
-    end
+function M.move_prefab(source_folder, name, target_folder)
     if type(name) ~= 'string' or name == '' then
         return nil, 'name required'
     end
+    source_folder = source_folder or ''
     target_folder = target_folder or ''
 
-    local src = io.open(source_path, 'r')
-    if not src then return nil, 'source not found: ' .. source_path end
-    src:close()
+    local source_path = paths.folder_to_abs(source_folder) .. name .. '.prefab'
+    if not lfs.attributes(source_path) then
+        return nil, 'source not found: ' .. source_path
+    end
 
     paths.ensure_prefab_folder(target_folder)
     local target = paths.folder_to_abs(target_folder) .. name .. '.prefab'
@@ -164,14 +165,12 @@ function M.move_prefab(source_path, name, target_folder)
         return nil, 'source and target are the same'
     end
 
-    local existing = io.open(target, 'r')
-    if existing then
-        existing:close()
+    if lfs.attributes(target) then
         return nil, 'target already exists: ' .. target
     end
 
-    local ok = os.rename(source_path, target)
-    if not ok then return nil, 'os.rename failed' end
+    local ok, oerr = os.rename(source_path, target)
+    if not ok then return nil, 'os.rename failed: ' .. tostring(oerr) end
     return true, target
 end
 
