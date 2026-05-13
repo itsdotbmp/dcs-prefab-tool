@@ -175,6 +175,38 @@ function M.move_prefab(source_path, name, target_folder)
     return true, target
 end
 
+-- Rename a folder under PREFABS_DIR.
+-- old_rel / new_name are in-memory '/'-form; new_name is a single segment
+-- (validated via _validate_folder_name) and replaces the *last* segment of
+-- old_rel. Returns true, new_rel on success; nil, error_string on failure.
+function M.rename_folder(old_rel, new_name)
+    if type(old_rel) ~= 'string' or old_rel == '' then
+        return nil, 'old folder required'
+    end
+    local valid, why = M._validate_folder_name(new_name)
+    if not valid then return nil, why end
+
+    -- Compute new_rel by replacing the last segment.
+    local parent = old_rel:match('^(.+)/[^/]+$') or ''
+    local new_rel = (parent == '' and new_name) or (parent .. '/' .. new_name)
+
+    local old_abs = paths.folder_to_abs(old_rel):sub(1, -2)  -- strip trailing '\'
+    local new_abs = paths.folder_to_abs(new_rel):sub(1, -2)
+
+    if old_abs == new_abs then
+        return nil, 'old and new are the same'
+    end
+
+    -- Refuse if target already exists. lfs.attributes returns nil for missing.
+    if lfs.attributes(new_abs) then
+        return nil, 'target folder already exists: ' .. new_rel
+    end
+
+    local ok = os.rename(old_abs, new_abs)
+    if not ok then return nil, 'os.rename failed' end
+    return true, new_rel
+end
+
 -- ---------------------------------------------------------------------------
 -- Load + scan
 -- ---------------------------------------------------------------------------
