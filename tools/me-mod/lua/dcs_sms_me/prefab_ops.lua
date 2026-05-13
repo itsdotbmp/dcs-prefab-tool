@@ -199,81 +199,83 @@ local function row_from_prefab(name, path, prefab)
     }
 end
 
--- Try to rename a legacy .lua prefab to .prefab. Returns the path the
--- caller should load from afterwards (the new .prefab path on success;
--- the original .lua path if a collision is detected or os.rename fails).
-local function migrate_legacy_to_prefab(legacy_path, name)
-    local new_path = paths.PREFABS_DIR .. name .. '.prefab'
-    local existing = io.open(new_path, 'r')
-    if existing then
-        existing:close()
-        if log and log.write then
-            log.write('sms.me.prefab', log.WARNING,
-                'collision: ' .. name .. '.lua and ' .. name .. '.prefab both present, leaving as-is')
-        end
-        return legacy_path
-    end
-    if os.rename(legacy_path, new_path) then
-        if log and log.write then
-            log.write('sms.me.prefab', log.INFO,
-                'migrated ' .. name .. '.lua -> ' .. name .. '.prefab')
-        end
-        return new_path
-    end
-    if log and log.write then
-        log.write('sms.me.prefab', log.WARNING,
-            'rename failed for ' .. name .. '.lua, keeping as-is')
-    end
-    return legacy_path
-end
-
 function M.scan_dir()
     paths.ensure_prefabs()
     local rows = {}
 
-    -- lfs.dir returns (iterator, state) — generic-for needs BOTH so
-    -- the iterator gets called with its state on each step. An earlier
-    -- attempt did `local ok, iter = pcall(lfs.dir, ...)` then `for entry
-    -- in iter do`, which discards state and aborts with "bad argument
-    -- #1 to '(for generator)'" against DCS's vfs lfs. Wrapping the
-    -- entire walk in pcall preserves the multi-return (Lua passes both
-    -- values from `lfs.dir(...)` to `for` directly inside the closure)
-    -- AND turns any mid-walk VFS error into an empty list instead of a
-    -- throw.
-    local ok, err = pcall(function()
-        for entry in lfs.dir(paths.PREFABS_DIR) do
-            if entry ~= '.' and entry ~= '..' then
-                local name, is_legacy
-                if entry:match('%.prefab$') then
-                    name = entry:gsub('%.prefab$', '')
-                    is_legacy = false
-                elseif entry:match('%.lua$') then
-                    name = entry:gsub('%.lua$', '')
-                    is_legacy = true
-                end
-                if name then
-                    local path = paths.PREFABS_DIR .. entry
-                    if is_legacy then
-                        path = migrate_legacy_to_prefab(path, name)
-                    end
-                    local prefab, lerr = M.load(path)
-                    if prefab then
-                        rows[#rows + 1] = row_from_prefab(name, path, prefab)
-                    else
-                        rows[#rows + 1] = { name = name, path = path, error = lerr }
+    -- Recursive walker. `abs_dir` ends in '\'. `rel_folder` is the
+    -- in-memory '/'-form ('' for root, 'CAP', 'CAP/Tomcats', ...).
+    local function walk(abs_dir, rel_folder)
+        local ok, err = pcall(function()
+            for entry in lfs.dir(abs_dir) do
+                if entry ~= '.' and entry ~= '..' then
+                    local abs_path = abs_dir .. entry
+                    local attr = lfs.attributes(abs_path)
+                    if attr and attr.mode == 'directory' then
+                        local sub_rel = (rel_folder == '' and entry) or (rel_folder .. '/' .. entry)
+                        walk(abs_path .. '\\', sub_rel)
+                    elseif attr and attr.mode == 'file' then
+                        local name, is_legacy
+                        if entry:match('%.prefab$') then
+                            name = entry:gsub('%.prefab$', '')
+                            is_legacy = false
+                        elseif entry:match('%.lua$') then
+                            name = entry:gsub('%.lua$', '')
+                            is_legacy = true
+                        end
+                        if name then
+                            local path = abs_path
+                            if is_legacy then
+                                -- Legacy migration: rename within the SAME subdirectory.
+                                local new_path = abs_dir .. name .. '.prefab'
+                                local existing = io.open(new_path, 'r')
+                                if existing then
+                                    existing:close()
+                                    if log and log.write then
+                                        log.write('sms.me.prefab', log.WARNING,
+                                            'collision: ' .. name .. '.lua and ' .. name .. '.prefab both present in ' .. rel_folder .. ', leaving as-is')
+                                    end
+                                elseif os.rename(path, new_path) then
+                                    if log and log.write then
+                                        log.write('sms.me.prefab', log.INFO,
+                                            'migrated ' .. rel_folder .. '/' .. name .. '.lua -> .prefab')
+                                    end
+                                    path = new_path
+                                else
+                                    if log and log.write then
+                                        log.write('sms.me.prefab', log.WARNING,
+                                            'rename failed for ' .. name .. '.lua in ' .. rel_folder .. ', keeping as-is')
+                                    end
+                                end
+                            end
+                            local prefab, lerr = M.load(path)
+                            local row
+                            if prefab then
+                                row = row_from_prefab(name, path, prefab)
+                            else
+                                row = { name = name, path = path, error = lerr }
+                            end
+                            row.folder = rel_folder
+                            rows[#rows + 1] = row
+                        end
                     end
                 end
             end
+        end)
+        if not ok then
+            if log and log.write then
+                log.write('sms.me.prefab', log.WARNING,
+                    'scan_dir at "' .. tostring(rel_folder) .. '" failed: ' .. tostring(err))
+            end
         end
-    end)
-    if not ok then
-        if log and log.write then
-            log.write('sms.me.prefab', log.WARNING, 'scan_dir failed: ' .. tostring(err))
-        end
-        return rows
     end
 
-    table.sort(rows, function(a, b) return a.name < b.name end)
+    walk(paths.PREFABS_DIR, '')
+
+    table.sort(rows, function(a, b)
+        if a.folder ~= b.folder then return a.folder < b.folder end
+        return a.name < b.name
+    end)
     return rows
 end
 
