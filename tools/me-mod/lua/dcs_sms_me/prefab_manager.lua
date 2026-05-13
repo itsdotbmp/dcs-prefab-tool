@@ -1715,9 +1715,144 @@ local function on_delete_folder(node)
     end
 end
 
+-- Move-prefab modal (Task 18). Reuses the sms_window factory for the chrome
+-- and a TreeView (or ListBox fallback) inside as the folder picker.
+
+local function open_move_modal(row)
+    if not row or row.error then return end
+    local sms_window = require('dcs_sms_me.sms_window')
+    local paths_mod  = require('dcs_sms_me.paths')
+
+    local modal = sms_window.new({
+        title = 'Move prefab',
+        size = { w = 360, h = 360 },
+        min_size = { w = 320, h = 240 },
+    })
+    if not modal then return end
+
+    local raw = modal:raw()
+    local lbl = Static.new(); lbl:setText('Move "' .. row.name .. '" to folder:')
+    try_skin(lbl, 'staticSkin_ME')
+    raw:insertWidget(lbl)
+    lbl:setBounds(10, 10, 320, 22)
+
+    local TreeView; do local ok, m = pcall(require, 'TreeView'); if ok then TreeView = m end end
+    local picker
+    local picker_uses_listbox = false
+    if TreeView then
+        picker = TreeView.new()
+    else
+        local ListBox; do local ok, m = pcall(require, 'ListBox'); if ok then ListBox = m end end
+        if ListBox then picker = ListBox.new(); picker_uses_listbox = true
+        else            picker = Static.new(); picker:setText('(picker unavailable)')
+        end
+    end
+    try_skin(picker, 'listBoxSkin_ME')
+    raw:insertWidget(picker)
+    picker:setBounds(10, 40, 340, 250)
+
+    -- Build the folder set + tree, render into the picker.
+    local folder_set = walk_folders()
+    local tree = build_tree(folder_set, '')
+    local picker_paths = {}
+    local function render_picker()
+        pcall(function()
+            if picker.removeAllItems then picker:removeAllItems()
+            elseif picker.removeAll   then picker:removeAll()
+            end
+            picker_paths = {}
+            if picker_uses_listbox then
+                local ListBoxItem; do local ok, m = pcall(require, 'ListBoxItem'); if ok then ListBoxItem = m end end
+                -- Always-expanded flat render for the picker (small dialog,
+                -- doesn't need collapse state).
+                local function walk(node, depth)
+                    for _, child in ipairs(node.children or {}) do
+                        if ListBoxItem and picker.insertItem then
+                            local it = ListBoxItem.new()
+                            it:setText(string.rep('  ', depth) .. child.name)
+                            picker:insertItem(it)
+                        end
+                        picker_paths[#picker_paths + 1] = child.path
+                        walk(child, depth + 1)
+                    end
+                end
+                -- Root entry first.
+                local ListBoxItem; do local ok, m = pcall(require, 'ListBoxItem'); if ok then ListBoxItem = m end end
+                if ListBoxItem and picker.insertItem then
+                    local it = ListBoxItem.new(); it:setText('(root)'); picker:insertItem(it)
+                end
+                picker_paths[1] = ''
+                walk(tree, 1)
+            else
+                local TreeViewItem; do local ok, m = pcall(require, 'TreeViewItem'); if ok then TreeViewItem = m end end
+                if TreeViewItem then
+                    local function add_node(node, parent_item)
+                        for _, child in ipairs(node.children or {}) do
+                            local item = TreeViewItem.new()
+                            item:setText(child.name)
+                            item._sms_path = child.path
+                            if parent_item and parent_item.insertItem then
+                                parent_item:insertItem(item)
+                            else
+                                picker:insertItem(item)
+                            end
+                            add_node(child, item)
+                        end
+                    end
+                    -- Root row.
+                    local root_item = TreeViewItem.new(); root_item:setText('(root)'); root_item._sms_path = ''
+                    picker:insertItem(root_item)
+                    add_node(tree, root_item)
+                end
+            end
+        end)
+    end
+    render_picker()
+
+    local btn_move = Button.new(); btn_move:setText('Move')
+    local btn_cancel = Button.new(); btn_cancel:setText('Cancel')
+    try_skin(btn_move, 'dtc_button'); try_skin(btn_cancel, 'dtc_button')
+    raw:insertWidget(btn_move);     raw:insertWidget(btn_cancel)
+    btn_move:setBounds(180, 300, 80, 22)
+    btn_cancel:setBounds(265, 300, 80, 22)
+
+    local function selected_target()
+        if picker_uses_listbox then
+            local idx = (picker.getSelectedItem and picker:getSelectedItem()) or -1
+            if type(idx) == 'number' and idx >= 0 then
+                return picker_paths[idx + 1] or ''
+            end
+        else
+            local item = picker.getSelectedItem and picker:getSelectedItem()
+            if item and item._sms_path ~= nil then return item._sms_path end
+        end
+        return nil
+    end
+
+    btn_move:addChangeCallback(function()
+        local target = selected_target()
+        if target == nil then set_status('Pick a destination folder.', 'warning'); return end
+        if target == row.folder then set_status('Already in "' .. target .. '".', 'warning'); return end
+        -- Task 6 fix changed move_prefab to (source_folder, name, target_folder).
+        local ok, new_path = prefab_ops.move_prefab(row.folder or '', row.name, target)
+        if not ok then
+            set_status('Move failed: ' .. tostring(new_path), 'error')
+            return
+        end
+        set_status('Moved "' .. row.name .. '" to "' .. (target == '' and '(root)' or target) .. '".')
+        pcall(function() modal:hide() end)
+        W.selected_folder = target
+        refresh_list()
+    end)
+    btn_cancel:addChangeCallback(function() pcall(function() modal:hide() end) end)
+
+    modal:show()
+end
+
 M._on_new_folder    = on_new_folder
 M._on_rename_folder = on_rename_folder
 M._on_delete_folder = on_delete_folder
+M._open_move_modal  = open_move_modal
 
 function M.show()
     log.write('sms.me', log.INFO, 'window.show() called (W.window present=' .. tostring(W.window ~= nil) .. ')')
