@@ -153,6 +153,7 @@ local W = {
     folder_search_input  = nil,    -- EditBox widget
     folder_tree          = nil,    -- TreeView widget (or ListBox fallback)
     new_folder_btn       = nil,    -- Button widget
+    show_all_btn         = nil,    -- "Show all" button — deselects the tree
     folder_tree_uses_listbox = false,  -- true when TreeView is unavailable
 }
 
@@ -266,12 +267,17 @@ end
 local function compose_filter(rows, selected_folder, filter_text)
     local out = {}
     local text_lower = (filter_text or ''):lower()
+    local prefix = (selected_folder ~= nil and selected_folder ~= '') and (selected_folder .. '/') or nil
     for _, r in ipairs(rows or {}) do
         local folder_ok
         if selected_folder == nil or selected_folder == '' then
             folder_ok = true  -- recursive show-all
         else
-            folder_ok = (r.folder == selected_folder)
+            -- Recursive: match the folder itself OR any descendant.
+            -- (Earlier draft did exact-match only; the user wanted parent
+            -- nodes to include all their subfolder prefabs.)
+            local f = r.folder or ''
+            folder_ok = (f == selected_folder) or (f:sub(1, #prefix) == prefix)
         end
         if folder_ok then
             if text_lower == '' then
@@ -1540,16 +1546,23 @@ local function relayout(w, h)
     local row4_y   = h - 154
     local row5_y   = h - 124
 
-    -- Tree + Grid stretch between y=77 and row3_y-8. Tree's bottom edge
-    -- is 28px above row3_y-8 to leave room for the "+ New folder" button.
+    -- Tree + Grid stretch the same full height between y=77 and row3_y-8.
+    -- The "+ New folder" / "Show all" buttons live on the row3_y row (same
+    -- vertical band as Reload / Undo / Rename / Delete on the right), so the
+    -- tree itself fills the entire body height — no in-pane button row.
     local body_y = 77
     local body_h_total = math.max(60, row3_y - body_y - 8)
-    local tree_h = math.max(40, body_h_total - 28)
+    local tree_h = body_h_total
     local grid_h = body_h_total
 
-    set(W.folder_tree,    left_x, body_y,                   left_w, tree_h)
-    set(W.new_folder_btn, left_x, body_y + tree_h + 4,      left_w, 22)
-    set(W.grid,           right_x, body_y,                  right_w, grid_h)
+    set(W.folder_tree, left_x,  body_y, left_w,  tree_h)
+    set(W.grid,        right_x, body_y, right_w, grid_h)
+
+    -- Left-pane buttons on row3_y: two equal-width with a 4px gap.
+    local btn_gap   = 4
+    local left_btn_w = math.floor((left_w - btn_gap) / 2)
+    set(W.new_folder_btn, left_x,                            row3_y, left_btn_w, 22)
+    set(W.show_all_btn,   left_x + left_btn_w + btn_gap,     row3_y, left_w - left_btn_w - btn_gap, 22)
 
     if W.grid and W.grid.setColumnWidth then
         local fixed_w = 0
@@ -1560,11 +1573,16 @@ local function relayout(w, h)
         pcall(function() W.grid:setColumnWidth(0, name_w) end)
     end
 
-    -- Bottom bands (span full width — unchanged from before).
-    set(W.reload_btn, 10,                row3_y, 70,  22)
-    set(W.undo_btn,   84,                row3_y, 140, 22)
-    set(W.rename_btn, w - 90 - 80 - 4,   row3_y, 80,  22)
-    set(W.delete_btn, w - 90,            row3_y, 80,  22)
+    -- Right-pane action buttons on row3_y. Reload + Undo last placement
+    -- used to sit on the left side; they've moved here so the left side
+    -- can host the folder-tree controls (New folder / Show all) without
+    -- splitting the action band visually.
+    local reload_w, undo_w, name_w_btn, del_w = 70, 140, 80, 80
+    local btn_pad = 4
+    set(W.delete_btn, w - del_w - 10,                                                 row3_y, del_w,      22)
+    set(W.rename_btn, w - del_w - 10 - name_w_btn - btn_pad,                          row3_y, name_w_btn, 22)
+    set(W.undo_btn,   w - del_w - 10 - name_w_btn - btn_pad - undo_w - btn_pad,       row3_y, undo_w,     22)
+    set(W.reload_btn, w - del_w - 10 - name_w_btn - btn_pad - undo_w - btn_pad - reload_w - btn_pad, row3_y, reload_w, 22)
 
     set(W.sep2, 10, sep2_y, w - 20, 1)
 
@@ -2142,28 +2160,49 @@ function M.show()
         -- getSelectedNode() — the node table carries our `_sms_path`.
         -- ListBox fallback exposes a numeric index via getSelectedItem;
         -- we map that through W._tree_listbox_paths.
-        local function on_tree_select()
-            local path = ''
-            if W.folder_tree_uses_listbox then
-                local idx = -1
-                pcall(function() idx = (W.folder_tree.getSelectedItem and W.folder_tree:getSelectedItem()) or -1 end)
-                if type(idx) == 'number' and idx >= 0 and W._tree_listbox_paths then
-                    path = W._tree_listbox_paths[idx + 1] or ''
-                end
-            else
-                pcall(function()
-                    local node = W.folder_tree.getSelectedNode and W.folder_tree:getSelectedNode()
-                    if node and node._sms_path then path = node._sms_path end
-                end)
-            end
+        local function on_folder_path(path)
             W.selected_folder = path or ''
             apply_filter()
             render_grid()
         end
-        if W.folder_tree.addSelectionChangeCallback then
-            pcall(function() W.folder_tree:addSelectionChangeCallback(on_tree_select) end)
-        elseif W.folder_tree.addChangeCallback then
-            pcall(function() W.folder_tree:addChangeCallback(on_tree_select) end)
+        if W.folder_tree_uses_listbox then
+            local function on_listbox_select()
+                W._tree_click_hit_item = true
+                local idx = -1
+                pcall(function() idx = (W.folder_tree.getSelectedItem and W.folder_tree:getSelectedItem()) or -1 end)
+                local path = ''
+                if type(idx) == 'number' and idx >= 0 and W._tree_listbox_paths then
+                    path = W._tree_listbox_paths[idx + 1] or ''
+                end
+                on_folder_path(path)
+            end
+            if W.folder_tree.addSelectionChangeCallback then
+                pcall(function() W.folder_tree:addSelectionChangeCallback(on_listbox_select) end)
+            elseif W.folder_tree.addChangeCallback then
+                pcall(function() W.folder_tree:addChangeCallback(on_listbox_select) end)
+            end
+        else
+            -- DCS TreeView's onSelectedNodeChange override silently never
+            -- fires on click in this build (verified via event-log probe —
+            -- the internal `local node = item.node` deref in the constructor's
+            -- selection callback likely errors before reaching our override).
+            -- onNodeMouseDown DOES fire and arrives first (before the widget
+            -- mouseDown below), carrying the node with our _sms_path stash —
+            -- use it as the primary click signal AND to mark the click as
+            -- consumed so the widget handler skips its empty-space deselect.
+            -- DCS TreeView's onSelectedNodeChange override silently never
+            -- fires (the constructor's internal selection callback errors on
+            -- a nil-deref before reaching the override). onNodeMouseDown DOES
+            -- fire and carries our node with the _sms_path stash, so use it
+            -- as the primary click signal. Note: clicks below the visible
+            -- items still resolve to the closest node — DCS's TreeView
+            -- doesn't surface "empty space" clicks, so deselect is driven by
+            -- the explicit "Show all" button below the tree (not by clicking
+            -- outside an item).
+            W.folder_tree.onNodeMouseDown = function(_s, node)
+                local path = (node and node._sms_path) or ''
+                on_folder_path(path)
+            end
         end
 
         -- Merged Task 15 (ListBox double-click toggles collapse) + Task 19
@@ -2209,12 +2248,31 @@ function M.show()
             end)
         end
 
-        -- + New folder button (below the tree).
+
+        -- + New folder button (below the tree, left half).
         W.new_folder_btn = Button.new()
         W.new_folder_btn:setText('+ New folder')
         try_skin(W.new_folder_btn, 'dtc_button')
         W.window:insertWidget(W.new_folder_btn)
         W.new_folder_btn:addChangeCallback(function() on_new_folder(W.selected_folder) end)
+
+        -- Show all button (right half of the bottom row). DCS's TreeView
+        -- can't surface empty-space clicks (clicks below items are routed to
+        -- the closest node), so this button is the explicit affordance for
+        -- "clear filter, show prefabs from every folder". The click runs
+        -- outside the tree's mouseDown dispatch, so selectNode(nil) — which
+        -- doesn't stick when called from inside a tree click — does stick
+        -- here and clears the visual highlight.
+        W.show_all_btn = Button.new()
+        W.show_all_btn:setText('Show all')
+        try_skin(W.show_all_btn, 'dtc_button')
+        W.window:insertWidget(W.show_all_btn)
+        W.show_all_btn:addChangeCallback(function()
+            on_folder_path('')
+            if not W.folder_tree_uses_listbox and W.folder_tree and W.folder_tree.selectNode then
+                pcall(function() W.folder_tree:selectNode(nil) end)
+            end
+        end)
 
         -- Rename the existing "Search:" label to "Search files:" for symmetry.
         if W.search_label and W.search_label.setText then
