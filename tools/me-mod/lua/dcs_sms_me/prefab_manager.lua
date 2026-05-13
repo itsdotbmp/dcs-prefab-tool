@@ -143,6 +143,18 @@ local W = {
     filter_input   = nil,        -- TextBox widget for the filter
     pending_airbases = nil,    -- set by marquee callback; consumed by on_save_click
     marquee_subscribed = false,-- one-shot guard so Ctrl+Shift+R reloads don't multi-subscribe
+
+    -- Folder browser state (Task 12):
+    selected_folder      = '',     -- '' = nothing selected → show all recursively
+    folder_filter_text   = '',     -- substring filter for the tree
+    folder_tree_collapse = {},     -- map folder_path -> true if collapsed
+    folder_set           = {},     -- set of all folder paths (incl. empties), refreshed on scan
+    folder_tree_root     = nil,    -- root node of build_tree result
+    folder_search_input  = nil,    -- EditBox widget
+    folder_tree          = nil,    -- TreeView widget (or ListBox fallback)
+    new_folder_btn       = nil,    -- Button widget
+    show_all_btn         = nil,    -- "Show all" button — deselects the tree
+    folder_tree_uses_listbox = false,  -- true when TreeView is unavailable
 }
 
 -- Column definitions for the prefab grid. Module-level so refresh_list and the
@@ -244,31 +256,207 @@ local function update_header_labels()
     end)
 end
 
--- Pure filter: returns a new array of rows whose name OR theatre contains
--- filter_text (case-insensitive substring). Empty filter → shallow copy of
--- the input. Plain-text find (4th arg = true) avoids regex surprises.
--- Exposed via M._filter_rows for unit testing.
-local function filter_rows(rows, filter_text)
-    local f = (filter_text or ''):lower()
-    if f == '' then
-        local copy = {}
-        for i, r in ipairs(rows) do copy[i] = r end
-        return copy
-    end
+-- Folder-aware filter composition (Task 12). Used by apply_filter and exposed
+-- for tests as M._compose_filter. Selected-folder semantics:
+--   nil or ''  → recursive show-all (legacy behaviour, all rows pass the
+--                folder predicate).
+--   'CAP'      → direct children only (rows whose r.folder == 'CAP'); nested
+--                rows like 'CAP/Tomcats' are excluded.
+-- The text filter applies after the folder predicate and matches name OR
+-- theatre (case-insensitive plain substring), same as filter_rows.
+local function compose_filter(rows, selected_folder, filter_text)
     local out = {}
-    for _, r in ipairs(rows) do
-        local name_l    = tostring(r.name    or ''):lower()
-        local theatre_l = tostring(r.theatre or ''):lower()
-        if name_l:find(f, 1, true) or theatre_l:find(f, 1, true) then
-            out[#out + 1] = r
+    local text_lower = (filter_text or ''):lower()
+    local prefix = (selected_folder ~= nil and selected_folder ~= '') and (selected_folder .. '/') or nil
+    for _, r in ipairs(rows or {}) do
+        local folder_ok
+        if selected_folder == nil or selected_folder == '' then
+            folder_ok = true  -- recursive show-all
+        else
+            -- Recursive: match the folder itself OR any descendant.
+            -- (Earlier draft did exact-match only; the user wanted parent
+            -- nodes to include all their subfolder prefabs.)
+            local f = r.folder or ''
+            folder_ok = (f == selected_folder) or (f:sub(1, #prefix) == prefix)
+        end
+        if folder_ok then
+            if text_lower == '' then
+                out[#out + 1] = r
+            else
+                local name_lower    = tostring(r.name    or ''):lower()
+                local theatre_lower = tostring(r.theatre or ''):lower()
+                if name_lower:find(text_lower, 1, true)
+                    or theatre_lower:find(text_lower, 1, true) then
+                    out[#out + 1] = r
+                end
+            end
         end
     end
     return out
 end
+M._compose_filter = compose_filter  -- exposed for tests
+
+-- Legacy single-arg filter; kept for test backward-compat. New callers
+-- should use compose_filter directly with the desired selected_folder.
+local function filter_rows(rows, filter_text)
+    return compose_filter(rows, nil, filter_text)
+end
 M._filter_rows = filter_rows
 
+-- Build a nested tree node structure from a folder_set (map of folder
+-- paths to true). Each node:
+--   { name = 'CAP', path = 'CAP', children = { ...nodes... } }
+-- Root node has name = '', path = '', children = top-level folder nodes.
+-- If `name_filter` is non-empty, prunes nodes whose name (case-insensitive)
+-- doesn't match AND have no matching descendant.
+local function build_tree(folder_set, name_filter)
+    name_filter = (name_filter or ''):lower()
+
+    -- Step 1: collect all folder paths, ensure parent paths are present.
+    local all = {}
+    for path, _ in pairs(folder_set or {}) do
+        if path ~= '' then
+            all[path] = true
+            -- Walk ancestors so the tree is connected even if a deep folder
+            -- exists without its intermediate ancestors in folder_set.
+            local p = path:match('^(.+)/[^/]+$')
+            while p and p ~= '' do
+                all[p] = true
+                p = p:match('^(.+)/[^/]+$')
+            end
+        end
+    end
+
+    -- Step 2: build a map from parent path -> sorted list of direct children.
+    local children_of = {}
+    for path, _ in pairs(all) do
+        local parent = path:match('^(.+)/[^/]+$') or ''
+        children_of[parent] = children_of[parent] or {}
+        local leaf = path:match('([^/]+)$')
+        children_of[parent][#children_of[parent] + 1] = { name = leaf, path = path }
+    end
+    for _, list in pairs(children_of) do
+        table.sort(list, function(a, b) return a.name:lower() < b.name:lower() end)
+    end
+
+    -- Step 3: recurse from root, attaching children. Filtering: keep a node
+    -- if its name matches OR any descendant matches.
+    local function attach(node)
+        node.children = {}
+        local raw = children_of[node.path] or {}
+        for _, child in ipairs(raw) do
+            attach(child)
+            local self_match = (name_filter == '' or child.name:lower():find(name_filter, 1, true) ~= nil)
+            if self_match or #child.children > 0 then
+                node.children[#node.children + 1] = child
+            end
+        end
+        return node
+    end
+
+    local root = attach({ name = '', path = '' })
+    return root
+end
+M._build_tree = build_tree  -- exposed for tests
+
+-- Walk PREFABS_DIR collecting every subfolder path (in '/'-form) into a
+-- set. Used to feed build_tree so empty folders appear in the tree.
+local function walk_folders()
+    local paths_mod = require('dcs_sms_me.paths')
+    local lfs = require('lfs')
+    local set = { [''] = true }
+    local function walk(abs_dir, rel)
+        local ok = pcall(function()
+            for entry in lfs.dir(abs_dir) do
+                if entry ~= '.' and entry ~= '..' then
+                    local abs = abs_dir .. entry
+                    local attr = lfs.attributes(abs)
+                    if attr and attr.mode == 'directory' then
+                        local sub_rel = (rel == '' and entry) or (rel .. '/' .. entry)
+                        set[sub_rel] = true
+                        walk(abs .. '\\', sub_rel)
+                    end
+                end
+            end
+        end)
+        if not ok and log and log.write then
+            log.write('sms.me.prefab', log.WARNING, 'walk_folders at "' .. rel .. '" failed')
+        end
+    end
+    walk(paths_mod.PREFABS_DIR, '')
+    return set
+end
+M._walk_folders = walk_folders  -- exposed for tests/inspection
+
+-- Walk a tree-node depth-first, calling visit(node, depth) on each.
+local function for_each_node(node, depth, visit)
+    if not node then return end
+    for _, child in ipairs(node.children or {}) do
+        visit(child, depth)
+        if not W.folder_tree_collapse[child.path] then
+            for_each_node(child, depth + 1, visit)
+        end
+    end
+end
+
+-- Native-TreeView render path. DCS's TreeView is node-based — `addNode(text,
+-- parentNode, index)` returns a node table; we stash `_sms_path` on it so the
+-- selection callback can map back to a folder. `clear()` wipes all nodes.
+-- (Earlier draft assumed an `insertItem` API that doesn't exist in DCS dxgui.)
+local function render_tree_native()
+    if not W.folder_tree or W.folder_tree_uses_listbox then return end
+    if not W.folder_tree.addNode then return end
+    pcall(function()
+        if W.folder_tree.clear then pcall(function() W.folder_tree:clear() end) end
+        local function add_node(node_data, parent_node)
+            for _, child in ipairs(node_data.children or {}) do
+                local n = W.folder_tree:addNode(child.name, parent_node, nil)
+                if type(n) == 'table' then n._sms_path = child.path end
+                add_node(child, n)
+            end
+        end
+        add_node(W.folder_tree_root, nil)
+        -- Expand everything by default so users see their structure.
+        if W.folder_tree.expand then pcall(function() W.folder_tree:expand() end) end
+    end)
+end
+
+-- ListBox fallback render path. Flattens the visible (non-collapsed)
+-- subtree into one row per folder, indent + prefix-glyph encoded.
+local function render_tree_listbox()
+    if not W.folder_tree or not W.folder_tree_uses_listbox then return end
+    pcall(function()
+        if W.folder_tree.removeAllItems then W.folder_tree:removeAllItems()
+        elseif W.folder_tree.removeAll   then W.folder_tree:removeAll()
+        end
+        W._tree_listbox_paths = {}
+        for_each_node(W.folder_tree_root, 0, function(node, depth)
+            local indent = string.rep('  ', depth)
+            local glyph = (#node.children > 0)
+                and ((W.folder_tree_collapse[node.path] and '> ') or 'v ')
+                or  '  '
+            local text = indent .. glyph .. node.name
+            local ListBoxItem; do local ok, m = pcall(require, 'ListBoxItem'); if ok then ListBoxItem = m end end
+            if ListBoxItem and W.folder_tree.insertItem then
+                local it = ListBoxItem.new()
+                it:setText(text)
+                W.folder_tree:insertItem(it)
+            end
+            W._tree_listbox_paths[#W._tree_listbox_paths + 1] = node.path
+        end)
+    end)
+end
+
+-- Public rebuild — walks the disk, re-derives the tree, re-renders.
+function M._rebuild_tree()
+    W.folder_set = walk_folders()
+    W.folder_tree_root = build_tree(W.folder_set, W.folder_filter_text)
+    if W.folder_tree_uses_listbox then render_tree_listbox()
+    else                                render_tree_native() end
+end
+
 local function apply_filter()
-    W.visible_rows = filter_rows(W.rows, W.filter_text)
+    W.visible_rows = compose_filter(W.rows, W.selected_folder, W.filter_text)
 end
 
 -- Restore selection by row name in the current visible_rows. Returns the
@@ -352,6 +540,7 @@ local function refresh_list()
     end
 
     W.rows = prefab_ops.scan_dir() or {}
+    if M._rebuild_tree then M._rebuild_tree() end
     sort_rows(W.rows, W.sort_key, W.sort_dir)
     apply_filter()
     restore_selection_by_name(prev_name)
@@ -456,15 +645,17 @@ local function read_fixed_check()
     return v
 end
 
-local function do_save(name, place_at_origin, airbases)
-    local ok, path_or_err = prefab_ops.save_selection(name, place_at_origin, airbases)
+local function do_save(name, place_at_origin, airbases, folder)
+    folder = folder or ''
+    local ok, path_or_err = prefab_ops.save_selection(name, place_at_origin, airbases, folder)
     if ok then
         local extras = {}
+        if folder ~= '' then extras[#extras + 1] = 'in ' .. folder end
         if place_at_origin then extras[#extras + 1] = 'fixed' end
         if airbases and #airbases > 0 then extras[#extras + 1] = #airbases .. ' airbase(s)' end
         local suffix = #extras > 0 and ' [' .. table.concat(extras, ', ') .. ']' or ''
         set_status('Saved ' .. name .. suffix .. ' → ' .. tostring(path_or_err))
-        log.write('sms.me.prefab', log.INFO, 'saved ' .. name)
+        log.write('sms.me.prefab', log.INFO, 'saved ' .. name .. ' in folder "' .. folder .. '"')
         refresh_list()
         pcall(function()
             if W.name_input and W.name_input.setText then W.name_input:setText('') end
@@ -480,13 +671,16 @@ local function on_save_click()
     pcall(function()
         local name = ''
         if W.name_input and W.name_input.getText then name = W.name_input:getText() or '' end
+        -- Trim leading/trailing whitespace so a stray space typed in the
+        -- name input doesn't produce a file literally named " foo ".
+        name = name:gsub('^%s+', ''):gsub('%s+$', '')
         local fixed = read_fixed_check()
         local airbases = W.pending_airbases
         if name == '' then
             set_status('Empty name — using timestamped fallback. See dcs.log.', 'warning')
             name = 'prefab-' .. os.date('!%Y%m%dT%H%M%SZ')
             log.write('sms.me.prefab', log.WARNING, 'save with empty name → ' .. name)
-            do_save(name, fixed, airbases)
+            do_save(name, fixed, airbases, W.selected_folder)
             return
         end
 
@@ -494,7 +688,7 @@ local function on_save_click()
             show_overlay(
                 'Prefab "' .. name .. '" already exists.\n\nOverwrite, rename, or cancel?',
                 {
-                    { label = 'Overwrite', on_click = function() do_save(name, fixed, airbases) end },
+                    { label = 'Overwrite', on_click = function() do_save(name, fixed, airbases, W.selected_folder) end },
                     { label = 'Rename',    on_click = function() focus_name_input(); set_status('Type a new name and click Save.') end },
                     { label = 'Cancel',    on_click = function() set_status('Save cancelled.') end },
                 },
@@ -503,7 +697,7 @@ local function on_save_click()
             return
         end
 
-        do_save(name, fixed, airbases)
+        do_save(name, fixed, airbases, W.selected_folder)
     end)
 end
 
@@ -1306,7 +1500,9 @@ end
 -- callback re-sets bounds if the user shrinks past this).
 -- 540 floor: place_origin_btn (200 wide, x = w-336) needs w ≥ ~520 to clear
 -- the rotation dial at x=132+47=179. Was 440 when the button was 130 wide.
-local MIN_W, MIN_H = 540, 460
+local MIN_W, MIN_H = 760, 460
+local TREE_W = 200      -- fixed width of the left (folder tree) pane
+local SPLIT  = 6        -- gutter between left and right panes
 
 -- Single source of truth for child geometry. Called once at construction and
 -- from the Window:addSizeCallback. Top band (Name + Search) sticks to the
@@ -1320,9 +1516,7 @@ local function relayout(w, h)
         end
     end
 
-    -- Row 0: Name + Fixed-position checkbox + Save (all inline).
-    -- Layout right-to-left so the checkbox stays adjacent to Save:
-    --   name_input fills the space between name_label and fixed_check.
+    -- Row 0: Name + Fixed checkbox + Save (spans full width).
     local check_w   = 130
     local save_x    = w - 90
     local check_x   = save_x - 6 - check_w
@@ -1331,70 +1525,372 @@ local function relayout(w, h)
     set(W.name_label,      10,      8, 50,      22)
     set(W.name_input,      input_x, 8, input_w, 22)
     set(W.fixed_check,     check_x, 8, check_w, 22)
-    set(W.fixed_check_lbl, check_x, 8, check_w, 22)  -- fallback Static occupies the same slot
+    set(W.fixed_check_lbl, check_x, 8, check_w, 22)
     set(W.save_btn,        save_x,  8, 80,      22)
 
-    -- Separator + Row 1: Search. ~10px breathing room above and below sep1.
+    -- Separator at y=40.
     set(W.sep1, 10, 40, w - 20, 1)
-    set(W.search_label, 10, 51, 50, 22)
-    set(W.filter_input, 60, 51, w - 60 - 10, 22)
 
-    -- Bottom band offsets relative to h. Locked to the bottom so resizing
-    -- the window grows the grid, not the action panel. row3_y / sep2_y
-    -- give ~10px breathing room above and below sep2; everything below
-    -- (row4 onward) stays in its original spot anchored to h.
+    -- Row 1: search inputs (same y for both panes).
+    local left_x  = 10
+    local left_w  = TREE_W
+    local right_x = 10 + TREE_W + SPLIT
+    local right_w = w - right_x - 10
+
+    set(W.folder_search_label, left_x,        51, 100, 22)
+    set(W.folder_search_input, left_x + 105,  51, left_w - 105, 22)
+
+    set(W.search_label, right_x,       51, 80,  22)
+    set(W.filter_input, right_x + 84,  51, right_w - 84, 22)
+
+    -- Bottom-band offsets (anchored to h).
     local row3_y   = h - 197
     local sep2_y   = h - 165
     local row4_y   = h - 154
     local row5_y   = h - 124
 
-    -- Grid stretches between the top band and row 3. grid_y reflects the
-    -- pushed-down search row above (sep1 also got the 10/10 padding).
-    local grid_y = 77
-    local grid_h = math.max(60, row3_y - grid_y - 8)
-    local grid_w = w - 20
-    set(W.grid, 10, grid_y, grid_w, grid_h)
-    -- Name column absorbs the leftover horizontal space; numeric/Theatre
-    -- columns stay at their COLS-defined widths. Resizing the window
-    -- widens just the Name column.
+    -- Tree + Grid stretch the same full height between y=77 and row3_y-8.
+    -- The "+ New folder" / "Show all" buttons live on the row3_y row (same
+    -- vertical band as Reload / Undo / Rename / Delete on the right), so the
+    -- tree itself fills the entire body height — no in-pane button row.
+    local body_y = 77
+    local body_h_total = math.max(60, row3_y - body_y - 8)
+    local tree_h = body_h_total
+    local grid_h = body_h_total
+
+    set(W.folder_tree, left_x,  body_y, left_w,  tree_h)
+    set(W.grid,        right_x, body_y, right_w, grid_h)
+
+    -- Left-pane buttons on row3_y: two equal-width with a 4px gap.
+    local btn_gap   = 4
+    local left_btn_w = math.floor((left_w - btn_gap) / 2)
+    set(W.new_folder_btn, left_x,                            row3_y, left_btn_w, 22)
+    set(W.show_all_btn,   left_x + left_btn_w + btn_gap,     row3_y, left_w - left_btn_w - btn_gap, 22)
+
     if W.grid and W.grid.setColumnWidth then
         local fixed_w = 0
         for i, c in ipairs(COLS) do
             if i > 1 then fixed_w = fixed_w + c.width end
         end
-        local name_w = math.max(80, grid_w - fixed_w)
+        local name_w = math.max(80, right_w - fixed_w)
         pcall(function() W.grid:setColumnWidth(0, name_w) end)
     end
 
-    -- Row 3: Reload | Undo (left) | gap | Rename | Delete (right).
-    set(W.reload_btn, 10,                row3_y, 70,  22)
-    set(W.undo_btn,   84,                row3_y, 140, 22)
-    set(W.rename_btn, w - 90 - 80 - 4,   row3_y, 80,  22)
-    set(W.delete_btn, w - 90,            row3_y, 80,  22)
+    -- Right-pane action buttons on row3_y. Reload + Undo last placement
+    -- used to sit on the left side; they've moved here so the left side
+    -- can host the folder-tree controls (New folder / Show all) without
+    -- splitting the action band visually.
+    local reload_w, undo_w, name_w_btn, del_w = 70, 140, 80, 80
+    local btn_pad = 4
+    set(W.delete_btn, w - del_w - 10,                                                 row3_y, del_w,      22)
+    set(W.rename_btn, w - del_w - 10 - name_w_btn - btn_pad,                          row3_y, name_w_btn, 22)
+    set(W.undo_btn,   w - del_w - 10 - name_w_btn - btn_pad - undo_w - btn_pad,       row3_y, undo_w,     22)
+    set(W.reload_btn, w - del_w - 10 - name_w_btn - btn_pad - undo_w - btn_pad - reload_w - btn_pad, row3_y, reload_w, 22)
 
     set(W.sep2, 10, sep2_y, w - 20, 1)
 
-    -- Row 4: Country picker.
     set(W.country_label, 10, row4_y, 100, 22)
     local combo_x = 114
     local combo_w = (W.country_filter_btn) and (w - combo_x - 90 - 6) or (w - combo_x - 10)
     set(W.country_combo, combo_x, row4_y, combo_w, 22)
     set(W.country_filter_btn, w - 90, row4_y, 80, 22)
 
-    -- Row 5: Rotation gizmo + place buttons. Row is 43px tall (dial); the
-    -- spinbox/label/place-buttons are vertically centered against it.
     set(W.rotation_label, 10, row5_y + 10, 60, 22)
     set(W.rotation_spin,  70, row5_y + 10, 60, 22)
     set(W.rotation_dial,  132, row5_y, 47, 43)
-    set(W.rotation_input, 70, row5_y + 10, 60, 22)   -- fallback path
-    set(W.rotation_unit,  132, row5_y + 10, 20, 22)  -- fallback path
-    -- place_click_btn right-edge at w-10 (122 wide), place_origin_btn 4px
-    -- to its left (200 wide — fits "Place at original location"). Both
-    -- stay anchored to the right edge.
+    set(W.rotation_input, 70, row5_y + 10, 60, 22)
+    set(W.rotation_unit,  132, row5_y + 10, 20, 22)
     set(W.place_origin_btn, w - 336, row5_y + 10, 200, 22)
     set(W.place_click_btn,  w - 132, row5_y + 10, 122, 22)
-
 end
+
+-- Folder operation handlers (Task 17). Confirmations use show_overlay;
+-- name prompts reuse show_rename_overlay for consistent skinning + centering.
+local function on_new_folder(parent_path)
+    parent_path = parent_path or W.selected_folder or ''
+    show_rename_overlay(
+        'Folder name (under "' .. (parent_path == '' and '(root)' or parent_path) .. '"):',
+        '',
+        function(name)
+            name = (name or ''):gsub('^%s+', ''):gsub('%s+$', '')
+            if name == '' then return end
+            local valid, why = prefab_ops._validate_folder_name(name)
+            if not valid then
+                set_status('Folder name rejected: ' .. tostring(why), 'error')
+                return
+            end
+            local rel = (parent_path == '' and name) or (parent_path .. '/' .. name)
+            local abs = require('dcs_sms_me.paths').folder_to_abs(rel):sub(1, -2)
+            if require('lfs').attributes(abs) then
+                set_status('Folder already exists: ' .. rel, 'error')
+                return
+            end
+            require('dcs_sms_me.paths').ensure_prefab_folder(rel)
+            set_status('Created folder "' .. rel .. '".')
+            W.selected_folder = rel
+            refresh_list()
+        end
+    )
+end
+
+local function on_rename_folder(node)
+    if not node or not node.path or node.path == '' then return end
+    local current_name = node.path:match('([^/]+)$')
+    show_rename_overlay(
+        'New name for "' .. node.path .. '":',
+        current_name,
+        function(new_name)
+            new_name = (new_name or ''):gsub('^%s+', ''):gsub('%s+$', '')
+            if new_name == '' or new_name == current_name then return end
+            local ok, new_rel = prefab_ops.rename_folder(node.path, new_name)
+            if not ok then
+                set_status('Rename failed: ' .. tostring(new_rel), 'error')
+                return
+            end
+            -- If the selected folder was the renamed one (or under it), rewrite.
+            if W.selected_folder == node.path then
+                W.selected_folder = new_rel
+            elseif W.selected_folder:sub(1, #node.path + 1) == node.path .. '/' then
+                W.selected_folder = new_rel .. W.selected_folder:sub(#node.path + 1)
+            end
+            set_status('Renamed "' .. node.path .. '" -> "' .. new_rel .. '".')
+            refresh_list()
+        end
+    )
+end
+
+local function on_delete_folder(node)
+    if not node or not node.path or node.path == '' then return end
+    local files, dirs = prefab_ops.count_folder_contents(node.path)
+    local function do_delete()
+        local ok, err = prefab_ops.delete_folder(node.path)
+        if not ok then
+            set_status('Delete failed: ' .. tostring(err), 'error')
+            return
+        end
+        if W.selected_folder == node.path or
+           W.selected_folder:sub(1, #node.path + 1) == node.path .. '/' then
+            W.selected_folder = ''
+        end
+        set_status('Deleted folder "' .. node.path .. '".')
+        refresh_list()
+    end
+    if files == 0 and dirs == 0 then
+        do_delete()
+    else
+        show_overlay(
+            string.format('Delete folder "%s"?\n\nContains %d file(s) and %d subfolder(s). This cannot be undone.',
+                node.path, files, dirs),
+            {
+                { label = 'Delete', on_click = do_delete },
+                { label = 'Cancel', on_click = function() set_status('Delete cancelled.') end },
+            },
+            'warning',
+            'Confirm delete'
+        )
+    end
+end
+
+-- Move-prefab modal (Task 18). Reuses the sms_window factory for the chrome
+-- and a TreeView (or ListBox fallback) inside as the folder picker.
+
+local function open_move_modal(row)
+    if not row or row.error then return end
+    local sms_window = require('dcs_sms_me.sms_window')
+    local paths_mod  = require('dcs_sms_me.paths')
+
+    local modal = sms_window.new({
+        title         = 'Move Prefab',
+        size          = { w = 360, h = 400 },
+        resizable     = false,
+        branded_title = false,
+        modal_parent  = W.window,
+    })
+    if not modal then return end
+
+    local raw = modal:raw()
+    local lbl = Static.new(); lbl:setText('Move "' .. row.name .. '" to folder:')
+    try_skin(lbl, 'staticSkin_ME')
+    raw:insertWidget(lbl)
+    lbl:setBounds(10, 10, 320, 22)
+
+    local TreeView; do local ok, m = pcall(require, 'TreeView'); if ok then TreeView = m end end
+    local picker
+    local picker_uses_listbox = false
+    if TreeView then
+        picker = TreeView.new()
+    else
+        local ListBox; do local ok, m = pcall(require, 'ListBox'); if ok then ListBox = m end end
+        if ListBox then picker = ListBox.new(); picker_uses_listbox = true
+        else            picker = Static.new(); picker:setText('(picker unavailable)')
+        end
+    end
+    -- Skin is widget-class specific: applying listBoxSkin_ME to a TreeView
+    -- causes addNode to throw on missing `check` sub-shape. Match the main
+    -- tree's skin treatment (transparent panel, white text on dark
+    -- background, ME teal-blue for the selected row).
+    if picker_uses_listbox then
+        try_skin(picker, 'listBoxSkin_ME')
+    else
+        pcall(function()
+            local Skin_mod = require('Skin')
+            local s = Skin_mod.treeViewSkin_ME and Skin_mod.treeViewSkin_ME()
+            if s and s.skinData then
+                if s.skinData.states then
+                    for _, state_name in ipairs({'released', 'disabled'}) do
+                        local st = s.skinData.states[state_name]
+                        if st and st[1] and st[1].bkg then
+                            st[1].bkg.center_center = '0x00000040'
+                        end
+                    end
+                end
+                local item = s.skinData.skins and s.skinData.skins.item
+                local item_sd = item and item.skinData
+                local rel = item_sd and item_sd.states and item_sd.states.released
+                if rel then
+                    if rel[1] and rel[1].text then rel[1].text.color = '0xe0dedaff' end
+                    if rel[2] and rel[2].text then rel[2].text.color = '0xe0dedaff' end
+                    if rel[3] and rel[3].bkg  then rel[3].bkg.center_center = '0x2da1beff' end
+                    if rel[4] and rel[4].bkg  then rel[4].bkg.center_center = '0x2da1beff' end
+                end
+            end
+            if s and picker.setSkin then picker:setSkin(s) end
+        end)
+    end
+    raw:insertWidget(picker)
+    picker:setBounds(10, 40, 340, 245)
+
+    -- Build the folder set + tree, render into the picker.
+    local folder_set = walk_folders()
+    local tree = build_tree(folder_set, '')
+    local picker_paths = {}
+    local function render_picker()
+        pcall(function()
+            picker_paths = {}
+            if picker_uses_listbox then
+                if picker.removeAllItems then picker:removeAllItems()
+                elseif picker.removeAll   then picker:removeAll()
+                end
+                local ListBoxItem; do local ok, m = pcall(require, 'ListBoxItem'); if ok then ListBoxItem = m end end
+                local function walk(node, depth)
+                    for _, child in ipairs(node.children or {}) do
+                        if ListBoxItem and picker.insertItem then
+                            local it = ListBoxItem.new()
+                            it:setText(string.rep('  ', depth) .. child.name)
+                            picker:insertItem(it)
+                        end
+                        picker_paths[#picker_paths + 1] = child.path
+                        walk(child, depth + 1)
+                    end
+                end
+                if ListBoxItem and picker.insertItem then
+                    local it = ListBoxItem.new(); it:setText('(root)'); picker:insertItem(it)
+                end
+                picker_paths[1] = ''
+                walk(tree, 1)
+            else
+                -- Native TreeView is node-based — same API as the main tree:
+                -- addNode(text, parentNode, nil) returns a node table that we
+                -- stash _sms_path on so selected_target() can recover it.
+                if picker.clear then pcall(function() picker:clear() end) end
+                if picker.addNode then
+                    local root_node = picker:addNode('(root)', nil, nil)
+                    if type(root_node) == 'table' then root_node._sms_path = '' end
+                    local function add_node(data, parent_node)
+                        for _, child in ipairs(data.children or {}) do
+                            local n = picker:addNode(child.name, parent_node, nil)
+                            if type(n) == 'table' then n._sms_path = child.path end
+                            add_node(child, n)
+                        end
+                    end
+                    add_node(tree, root_node)
+                    if picker.expand then pcall(function() picker:expand() end) end
+                end
+            end
+        end)
+    end
+    render_picker()
+
+    -- Pre-select the prefab's current folder so the user can see where it
+    -- lives and (typically) just confirm a different destination. Best-effort:
+    -- ListBox has a uniform setSelectedItem(index) setter; TreeView items
+    -- don't expose a select-by-handle API consistently across DCS versions,
+    -- so we attempt it but fall back silently if it doesn't take.
+    local current = row.folder or ''
+    local current_idx
+    for i = 1, #picker_paths do
+        if picker_paths[i] == current then current_idx = i; break end
+    end
+    if current_idx then
+        pcall(function()
+            if picker_uses_listbox then
+                if picker.setSelectedItem then picker:setSelectedItem(current_idx - 1) end
+            else
+                -- TreeView: walk all nodes via findNode-ish search to find the
+                -- one whose _sms_path matches `current`, then selectNode it.
+                -- Simpler: rely on the path we built and use selectNode on the
+                -- root + descent. DCS TreeView's findNode takes a text-path
+                -- list; we use it when current_idx > 1 (non-root). For root,
+                -- just leave the picker unselected — the user can still pick
+                -- the (root) row explicitly if they want.
+                if current ~= '' and picker.findNode then
+                    local parts = {}
+                    for part in current:gmatch('[^/]+') do parts[#parts + 1] = part end
+                    local node = picker:findNode(parts)
+                    if node and picker.selectNode then picker:selectNode(node) end
+                end
+            end
+        end)
+    end
+
+    local btn_move = Button.new(); btn_move:setText('Move')
+    local btn_cancel = Button.new(); btn_cancel:setText('Cancel')
+    try_skin(btn_move, 'dtc_button'); try_skin(btn_cancel, 'dtc_button')
+    raw:insertWidget(btn_move);     raw:insertWidget(btn_cancel)
+    btn_move:setBounds(180, 295, 80, 22)
+    btn_cancel:setBounds(265, 295, 80, 22)
+
+    local function selected_target()
+        if picker_uses_listbox then
+            local idx = (picker.getSelectedItem and picker:getSelectedItem()) or -1
+            if type(idx) == 'number' and idx >= 0 then
+                return picker_paths[idx + 1] or ''
+            end
+        else
+            -- TreeView: getSelectedNode returns the node table (carries _sms_path).
+            local node = picker.getSelectedNode and picker:getSelectedNode()
+            if node and node._sms_path ~= nil then return node._sms_path end
+        end
+        return nil
+    end
+
+    btn_move:addChangeCallback(function()
+        local target = selected_target()
+        if target == nil then set_status('Pick a destination folder.', 'warning'); return end
+        if target == row.folder then set_status('Already in "' .. (target == '' and '(root)' or target) .. '".', 'warning'); return end
+        -- Task 6 fix changed move_prefab to (source_folder, name, target_folder).
+        local ok, new_path = prefab_ops.move_prefab(row.folder or '', row.name, target)
+        if not ok then
+            set_status('Move failed: ' .. tostring(new_path), 'error')
+            return
+        end
+        set_status('Moved "' .. row.name .. '" to "' .. (target == '' and '(root)' or target) .. '".')
+        pcall(function() modal:hide() end)
+        -- Stay on the folder we started from — jumping to the destination was
+        -- jarring per user feedback. The moved prefab disappears from the
+        -- current view if the current folder no longer contains it, which is
+        -- the expected signal that the move succeeded.
+        refresh_list()
+    end)
+    btn_cancel:addChangeCallback(function() pcall(function() modal:hide() end) end)
+
+    modal:show()
+end
+
+M._on_new_folder    = on_new_folder
+M._on_rename_folder = on_rename_folder
+M._on_delete_folder = on_delete_folder
+M._open_move_modal  = open_move_modal
 
 function M.show()
     log.write('sms.me', log.INFO, 'window.show() called (W.window present=' .. tostring(W.window ~= nil) .. ')')
@@ -1466,7 +1962,7 @@ function M.show()
         return
     end
     local ok, err = pcall(function()
-        local w, h = 720, 460
+        local w, h = 920, 480
 
         W.sms_window = sms_window.new({
             title    = 'Prefab Manager',
@@ -1587,6 +2083,250 @@ function M.show()
         end
         W.window:insertWidget(W.filter_input)
 
+        -- Task 14 — folder browser widgets (left pane).
+        -- Folder search input (left of "Search files:" — same y row).
+        do
+            local lbl = Static.new()
+            lbl:setText('Search folders:')
+            try_skin(lbl, 'staticSkin_ME')
+            W.window:insertWidget(lbl)
+            W.folder_search_label = lbl
+        end
+        if TextBox then
+            W.folder_search_input = TextBox.new()
+        else
+            W.folder_search_input = Static.new()
+        end
+        if W.folder_search_input.setText then W.folder_search_input:setText('') end
+        try_skin(W.folder_search_input, 'editBoxSkin_ME')
+        if W.folder_search_input.addChangeCallback then
+            pcall(function()
+                W.folder_search_input:addChangeCallback(function()
+                    if not (W.folder_search_input and W.folder_search_input.getText) then return end
+                    local txt = W.folder_search_input:getText() or ''
+                    if txt == W.folder_filter_text then return end
+                    W.folder_filter_text = txt
+                    if M._rebuild_tree then M._rebuild_tree() end
+                end)
+            end)
+        end
+        if W.folder_search_input.addKeyDownCallback then
+            pcall(function()
+                W.folder_search_input:addKeyDownCallback(function(_self, keyName)
+                    if keyName == 'escape' or keyName == 'Escape' then
+                        pcall(function() W.folder_search_input:setText('') end)
+                        W.folder_filter_text = ''
+                        if M._rebuild_tree then M._rebuild_tree() end
+                    end
+                end)
+            end)
+        end
+        W.window:insertWidget(W.folder_search_input)
+
+        -- Folder tree (TreeView preferred; ListBox fallback wired in Task 16).
+        local TreeView
+        do local ok, m = pcall(require, 'TreeView'); if ok then TreeView = m end end
+        if TreeView then
+            W.folder_tree = TreeView.new()
+            W.folder_tree_uses_listbox = false
+        else
+            local ListBox; do local ok, m = pcall(require, 'ListBox'); if ok then ListBox = m end end
+            if ListBox then
+                W.folder_tree = ListBox.new()
+                W.folder_tree_uses_listbox = true
+            else
+                W.folder_tree = Static.new()
+                W.folder_tree:setText('(tree widget unavailable)')
+                W.folder_tree_uses_listbox = true
+            end
+        end
+        -- Skin selection is widget-class-specific. ListBox uses listBoxSkin_ME;
+        -- TreeView uses treeViewSkin_ME (which preserves the per-state `check`
+        -- sub-shape that TreeView's setOffsets() indexes during addNode — apply
+        -- listBoxSkin_ME to a TreeView and addNode throws "attempt to index
+        -- field 'check'" because the skin shapes differ).
+        --
+        -- Stock treeViewSkin_ME paints center_center = 0x6d7376ff (mid-gray),
+        -- which clashes with the rest of the ME chrome (listBoxSkin_ME uses
+        -- 0x00000040 — a transparent overlay that lets the window's dark blue
+        -- show through). Override the center fills on a fresh skin copy so the
+        -- tree interior matches the file grid. Skin.treeViewSkin_ME() returns a
+        -- fresh deep table per call, so this mutation is widget-local.
+        if W.folder_tree_uses_listbox then
+            try_skin(W.folder_tree, 'listBoxSkin_ME')
+        else
+            pcall(function()
+                local Skin_mod = require('Skin')
+                local s = Skin_mod.treeViewSkin_ME and Skin_mod.treeViewSkin_ME()
+                if s and s.skinData then
+                    -- DCS's skin engine parses bkg color fields as STRINGS at
+                    -- render time (the .skin.lua source uses "0xRRGGBBAA"
+                    -- strings). Assigning a Lua number silently fails to
+                    -- parse and the renderer falls back to widget defaults
+                    -- (white for normal rows, blue text on hover, etc.).
+                    -- All bkg overrides below MUST use string form.
+                    --
+                    -- Outer panel: transparent overlay over the window's dark
+                    -- blue, matching listBoxSkin_ME's interior look.
+                    if s.skinData.states then
+                        for _, state_name in ipairs({'released', 'disabled'}) do
+                            local st = s.skinData.states[state_name]
+                            if st and st[1] and st[1].bkg then
+                                st[1].bkg.center_center = '0x00000040'
+                            end
+                        end
+                    end
+                    -- Item sub-skin: indices 1/2 (unselected) paint text in
+                    -- black — unreadable on the dark window. Indices 3/4
+                    -- (selected) have 0x3c3e40ff gray bkg + off-white text.
+                    -- Repaint unselected text white-ish and selected bkg to
+                    -- 0x2da1beff (the teal-blue the file grid uses for row
+                    -- selection — see dtc_skins.grid's selectionColor).
+                    local item = s.skinData.skins and s.skinData.skins.item
+                    local item_sd = item and item.skinData
+                    local item_states = item_sd and item_sd.states
+                    local rel = item_states and item_states.released
+                    if rel then
+                        if rel[1] and rel[1].text then rel[1].text.color = '0xe0dedaff' end
+                        if rel[2] and rel[2].text then rel[2].text.color = '0xe0dedaff' end
+                        if rel[3] and rel[3].bkg  then rel[3].bkg.center_center = '0x2da1beff' end
+                        if rel[4] and rel[4].bkg  then rel[4].bkg.center_center = '0x2da1beff' end
+                    end
+                end
+                if s and W.folder_tree.setSkin then W.folder_tree:setSkin(s) end
+            end)
+        end
+        W.window:insertWidget(W.folder_tree)
+
+        -- Tree selection handler — sets W.selected_folder and re-filters.
+        -- Native TreeView fires onSelect with the item; we read item._sms_path.
+        -- Selection handler: native TreeView fires addSelectionChangeCallback
+        -- (called with `self`) and we read the selected node via
+        -- getSelectedNode() — the node table carries our `_sms_path`.
+        -- ListBox fallback exposes a numeric index via getSelectedItem;
+        -- we map that through W._tree_listbox_paths.
+        local function on_folder_path(path)
+            W.selected_folder = path or ''
+            apply_filter()
+            render_grid()
+        end
+        if W.folder_tree_uses_listbox then
+            local function on_listbox_select()
+                W._tree_click_hit_item = true
+                local idx = -1
+                pcall(function() idx = (W.folder_tree.getSelectedItem and W.folder_tree:getSelectedItem()) or -1 end)
+                local path = ''
+                if type(idx) == 'number' and idx >= 0 and W._tree_listbox_paths then
+                    path = W._tree_listbox_paths[idx + 1] or ''
+                end
+                on_folder_path(path)
+            end
+            if W.folder_tree.addSelectionChangeCallback then
+                pcall(function() W.folder_tree:addSelectionChangeCallback(on_listbox_select) end)
+            elseif W.folder_tree.addChangeCallback then
+                pcall(function() W.folder_tree:addChangeCallback(on_listbox_select) end)
+            end
+        else
+            -- DCS TreeView's onSelectedNodeChange override silently never
+            -- fires on click in this build (verified via event-log probe —
+            -- the internal `local node = item.node` deref in the constructor's
+            -- selection callback likely errors before reaching our override).
+            -- onNodeMouseDown DOES fire and arrives first (before the widget
+            -- mouseDown below), carrying the node with our _sms_path stash —
+            -- use it as the primary click signal AND to mark the click as
+            -- consumed so the widget handler skips its empty-space deselect.
+            -- DCS TreeView's onSelectedNodeChange override silently never
+            -- fires (the constructor's internal selection callback errors on
+            -- a nil-deref before reaching the override). onNodeMouseDown DOES
+            -- fire and carries our node with the _sms_path stash, so use it
+            -- as the primary click signal. Note: clicks below the visible
+            -- items still resolve to the closest node — DCS's TreeView
+            -- doesn't surface "empty space" clicks, so deselect is driven by
+            -- the explicit "Show all" button below the tree (not by clicking
+            -- outside an item).
+            W.folder_tree.onNodeMouseDown = function(_s, node)
+                local path = (node and node._sms_path) or ''
+                on_folder_path(path)
+            end
+        end
+
+        -- Merged Task 15 (ListBox double-click toggles collapse) + Task 19
+        -- (right-click opens tree-node context menu). Merging into one
+        -- addMouseDownCallback subscription avoids the risk of dxgui only
+        -- supporting a single subscriber per widget — both branches fire
+        -- from the same callback and dispatch by button + isDoubleClick.
+        if W.folder_tree and W.folder_tree.addMouseDownCallback then
+            pcall(function()
+                W.folder_tree:addMouseDownCallback(function(self, x, y, button, _, isDoubleClick)
+                    -- DCS dxgui delivers right-click as button == 3 (verified
+                    -- empirically; matches the me_loadout.lua:1134 pattern).
+                    -- Earlier draft checked button == 2 which never fired.
+                    if button == 3 then
+                        -- Right-click: open context menu for the selected node.
+                        local path
+                        if W.folder_tree_uses_listbox then
+                            local idx = (self.getSelectedItem and self:getSelectedItem()) or -1
+                            if type(idx) == 'number' and idx >= 0 and W._tree_listbox_paths then
+                                path = W._tree_listbox_paths[idx + 1]
+                            end
+                        else
+                            local node = self.getSelectedNode and self:getSelectedNode()
+                            if node and node._sms_path then path = node._sms_path end
+                        end
+                        if path == nil then return end
+                        local context_menu = require('dcs_sms_me.context_menu')
+                        context_menu.show_for_tree_node(x, y, { path = path }, {
+                            on_new    = function(parent) on_new_folder(parent) end,
+                            on_rename = function(node)   on_rename_folder(node) end,
+                            on_delete = function(node)   on_delete_folder(node) end,
+                        })
+                        return
+                    end
+
+                    -- ListBox fallback double-click toggles collapse (Task 15).
+                    if W.folder_tree_uses_listbox and isDoubleClick and button == 1 then
+                        local idx = (self.getSelectedItem and self:getSelectedItem()) or -1
+                        if type(idx) ~= 'number' or idx < 0 then return end
+                        local path2 = W._tree_listbox_paths and W._tree_listbox_paths[idx + 1]
+                        if not path2 or path2 == '' then return end
+                        W.folder_tree_collapse[path2] = not W.folder_tree_collapse[path2]
+                        render_tree_listbox()
+                    end
+                end)
+            end)
+        end
+
+
+        -- + New folder button (below the tree, left half).
+        W.new_folder_btn = Button.new()
+        W.new_folder_btn:setText('+ New folder')
+        try_skin(W.new_folder_btn, 'dtc_button')
+        W.window:insertWidget(W.new_folder_btn)
+        W.new_folder_btn:addChangeCallback(function() on_new_folder(W.selected_folder) end)
+
+        -- Show all button (right half of the bottom row). DCS's TreeView
+        -- can't surface empty-space clicks (clicks below items are routed to
+        -- the closest node), so this button is the explicit affordance for
+        -- "clear filter, show prefabs from every folder". The click runs
+        -- outside the tree's mouseDown dispatch, so selectNode(nil) — which
+        -- doesn't stick when called from inside a tree click — does stick
+        -- here and clears the visual highlight.
+        W.show_all_btn = Button.new()
+        W.show_all_btn:setText('Show all')
+        try_skin(W.show_all_btn, 'dtc_button')
+        W.window:insertWidget(W.show_all_btn)
+        W.show_all_btn:addChangeCallback(function()
+            on_folder_path('')
+            if not W.folder_tree_uses_listbox and W.folder_tree and W.folder_tree.selectNode then
+                pcall(function() W.folder_tree:selectNode(nil) end)
+            end
+        end)
+
+        -- Rename the existing "Search:" label to "Search files:" for symmetry.
+        if W.search_label and W.search_label.setText then
+            pcall(function() W.search_label:setText('Search files:') end)
+        end
+
         if Grid and GridHeaderCell then
             W.grid = Grid.new()
             try_skin(W.grid, 'dtc_grid')
@@ -1622,16 +2362,38 @@ function M.show()
             -- Mirror me_openfile.lua: Grid's default onMouseDown is empty, so
             -- mouse clicks don't change the selected row. Override it to call
             -- selectRow(row) for the clicked row, which then triggers
-            -- addSelectRowCallback.
+            -- addSelectRowCallback. Task 19 extends this with a right-click
+            -- branch that opens the file-row context menu.
             W.grid.onMouseDown = function(self, x, y, button)
-                if button ~= 1 then return end
-                pcall(function()
-                    local _, row = self:getMouseCursorColumnRow(x, y)
-                    if row and row >= 0 then
+                if button == 1 then
+                    pcall(function()
+                        local _, row = self:getMouseCursorColumnRow(x, y)
+                        if row and row >= 0 then
+                            self:selectRow(row)
+                            on_list_select()
+                        end
+                    end)
+                elseif button == 3 then
+                    -- DCS dxgui delivers right-click as button == 3 (verified
+                    -- empirically; matches me_loadout.lua:1134). Earlier
+                    -- draft checked button == 2 which never matched.
+                    pcall(function()
+                        local _, row = self:getMouseCursorColumnRow(x, y)
+                        if not (row and row >= 0) then return end
+                        -- Visually select the row first so the menu acts on
+                        -- the row the user just right-clicked.
                         self:selectRow(row)
+                        W.selected_idx = row + 1
                         on_list_select()
-                    end
-                end)
+                        local r = W.visible_rows[row + 1]
+                        if not r then return end
+                        local context_menu = require('dcs_sms_me.context_menu')
+                        context_menu.show_for_file_row(x, y, r, {
+                            on_move   = function(rr)     open_move_modal(rr) end,
+                            on_status = function(t, sev) set_status(t, sev) end,
+                        })
+                    end)
+                end
             end
             -- Double-click a row → enter Place at click mode for that prefab.
             -- Select first so on_place_click sees the right selection, then

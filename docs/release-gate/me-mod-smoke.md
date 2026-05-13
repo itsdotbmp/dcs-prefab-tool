@@ -89,3 +89,28 @@ Verify the refactor preserved Prefab Manager behaviour exactly:
 ## Cleanup
 
 24. Run `tools/dcs-sms.exe uninstall-me-mod`. Verify everything removed (modules dir gone, `MissionEditor.lua` patch reverted from backup).
+
+## Prefab Manager — folder browser + context menus
+
+- [ ] Open Prefab Manager. Tree pane visible on the left; "+ New folder" button below the tree; "Search folders:" input above the tree.
+- [ ] "Search files:" label (right of tree) renamed from "Search:".
+- [ ] Click "+ New folder" with nothing selected → name prompt opens. Enter "CAP". Folder appears in tree at root level.
+- [ ] Right-click "CAP" → menu shows New subfolder, Rename, Delete, Open in Explorer.
+- [ ] Right-click "CAP" → New subfolder → "Tomcats". Nested folder appears.
+- [ ] Select "CAP/Tomcats". Save a new prefab. Verify file lands in `<SavedGames>\DCS\dcs-sms\prefabs\CAP\Tomcats\<name>.prefab`.
+- [ ] Click "Show all" button → selection clears (tree highlight gone), file pane shows all prefabs (root + nested) recursively.
+- [ ] Click "CAP" parent → file pane shows prefabs from CAP and ALL its subfolders (recursive prefix match).
+- [ ] Type "horn" in Search files while a folder is selected → narrows within folder.
+- [ ] Type "horn" in Search files with no selection → matches across all folders.
+- [ ] Type "tom" in Search folders → only tree nodes named or containing "Tom" are shown.
+- [ ] Right-click a prefab row → menu shows Move to..., Copy file contents, Copy place snippet, Show in Explorer.
+- [ ] Click "Show in Explorer" → Windows Explorer opens with the file selected.
+- [ ] Click "Copy file contents" → paste somewhere, content matches the `.prefab` file body. Status line: "Copied X.prefab contents (N bytes)."
+- [ ] Click "Copy place snippet" → paste, snippet matches `sms.prefab.place("<name>", {x = 0, y = 0})  -- rotation = 0, country = nil`. Status notes sms.prefab.place not shipped yet.
+- [ ] Right-click a row with an error → only "Show in Explorer" enabled.
+- [ ] Move to... opens modal; pick "SAM", click Move. Prefab now in SAM. File list and tree both refresh.
+- [ ] Rename "CAP" → "Combat Air Patrol". Sub-folder "Tomcats" still inside it. Selection follows the rename.
+- [ ] Delete a non-empty folder → confirmation overlay shows count. Cancel keeps it. Delete removes everything recursively.
+- [ ] Folder name validation: try "CAP/x", "..", "CON" → all rejected with status message.
+- [ ] Resize window → tree stays at 200 px wide; file grid widens.
+- [ ] Reload (Ctrl+Shift+R) or close/re-open Prefab Manager → tree refreshes from disk.

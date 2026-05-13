@@ -41,6 +41,8 @@ package.preload['dcs_sms_me.dtc_skins']  = function()
     }
 end
 package.preload['dcs_sms_me.undo']       = function() return { has_record = function() return false end, undo = function() return false end, capture_pre = function() end, record = function() end } end
+package.preload['me_multiSelection']     = function() return {} end
+package.preload['me_toolbar']            = function() return {} end
 
 local window = require('dcs_sms_me.prefab_manager')
 local filter_rows = window._filter_rows
@@ -85,5 +87,74 @@ eq('  → name', out[1].name, 'modern_mixed')
 out = filter_rows(rows, 'broken')
 eq('error rows are filterable by name', #out, 1)
 eq('  → has error', out[1].error, 'load failed')
+
+-- Folder-aware composition: when selected_folder is given, rows whose
+-- row.folder matches the selected folder OR is a descendant (recursive
+-- prefix match — clicking "Iraq" includes prefabs in "Iraq", "Iraq/FARPs",
+-- "Iraq/Planes", etc.) are kept; then the text filter applies.
+local compose = window._compose_filter or window._filter_rows  -- may be a new helper
+if window._compose_filter then
+    local sample = {
+        { name = 'root_a',  folder = '',           theatre = 'Caucasus' },
+        { name = 'cap_a',   folder = 'CAP',        theatre = 'Caucasus' },
+        { name = 'cap_b',   folder = 'CAP',        theatre = 'Syria' },
+        { name = 'cap_nested', folder = 'CAP/Tomcats', theatre = 'Caucasus' },
+        { name = 'sam_a',   folder = 'SAM',        theatre = 'Caucasus' },
+    }
+    local function names(rows_in)
+        local s = {}; for _, r in ipairs(rows_in) do s[r.name] = true end; return s
+    end
+
+    local out = compose(sample, '', '')
+    eq('folder="" + text="" returns all', #out, 5)
+
+    out = compose(sample, 'CAP', '')
+    eq('folder="CAP" returns folder + descendants', #out, 3)
+    local n = names(out)
+    eq('  → cap_a included',      n.cap_a      == true, true)
+    eq('  → cap_b included',      n.cap_b      == true, true)
+    eq('  → cap_nested included', n.cap_nested == true, true)
+
+    out = compose(sample, 'CAP', 'cap')
+    eq('folder="CAP" + text narrows by name across descendants', #out, 3)
+
+    out = compose(sample, 'CAP/Tomcats', '')
+    eq('folder="CAP/Tomcats" returns just that leaf', #out, 1)
+    eq('  → cap_nested', out[1].name, 'cap_nested')
+
+    out = compose(sample, '', 'cap')
+    eq('folder="" + text="cap" matches by name across all folders', #out, 3)
+
+    -- Prefix match must use the boundary "/" — a folder "CAPLAND" must not
+    -- be claimed by "CAP" selection.
+    local edge = {
+        { name = 'cap_a',     folder = 'CAP',     theatre = '' },
+        { name = 'capland_a', folder = 'CAPLAND', theatre = '' },
+    }
+    out = compose(edge, 'CAP', '')
+    eq('folder="CAP" does NOT spill into sibling "CAPLAND"', #out, 1)
+    eq('  → cap_a only', out[1].name, 'cap_a')
+end
+
+-- build_tree: takes (folder_set, optional name_filter) and returns a nested
+-- node structure. Each node = { name, path, children = {}, expanded? }.
+local build_tree = window._build_tree
+if build_tree then
+    local folder_set = { ['']=true, ['CAP']=true, ['CAP/Tomcats']=true, ['SAM']=true, ['Empty']=true }
+    local root = build_tree(folder_set, '')
+    eq('root has 3 children', #root.children, 3)  -- CAP, Empty, SAM
+    -- Children are sorted alphabetically.
+    eq('  -> CAP first', root.children[1].name, 'CAP')
+    eq('  -> Empty second', root.children[2].name, 'Empty')
+    eq('  -> SAM third', root.children[3].name, 'SAM')
+    eq('  -> CAP has Tomcats child', #root.children[1].children, 1)
+    eq('  -> Tomcats path', root.children[1].children[1].path, 'CAP/Tomcats')
+
+    -- name filter hides non-matching branches.
+    local filtered = build_tree(folder_set, 'tom')
+    eq('filter "tom" surfaces CAP (parent) only', #filtered.children, 1)
+    eq('  -> CAP visible', filtered.children[1].name, 'CAP')
+    eq('  -> Tomcats visible under it', #filtered.children[1].children, 1)
+end
 
 io.write('All filter_rows tests passed.\n')

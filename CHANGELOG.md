@@ -105,6 +105,24 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.8.0] — 2026-05-13
+
+**Added**
+- **Prefab Manager folder browser.** Real filesystem subfolders under `<SavedGames>\DCS\dcs-sms\prefabs\`. Two-pane layout — folder tree on the left (with its own search), prefab list on the right. New Folder button below the tree; right-click on a tree node → New subfolder / Rename / Delete. Saves write to the currently selected folder. Filter on the right is scoped to the selected folder (or recursive when nothing is selected).
+- **Right-click context menu on prefab rows (closes [#50](https://github.com/nielsvaes/dcs-sms/issues/50)).** Move to… · Copy file contents · Copy place snippet · Show in Explorer. Error rows expose only Show in Explorer.
+
+**Changed**
+- `prefab_ops.scan_dir` now recurses; rows carry a new `folder` field.
+- `prefab_ops.save_selection` gains an optional `folder` argument (default `""`).
+- `paths.lua` gains `folder_to_abs` and `ensure_prefab_folder` helpers — the single seam between in-memory `/` and on-disk `\`.
+- Prefab Manager minimum window size bumps from 540 × 460 → 760 × 460 to accommodate the tree pane.
+- "Search:" label renamed to "Search files:".
+
+**Internal**
+- New `context_menu.lua` module with lazy clipboard probe (`Gui.setClipboard` → `dxgui.setClipboard` → `Input.setClipboard` → `clip` last resort).
+- New `prefab_ops.move_prefab`, `prefab_ops.rename_folder`, `prefab_ops.delete_folder`, `prefab_ops.count_folder_contents`.
+- Path-traversal validator `prefab_ops._validate_folder_path` rejects `.`, `..`, backslash, reserved characters.
+
 ### [0.7.3] — 2026-05-13
 
 **Fixed**
