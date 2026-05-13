@@ -95,6 +95,61 @@ local function try_skin(widget, skin_name)
     end)
 end
 
+-- Apply Skin.treeViewSkin_ME() to a TreeView widget with our themed overrides
+-- baked in (transparent panel interior over the window's dark blue, off-white
+-- text for unselected items, teal-blue bkg for selected items). Used by both
+-- the main folder tree and the Move modal's folder picker so the two stay
+-- visually in lock-step.
+--
+-- Three gotchas this helper centralises (each verified empirically against
+-- live DCS; see commit history for details):
+--   * Skin shape is widget-class-specific. Applying listBoxSkin_ME to a
+--     TreeView causes addNode to throw on a missing `check` sub-shape, so
+--     callers MUST pass a TreeView (the ListBox fallback uses
+--     listBoxSkin_ME directly via try_skin).
+--   * Skin.treeViewSkin_ME() returns a fresh deep table per call, so the
+--     mutations below are widget-local — they don't leak to any other
+--     consumer of the same skin name.
+--   * DCS's skin engine parses bkg colour fields as STRINGS at render time
+--     (the .skin.lua source uses "0xRRGGBBAA"). Numeric assignments silently
+--     fail to parse and fall back to widget defaults (white panel, blue
+--     hover text, etc). All overrides below use string form on purpose.
+local function apply_me_tree_skin(widget)
+    if not widget or not widget.setSkin then return end
+    pcall(function()
+        local Skin_mod = require('Skin')
+        local s = Skin_mod.treeViewSkin_ME and Skin_mod.treeViewSkin_ME()
+        if not s or not s.skinData then return end
+        -- Outer panel: stock treeViewSkin_ME paints center_center 0x6d7376ff
+        -- (mid-grey); listBoxSkin_ME uses 0x00000040 — a transparent overlay
+        -- that lets the window's dark blue show through. Match that so the
+        -- tree interior agrees with the file grid.
+        if s.skinData.states then
+            for _, state_name in ipairs({'released', 'disabled'}) do
+                local st = s.skinData.states[state_name]
+                if st and st[1] and st[1].bkg then
+                    st[1].bkg.center_center = '0x00000040'
+                end
+            end
+        end
+        -- Item sub-skin: indices 1/2 (unselected) paint text in black —
+        -- unreadable on the dark window. Indices 3/4 (selected) have a
+        -- 0x3c3e40ff grey bkg + off-white text. Repaint unselected text
+        -- white-ish and selected bkg to the same teal-blue
+        -- (0x2da1beff) dtc_skins.grid uses for row selection.
+        local item = s.skinData.skins and s.skinData.skins.item
+        local item_sd = item and item.skinData
+        local rel = item_sd and item_sd.states and item_sd.states.released
+        if rel then
+            if rel[1] and rel[1].text then rel[1].text.color = '0xe0dedaff' end
+            if rel[2] and rel[2].text then rel[2].text.color = '0xe0dedaff' end
+            if rel[3] and rel[3].bkg  then rel[3].bkg.center_center = '0x2da1beff' end
+            if rel[4] and rel[4].bkg  then rel[4].bkg.center_center = '0x2da1beff' end
+        end
+        widget:setSkin(s)
+    end)
+end
+
 local M = {}
 
 local W = {
@@ -1732,30 +1787,7 @@ local function open_move_modal(row)
     if picker_uses_listbox then
         try_skin(picker, 'listBoxSkin_ME')
     else
-        pcall(function()
-            local Skin_mod = require('Skin')
-            local s = Skin_mod.treeViewSkin_ME and Skin_mod.treeViewSkin_ME()
-            if s and s.skinData then
-                if s.skinData.states then
-                    for _, state_name in ipairs({'released', 'disabled'}) do
-                        local st = s.skinData.states[state_name]
-                        if st and st[1] and st[1].bkg then
-                            st[1].bkg.center_center = '0x00000040'
-                        end
-                    end
-                end
-                local item = s.skinData.skins and s.skinData.skins.item
-                local item_sd = item and item.skinData
-                local rel = item_sd and item_sd.states and item_sd.states.released
-                if rel then
-                    if rel[1] and rel[1].text then rel[1].text.color = '0xe0dedaff' end
-                    if rel[2] and rel[2].text then rel[2].text.color = '0xe0dedaff' end
-                    if rel[3] and rel[3].bkg  then rel[3].bkg.center_center = '0x2da1beff' end
-                    if rel[4] and rel[4].bkg  then rel[4].bkg.center_center = '0x2da1beff' end
-                end
-            end
-            if s and picker.setSkin then picker:setSkin(s) end
-        end)
+        apply_me_tree_skin(picker)
     end
     raw:insertWidget(picker)
     picker:setBounds(10, 40, 340, 245)
@@ -2140,61 +2172,15 @@ function M.show()
                 W.folder_tree_uses_listbox = true
             end
         end
-        -- Skin selection is widget-class-specific. ListBox uses listBoxSkin_ME;
-        -- TreeView uses treeViewSkin_ME (which preserves the per-state `check`
-        -- sub-shape that TreeView's setOffsets() indexes during addNode — apply
-        -- listBoxSkin_ME to a TreeView and addNode throws "attempt to index
-        -- field 'check'" because the skin shapes differ).
-        --
-        -- Stock treeViewSkin_ME paints center_center = 0x6d7376ff (mid-gray),
-        -- which clashes with the rest of the ME chrome (listBoxSkin_ME uses
-        -- 0x00000040 — a transparent overlay that lets the window's dark blue
-        -- show through). Override the center fills on a fresh skin copy so the
-        -- tree interior matches the file grid. Skin.treeViewSkin_ME() returns a
-        -- fresh deep table per call, so this mutation is widget-local.
+        -- Skin selection is widget-class-specific. ListBox fallback gets the
+        -- stock listBoxSkin_ME via try_skin; the native TreeView path goes
+        -- through apply_me_tree_skin which clones treeViewSkin_ME, repaints
+        -- the panel + item colours, then applies. See that helper's header
+        -- for the three empirical gotchas it encodes.
         if W.folder_tree_uses_listbox then
             try_skin(W.folder_tree, 'listBoxSkin_ME')
         else
-            pcall(function()
-                local Skin_mod = require('Skin')
-                local s = Skin_mod.treeViewSkin_ME and Skin_mod.treeViewSkin_ME()
-                if s and s.skinData then
-                    -- DCS's skin engine parses bkg color fields as STRINGS at
-                    -- render time (the .skin.lua source uses "0xRRGGBBAA"
-                    -- strings). Assigning a Lua number silently fails to
-                    -- parse and the renderer falls back to widget defaults
-                    -- (white for normal rows, blue text on hover, etc.).
-                    -- All bkg overrides below MUST use string form.
-                    --
-                    -- Outer panel: transparent overlay over the window's dark
-                    -- blue, matching listBoxSkin_ME's interior look.
-                    if s.skinData.states then
-                        for _, state_name in ipairs({'released', 'disabled'}) do
-                            local st = s.skinData.states[state_name]
-                            if st and st[1] and st[1].bkg then
-                                st[1].bkg.center_center = '0x00000040'
-                            end
-                        end
-                    end
-                    -- Item sub-skin: indices 1/2 (unselected) paint text in
-                    -- black — unreadable on the dark window. Indices 3/4
-                    -- (selected) have 0x3c3e40ff gray bkg + off-white text.
-                    -- Repaint unselected text white-ish and selected bkg to
-                    -- 0x2da1beff (the teal-blue the file grid uses for row
-                    -- selection — see dtc_skins.grid's selectionColor).
-                    local item = s.skinData.skins and s.skinData.skins.item
-                    local item_sd = item and item.skinData
-                    local item_states = item_sd and item_sd.states
-                    local rel = item_states and item_states.released
-                    if rel then
-                        if rel[1] and rel[1].text then rel[1].text.color = '0xe0dedaff' end
-                        if rel[2] and rel[2].text then rel[2].text.color = '0xe0dedaff' end
-                        if rel[3] and rel[3].bkg  then rel[3].bkg.center_center = '0x2da1beff' end
-                        if rel[4] and rel[4].bkg  then rel[4].bkg.center_center = '0x2da1beff' end
-                    end
-                end
-                if s and W.folder_tree.setSkin then W.folder_tree:setSkin(s) end
-            end)
+            apply_me_tree_skin(W.folder_tree)
         end
         W.window:insertWidget(W.folder_tree)
 
