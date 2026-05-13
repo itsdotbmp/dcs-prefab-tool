@@ -3,7 +3,7 @@
 -- Run via: lua test_warehouse_ops.lua  (cwd: tools/me-mod/test/)
 
 local default_airport = {
-    coalition          = "NEUTRAL",
+    coalition          = "neutrals",
     unlimitedFuel      = true,
     unlimitedAircrafts = true,
     unlimitedMunitions = true,
@@ -26,7 +26,7 @@ local default_airport = {
 }
 
 local customised_airport = {
-    coalition          = "BLUE",
+    coalition          = "blue",
     unlimitedFuel      = false,
     unlimitedAircrafts = false,
     unlimitedMunitions = false,
@@ -98,18 +98,18 @@ end
 do
     local entry = warehouse_ops.extract(1)
     check('extract(1) returns table', type(entry) == 'table')
-    check('extract(1).coalition == NEUTRAL', entry.coalition == 'NEUTRAL')
+    check('extract(1).coalition == neutrals', entry.coalition == 'neutrals')
     check('extract(1) deep-copy of jet_fuel', entry.jet_fuel ~= default_airport.jet_fuel,
           'expected different table reference')
     entry.coalition = 'MUTATED'
     check('extract result mutation does not leak to source',
-          default_airport.coalition == 'NEUTRAL', 'source coalition was: ' .. default_airport.coalition)
+          default_airport.coalition == 'neutrals', 'source coalition was: ' .. default_airport.coalition)
 end
 
 -- Case: extract on customised airport preserves nested aircrafts table.
 do
     local entry = warehouse_ops.extract(68)
-    check('extract(68).coalition == BLUE', entry.coalition == 'BLUE')
+    check('extract(68).coalition == blue', entry.coalition == 'blue')
     check('extract(68) preserves AH-64D entry',
           entry.aircrafts and entry.aircrafts.helicopters
           and entry.aircrafts.helicopters['AH-64D']
@@ -166,8 +166,8 @@ do
     end
 
     local stays_default = {
-        { 'coalition flipped to BLUE',  function(t) t.coalition = 'BLUE' end },
-        { 'coalition flipped to RED',   function(t) t.coalition = 'RED' end },
+        { 'coalition flipped to blue',  function(t) t.coalition = 'blue' end },
+        { 'coalition flipped to red',   function(t) t.coalition = 'red' end },
         { 'OperatingLevel_Eqp dropped', function(t) t.OperatingLevel_Eqp = 0 end },
         { 'jet_fuel adjusted',          function(t) t.jet_fuel.InitFuel = 50 end },
         { 'aircrafts non-empty',        function(t) t.aircrafts = { planes = { ["F-16"] = {} } } end },
@@ -211,8 +211,8 @@ warehouse_ops = require('dcs_sms_me.warehouse_ops')
 
 -- Use a fresh airports table for apply so we can observe writes.
 local live_airports = {
-    [1]  = { coalition = 'NEUTRAL' },
-    [68] = { coalition = 'NEUTRAL' },
+    [1]  = { coalition = 'neutrals' },
+    [68] = { coalition = 'neutrals' },
 }
 package.loaded['me_mission'].mission.AirportsEquipment.airports = live_airports
 
@@ -220,7 +220,7 @@ package.loaded['me_mission'].mission.AirportsEquipment.airports = live_airports
 do
     set_calls = {}
     local saved = {
-        coalition = 'BLUE',
+        coalition = 'blue',
         unlimitedFuel = false,
         jet_fuel = { InitFuel = 50 },
         aircrafts = { helicopters = { ["AH-64D"] = { initialAmount = 100 } } },
@@ -229,8 +229,8 @@ do
     check('apply returns ok', ok == true, 'err: ' .. tostring(err))
     check('live airports[68] is replaced (table reference differs)',
           live_airports[68] ~= saved, 'expected splice to deep-copy, not alias')
-    check('live airports[68].coalition == BLUE',
-          live_airports[68].coalition == 'BLUE')
+    check('live airports[68].coalition == blue',
+          live_airports[68].coalition == 'blue')
     check('live airports[68].jet_fuel.InitFuel == 50',
           live_airports[68].jet_fuel and live_airports[68].jet_fuel.InitFuel == 50)
     check('setAirdromeCoalition called once', #set_calls == 1, 'got ' .. #set_calls)
@@ -242,13 +242,13 @@ do
     -- Mutating saved post-apply must not leak into live data.
     saved.coalition = 'MUTATED'
     check('post-apply mutation does not leak',
-          live_airports[68].coalition == 'BLUE',
+          live_airports[68].coalition == 'blue',
           'live coalition was: ' .. live_airports[68].coalition)
 end
 
 -- Case: apply with bad inputs returns nil + reason.
 do
-    local ok, err = warehouse_ops.apply(nil, { coalition = 'BLUE' })
+    local ok, err = warehouse_ops.apply(nil, { coalition = 'blue' })
     check('apply(nil, t) returns nil', ok == nil)
     check('apply(nil, t) returns error string', type(err) == 'string')
 
