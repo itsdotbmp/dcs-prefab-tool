@@ -76,10 +76,11 @@ local function any_selection(snap)
         or (#(snap.drawings or {}) > 0)
 end
 
-function M.save_selection(name, place_at_origin, airbases)
+function M.save_selection(name, place_at_origin, airbases, folder)
     if type(name) ~= 'string' or name == '' then
         return nil, 'name required'
     end
+    folder = folder or ''
 
     local snap = selection.snapshot()
     if not snap or not snap.ok then
@@ -128,8 +129,8 @@ function M.save_selection(name, place_at_origin, airbases)
         return nil, 'serialize returned non-string'
     end
 
-    paths.ensure_prefabs()
-    local path = prefab_path(name)
+    paths.ensure_prefab_folder(folder)
+    local path = paths.folder_to_abs(folder) .. name .. '.prefab'
     local f, oerr = io.open(path, 'w')
     if not f then
         return nil, 'open failed: ' .. tostring(oerr)

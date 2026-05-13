@@ -174,6 +174,56 @@ do
           'expected false')
 end
 
+-- New: save with a folder argument writes under the subfolder and
+-- mkdir-s segments top-down.
+do
+    -- Re-install the capturing io.open stub (the exists() case above
+    -- replaced it with a read-mode-only stub that routes writes to
+    -- real_open, which would fail on the fake writedir path).
+    captured.path, captured.content = nil, nil
+    io.open = function(path, mode)
+        if mode == 'w' then
+            return {
+                write = function(self, content) captured.path = path; captured.content = content end,
+                close = function(self) end,
+            }
+        end
+        return real_open(path, mode)
+    end
+    -- Reset mkdir tracking on the lfs stub if available; otherwise this
+    -- test just verifies the path computation since the lfs stub already
+    -- swallows mkdir calls.
+    local ok, _ = pcall(function()
+        -- Re-require with a non-empty selection so save_selection succeeds.
+        package.preload['dcs_sms_me.selection'] = function()
+            return {
+                snapshot = function()
+                    return {
+                        ok = true,
+                        timestamp_utc = '2026-05-03T12:00:00Z',
+                        selection_mode = 'multi',
+                        groups = {
+                            { name='G1', x=100, y=200,
+                              units={ { name='U1', type='F-16C_50', x=100, y=200, heading=0 } },
+                              boss = { id=2, name='USA' } },
+                        },
+                        statics = {}, zones = {}, drawings = {}, nav_points = {}, raw = {},
+                    }
+                end,
+            }
+        end
+        package.loaded['dcs_sms_me.selection'] = nil
+        package.loaded['prefab_ops'] = nil
+        local prefab_ops_f = require('prefab_ops')
+        local result, path_or_err = prefab_ops_f.save_selection('nested_test', false, nil, 'CAP/Tomcats')
+        check('folder save: succeeded', result == true, tostring(path_or_err))
+        check('folder save: path contains CAP\\Tomcats',
+              tostring(path_or_err):match('CAP\\Tomcats\\nested_test%.prefab') ~= nil,
+              'got path: ' .. tostring(path_or_err))
+    end)
+    check('folder save: no Lua error', ok)
+end
+
 if failures > 0 then
     print(string.format('%d failure(s)', failures))
     os.exit(1)
