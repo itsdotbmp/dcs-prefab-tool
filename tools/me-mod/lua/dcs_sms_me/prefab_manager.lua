@@ -2077,7 +2077,16 @@ function M.show()
                 W.folder_tree_uses_listbox = true
             end
         end
-        try_skin(W.folder_tree, 'listBoxSkin_ME')
+        -- Skin selection is widget-class-specific. ListBox uses listBoxSkin_ME;
+        -- TreeView uses treeViewSkin_ME (which preserves the per-state `check`
+        -- sub-shape that TreeView's setOffsets() indexes during addNode — apply
+        -- listBoxSkin_ME to a TreeView and addNode throws "attempt to index
+        -- field 'check'" because the skin shapes differ).
+        if W.folder_tree_uses_listbox then
+            try_skin(W.folder_tree, 'listBoxSkin_ME')
+        else
+            try_skin(W.folder_tree, 'treeViewSkin_ME')
+        end
         W.window:insertWidget(W.folder_tree)
 
         -- Tree selection handler — sets W.selected_folder and re-filters.
