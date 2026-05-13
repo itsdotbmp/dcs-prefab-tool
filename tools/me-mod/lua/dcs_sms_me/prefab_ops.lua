@@ -24,6 +24,31 @@ local function legacy_prefab_path(name)
     return paths.PREFABS_DIR .. name .. '.lua'
 end
 
+-- Windows-reserved DOS device names. Reject regardless of case.
+local DOS_RESERVED = {
+    CON = true, PRN = true, AUX = true, NUL = true,
+    COM1 = true, COM2 = true, COM3 = true, COM4 = true, COM5 = true,
+    COM6 = true, COM7 = true, COM8 = true, COM9 = true,
+    LPT1 = true, LPT2 = true, LPT3 = true, LPT4 = true, LPT5 = true,
+    LPT6 = true, LPT7 = true, LPT8 = true, LPT9 = true,
+}
+
+-- Validate a single folder-name segment (NOT a path — no separators allowed).
+-- Returns true on valid; false + reason on invalid.
+function M._validate_folder_name(name)
+    if type(name) ~= 'string' then return false, 'must be a string' end
+    local trimmed = name:match('^%s*(.-)%s*$') or ''
+    if trimmed == '' then return false, 'cannot be empty' end
+    if trimmed:find('[<>:"/\\|%?%*]') then
+        return false, 'contains a reserved character (< > : " / \\ | ? *)'
+    end
+    if trimmed:sub(1, 1) == '.' then return false, 'cannot start with a dot' end
+    if DOS_RESERVED[trimmed:upper()] then
+        return false, 'reserved Windows name'
+    end
+    return true
+end
+
 function M.exists(name)
     if type(name) ~= 'string' or name == '' then return false end
     local f = io.open(prefab_path(name), 'r')
