@@ -382,6 +382,78 @@ local function walk_folders()
 end
 M._walk_folders = walk_folders  -- exposed for tests/inspection
 
+-- Walk a tree-node depth-first, calling visit(node, depth) on each.
+local function for_each_node(node, depth, visit)
+    if not node then return end
+    for _, child in ipairs(node.children or {}) do
+        visit(child, depth)
+        if not W.folder_tree_collapse[child.path] then
+            for_each_node(child, depth + 1, visit)
+        end
+    end
+end
+
+-- Native-TreeView render path. Rebuilds TreeViewItem children from W.folder_tree_root.
+local function render_tree_native()
+    if not W.folder_tree or W.folder_tree_uses_listbox then return end
+    if not W.folder_tree.removeAllItems and not W.folder_tree.removeAll then return end
+    pcall(function()
+        if W.folder_tree.removeAllItems then W.folder_tree:removeAllItems()
+        elseif W.folder_tree.removeAll   then W.folder_tree:removeAll()
+        end
+        local TreeViewItem; do local ok, m = pcall(require, 'TreeViewItem'); if ok then TreeViewItem = m end end
+        if not TreeViewItem then return end
+        local function add_node(node, parent_item)
+            for _, child in ipairs(node.children or {}) do
+                local item = TreeViewItem.new()
+                item:setText(child.name)
+                item._sms_path = child.path     -- stash path on the item for click-handlers
+                if parent_item and parent_item.insertItem then
+                    parent_item:insertItem(item)
+                else
+                    W.folder_tree:insertItem(item)
+                end
+                add_node(child, item)
+            end
+        end
+        add_node(W.folder_tree_root, nil)
+    end)
+end
+
+-- ListBox fallback render path. Flattens the visible (non-collapsed)
+-- subtree into one row per folder, indent + prefix-glyph encoded.
+local function render_tree_listbox()
+    if not W.folder_tree or not W.folder_tree_uses_listbox then return end
+    pcall(function()
+        if W.folder_tree.removeAllItems then W.folder_tree:removeAllItems()
+        elseif W.folder_tree.removeAll   then W.folder_tree:removeAll()
+        end
+        W._tree_listbox_paths = {}
+        for_each_node(W.folder_tree_root, 0, function(node, depth)
+            local indent = string.rep('  ', depth)
+            local glyph = (#node.children > 0)
+                and ((W.folder_tree_collapse[node.path] and '> ') or 'v ')
+                or  '  '
+            local text = indent .. glyph .. node.name
+            local ListBoxItem; do local ok, m = pcall(require, 'ListBoxItem'); if ok then ListBoxItem = m end end
+            if ListBoxItem and W.folder_tree.insertItem then
+                local it = ListBoxItem.new()
+                it:setText(text)
+                W.folder_tree:insertItem(it)
+            end
+            W._tree_listbox_paths[#W._tree_listbox_paths + 1] = node.path
+        end)
+    end)
+end
+
+-- Public rebuild — walks the disk, re-derives the tree, re-renders.
+function M._rebuild_tree()
+    W.folder_set = walk_folders()
+    W.folder_tree_root = build_tree(W.folder_set, W.folder_filter_text)
+    if W.folder_tree_uses_listbox then render_tree_listbox()
+    else                                render_tree_native() end
+end
+
 local function apply_filter()
     W.visible_rows = compose_filter(W.rows, W.selected_folder, W.filter_text)
 end
@@ -467,6 +539,7 @@ local function refresh_list()
     end
 
     W.rows = prefab_ops.scan_dir() or {}
+    if M._rebuild_tree then M._rebuild_tree() end
     sort_rows(W.rows, W.sort_key, W.sort_dir)
     apply_filter()
     restore_selection_by_name(prev_name)
@@ -1752,6 +1825,51 @@ function M.show()
         end
         try_skin(W.folder_tree, 'listBoxSkin_ME')
         W.window:insertWidget(W.folder_tree)
+
+        -- Tree selection handler — sets W.selected_folder and re-filters.
+        -- Native TreeView fires onSelect with the item; we read item._sms_path.
+        -- ListBox fallback fires onSelect with the row index; we map via W._tree_listbox_paths.
+        if W.folder_tree.onChange or W.folder_tree.addChangeCallback then
+            local function on_tree_select()
+                local path = ''
+                if W.folder_tree_uses_listbox then
+                    local idx = -1
+                    pcall(function() idx = (W.folder_tree.getSelectedItem and W.folder_tree:getSelectedItem()) or -1 end)
+                    if type(idx) == 'number' and idx >= 0 and W._tree_listbox_paths then
+                        path = W._tree_listbox_paths[idx + 1] or ''
+                    end
+                else
+                    pcall(function()
+                        local item = W.folder_tree.getSelectedItem and W.folder_tree:getSelectedItem()
+                        if item and item._sms_path then path = item._sms_path end
+                    end)
+                end
+                W.selected_folder = path or ''
+                apply_filter()
+                render_grid()
+            end
+            if W.folder_tree.addChangeCallback then
+                pcall(function() W.folder_tree:addChangeCallback(on_tree_select) end)
+            end
+            if W.folder_tree.onChange then
+                W.folder_tree.onChange = on_tree_select
+            end
+        end
+
+        -- ListBox fallback double-click toggles collapse.
+        if W.folder_tree_uses_listbox and W.folder_tree.addMouseDownCallback then
+            pcall(function()
+                W.folder_tree:addMouseDownCallback(function(self, x, y, button, _, isDoubleClick)
+                    if not isDoubleClick or button ~= 1 then return end
+                    local idx = (self.getSelectedItem and self:getSelectedItem()) or -1
+                    if type(idx) ~= 'number' or idx < 0 then return end
+                    local path = W._tree_listbox_paths and W._tree_listbox_paths[idx + 1]
+                    if not path or path == '' then return end
+                    W.folder_tree_collapse[path] = not W.folder_tree_collapse[path]
+                    render_tree_listbox()
+                end)
+            end)
+        end
 
         -- + New folder button (below the tree).
         W.new_folder_btn = Button.new()
