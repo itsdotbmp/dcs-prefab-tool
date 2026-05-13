@@ -2082,10 +2082,56 @@ function M.show()
         -- sub-shape that TreeView's setOffsets() indexes during addNode — apply
         -- listBoxSkin_ME to a TreeView and addNode throws "attempt to index
         -- field 'check'" because the skin shapes differ).
+        --
+        -- Stock treeViewSkin_ME paints center_center = 0x6d7376ff (mid-gray),
+        -- which clashes with the rest of the ME chrome (listBoxSkin_ME uses
+        -- 0x00000040 — a transparent overlay that lets the window's dark blue
+        -- show through). Override the center fills on a fresh skin copy so the
+        -- tree interior matches the file grid. Skin.treeViewSkin_ME() returns a
+        -- fresh deep table per call, so this mutation is widget-local.
         if W.folder_tree_uses_listbox then
             try_skin(W.folder_tree, 'listBoxSkin_ME')
         else
-            try_skin(W.folder_tree, 'treeViewSkin_ME')
+            pcall(function()
+                local Skin_mod = require('Skin')
+                local s = Skin_mod.treeViewSkin_ME and Skin_mod.treeViewSkin_ME()
+                if s and s.skinData then
+                    -- DCS's skin engine parses bkg color fields as STRINGS at
+                    -- render time (the .skin.lua source uses "0xRRGGBBAA"
+                    -- strings). Assigning a Lua number silently fails to
+                    -- parse and the renderer falls back to widget defaults
+                    -- (white for normal rows, blue text on hover, etc.).
+                    -- All bkg overrides below MUST use string form.
+                    --
+                    -- Outer panel: transparent overlay over the window's dark
+                    -- blue, matching listBoxSkin_ME's interior look.
+                    if s.skinData.states then
+                        for _, state_name in ipairs({'released', 'disabled'}) do
+                            local st = s.skinData.states[state_name]
+                            if st and st[1] and st[1].bkg then
+                                st[1].bkg.center_center = '0x00000040'
+                            end
+                        end
+                    end
+                    -- Item sub-skin: indices 1/2 (unselected) paint text in
+                    -- black — unreadable on the dark window. Indices 3/4
+                    -- (selected) have 0x3c3e40ff gray bkg + off-white text.
+                    -- Repaint unselected text white-ish and selected bkg to
+                    -- 0x2da1beff (the teal-blue the file grid uses for row
+                    -- selection — see dtc_skins.grid's selectionColor).
+                    local item = s.skinData.skins and s.skinData.skins.item
+                    local item_sd = item and item.skinData
+                    local item_states = item_sd and item_sd.states
+                    local rel = item_states and item_states.released
+                    if rel then
+                        if rel[1] and rel[1].text then rel[1].text.color = '0xe0dedaff' end
+                        if rel[2] and rel[2].text then rel[2].text.color = '0xe0dedaff' end
+                        if rel[3] and rel[3].bkg  then rel[3].bkg.center_center = '0x2da1beff' end
+                        if rel[4] and rel[4].bkg  then rel[4].bkg.center_center = '0x2da1beff' end
+                    end
+                end
+                if s and W.folder_tree.setSkin then W.folder_tree:setSkin(s) end
+            end)
         end
         W.window:insertWidget(W.folder_tree)
 
