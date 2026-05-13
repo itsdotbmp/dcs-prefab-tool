@@ -1804,6 +1804,17 @@ function M.show()
                 end)
             end)
         end
+        if W.folder_search_input.addKeyDownCallback then
+            pcall(function()
+                W.folder_search_input:addKeyDownCallback(function(_self, keyName)
+                    if keyName == 'escape' or keyName == 'Escape' then
+                        pcall(function() W.folder_search_input:setText('') end)
+                        W.folder_filter_text = ''
+                        if M._rebuild_tree then M._rebuild_tree() end
+                    end
+                end)
+            end)
+        end
         W.window:insertWidget(W.folder_search_input)
 
         -- Folder tree (TreeView preferred; ListBox fallback wired in Task 16).
