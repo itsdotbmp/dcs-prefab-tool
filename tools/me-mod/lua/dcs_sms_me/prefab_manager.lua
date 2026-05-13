@@ -1421,7 +1421,9 @@ end
 -- callback re-sets bounds if the user shrinks past this).
 -- 540 floor: place_origin_btn (200 wide, x = w-336) needs w ≥ ~520 to clear
 -- the rotation dial at x=132+47=179. Was 440 when the button was 130 wide.
-local MIN_W, MIN_H = 540, 460
+local MIN_W, MIN_H = 760, 460
+local TREE_W = 200      -- fixed width of the left (folder tree) pane
+local SPLIT  = 6        -- gutter between left and right panes
 
 -- Single source of truth for child geometry. Called once at construction and
 -- from the Window:addSizeCallback. Top band (Name + Search) sticks to the
@@ -1435,9 +1437,7 @@ local function relayout(w, h)
         end
     end
 
-    -- Row 0: Name + Fixed-position checkbox + Save (all inline).
-    -- Layout right-to-left so the checkbox stays adjacent to Save:
-    --   name_input fills the space between name_label and fixed_check.
+    -- Row 0: Name + Fixed checkbox + Save (spans full width).
     local check_w   = 130
     local save_x    = w - 90
     local check_x   = save_x - 6 - check_w
@@ -1446,42 +1446,51 @@ local function relayout(w, h)
     set(W.name_label,      10,      8, 50,      22)
     set(W.name_input,      input_x, 8, input_w, 22)
     set(W.fixed_check,     check_x, 8, check_w, 22)
-    set(W.fixed_check_lbl, check_x, 8, check_w, 22)  -- fallback Static occupies the same slot
+    set(W.fixed_check_lbl, check_x, 8, check_w, 22)
     set(W.save_btn,        save_x,  8, 80,      22)
 
-    -- Separator + Row 1: Search. ~10px breathing room above and below sep1.
+    -- Separator at y=40.
     set(W.sep1, 10, 40, w - 20, 1)
-    set(W.search_label, 10, 51, 50, 22)
-    set(W.filter_input, 60, 51, w - 60 - 10, 22)
 
-    -- Bottom band offsets relative to h. Locked to the bottom so resizing
-    -- the window grows the grid, not the action panel. row3_y / sep2_y
-    -- give ~10px breathing room above and below sep2; everything below
-    -- (row4 onward) stays in its original spot anchored to h.
+    -- Row 1: search inputs (same y for both panes).
+    local left_x  = 10
+    local left_w  = TREE_W
+    local right_x = 10 + TREE_W + SPLIT
+    local right_w = w - right_x - 10
+
+    set(W.folder_search_label, left_x,        51, 100, 22)
+    set(W.folder_search_input, left_x + 105,  51, left_w - 105, 22)
+
+    set(W.search_label, right_x,       51, 80,  22)
+    set(W.filter_input, right_x + 84,  51, right_w - 84, 22)
+
+    -- Bottom-band offsets (anchored to h).
     local row3_y   = h - 197
     local sep2_y   = h - 165
     local row4_y   = h - 154
     local row5_y   = h - 124
 
-    -- Grid stretches between the top band and row 3. grid_y reflects the
-    -- pushed-down search row above (sep1 also got the 10/10 padding).
-    local grid_y = 77
-    local grid_h = math.max(60, row3_y - grid_y - 8)
-    local grid_w = w - 20
-    set(W.grid, 10, grid_y, grid_w, grid_h)
-    -- Name column absorbs the leftover horizontal space; numeric/Theatre
-    -- columns stay at their COLS-defined widths. Resizing the window
-    -- widens just the Name column.
+    -- Tree + Grid stretch between y=77 and row3_y-8. Tree's bottom edge
+    -- is 28px above row3_y-8 to leave room for the "+ New folder" button.
+    local body_y = 77
+    local body_h_total = math.max(60, row3_y - body_y - 8)
+    local tree_h = math.max(40, body_h_total - 28)
+    local grid_h = body_h_total
+
+    set(W.folder_tree,    left_x, body_y,                   left_w, tree_h)
+    set(W.new_folder_btn, left_x, body_y + tree_h + 4,      left_w, 22)
+    set(W.grid,           right_x, body_y,                  right_w, grid_h)
+
     if W.grid and W.grid.setColumnWidth then
         local fixed_w = 0
         for i, c in ipairs(COLS) do
             if i > 1 then fixed_w = fixed_w + c.width end
         end
-        local name_w = math.max(80, grid_w - fixed_w)
+        local name_w = math.max(80, right_w - fixed_w)
         pcall(function() W.grid:setColumnWidth(0, name_w) end)
     end
 
-    -- Row 3: Reload | Undo (left) | gap | Rename | Delete (right).
+    -- Bottom bands (span full width — unchanged from before).
     set(W.reload_btn, 10,                row3_y, 70,  22)
     set(W.undo_btn,   84,                row3_y, 140, 22)
     set(W.rename_btn, w - 90 - 80 - 4,   row3_y, 80,  22)
@@ -1489,26 +1498,19 @@ local function relayout(w, h)
 
     set(W.sep2, 10, sep2_y, w - 20, 1)
 
-    -- Row 4: Country picker.
     set(W.country_label, 10, row4_y, 100, 22)
     local combo_x = 114
     local combo_w = (W.country_filter_btn) and (w - combo_x - 90 - 6) or (w - combo_x - 10)
     set(W.country_combo, combo_x, row4_y, combo_w, 22)
     set(W.country_filter_btn, w - 90, row4_y, 80, 22)
 
-    -- Row 5: Rotation gizmo + place buttons. Row is 43px tall (dial); the
-    -- spinbox/label/place-buttons are vertically centered against it.
     set(W.rotation_label, 10, row5_y + 10, 60, 22)
     set(W.rotation_spin,  70, row5_y + 10, 60, 22)
     set(W.rotation_dial,  132, row5_y, 47, 43)
-    set(W.rotation_input, 70, row5_y + 10, 60, 22)   -- fallback path
-    set(W.rotation_unit,  132, row5_y + 10, 20, 22)  -- fallback path
-    -- place_click_btn right-edge at w-10 (122 wide), place_origin_btn 4px
-    -- to its left (200 wide — fits "Place at original location"). Both
-    -- stay anchored to the right edge.
+    set(W.rotation_input, 70, row5_y + 10, 60, 22)
+    set(W.rotation_unit,  132, row5_y + 10, 20, 22)
     set(W.place_origin_btn, w - 336, row5_y + 10, 200, 22)
     set(W.place_click_btn,  w - 132, row5_y + 10, 122, 22)
-
 end
 
 function M.show()
@@ -1581,7 +1583,7 @@ function M.show()
         return
     end
     local ok, err = pcall(function()
-        local w, h = 720, 460
+        local w, h = 920, 480
 
         W.sms_window = sms_window.new({
             title    = 'Prefab Manager',
@@ -1701,6 +1703,67 @@ function M.show()
             end)
         end
         W.window:insertWidget(W.filter_input)
+
+        -- Task 14 — folder browser widgets (left pane).
+        -- Folder search input (left of "Search files:" — same y row).
+        do
+            local lbl = Static.new()
+            lbl:setText('Search folders:')
+            try_skin(lbl, 'staticSkin_ME')
+            W.window:insertWidget(lbl)
+            W.folder_search_label = lbl
+        end
+        if TextBox then
+            W.folder_search_input = TextBox.new()
+        else
+            W.folder_search_input = Static.new()
+        end
+        if W.folder_search_input.setText then W.folder_search_input:setText('') end
+        try_skin(W.folder_search_input, 'editBoxSkin_ME')
+        if W.folder_search_input.addChangeCallback then
+            pcall(function()
+                W.folder_search_input:addChangeCallback(function()
+                    if not (W.folder_search_input and W.folder_search_input.getText) then return end
+                    local txt = W.folder_search_input:getText() or ''
+                    if txt == W.folder_filter_text then return end
+                    W.folder_filter_text = txt
+                    if M._rebuild_tree then M._rebuild_tree() end
+                end)
+            end)
+        end
+        W.window:insertWidget(W.folder_search_input)
+
+        -- Folder tree (TreeView preferred; ListBox fallback wired in Task 16).
+        local TreeView
+        do local ok, m = pcall(require, 'TreeView'); if ok then TreeView = m end end
+        if TreeView then
+            W.folder_tree = TreeView.new()
+            W.folder_tree_uses_listbox = false
+        else
+            local ListBox; do local ok, m = pcall(require, 'ListBox'); if ok then ListBox = m end end
+            if ListBox then
+                W.folder_tree = ListBox.new()
+                W.folder_tree_uses_listbox = true
+            else
+                W.folder_tree = Static.new()
+                W.folder_tree:setText('(tree widget unavailable)')
+                W.folder_tree_uses_listbox = true
+            end
+        end
+        try_skin(W.folder_tree, 'listBoxSkin_ME')
+        W.window:insertWidget(W.folder_tree)
+
+        -- + New folder button (below the tree).
+        W.new_folder_btn = Button.new()
+        W.new_folder_btn:setText('+ New folder')
+        try_skin(W.new_folder_btn, 'dtc_button')
+        W.window:insertWidget(W.new_folder_btn)
+        -- on_click handler wired in Task 17.
+
+        -- Rename the existing "Search:" label to "Search files:" for symmetry.
+        if W.search_label and W.search_label.setText then
+            pcall(function() W.search_label:setText('Search files:') end)
+        end
 
         if Grid and GridHeaderCell then
             W.grid = Grid.new()
