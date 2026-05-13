@@ -36,4 +36,17 @@ function M.ensure_prefabs()
     lfs.mkdir(M.PREFABS_DIR)
 end
 
+-- mkdir every segment of an in-memory folder path top-down, starting from
+-- PREFABS_DIR. Idempotent; lfs.mkdir on an existing dir is a no-op.
+-- '' means "just ensure PREFABS_DIR itself".
+function M.ensure_prefab_folder(folder_rel)
+    M.ensure_prefabs()
+    if folder_rel == nil or folder_rel == '' then return end
+    local acc = M.PREFABS_DIR
+    for segment in folder_rel:gmatch('[^/]+') do
+        acc = acc .. segment .. '\\'
+        lfs.mkdir(acc)
+    end
+end
+
 return M
