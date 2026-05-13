@@ -4,9 +4,9 @@
 --   * Lazy dxgui Menu construction (one menu per call site, rebuilt each show).
 --   * Clipboard probe — resolves on first use to the best available strategy
 --     and caches the result.
---   * Public (this commit):
+--   * Public:
 --       M.show_for_file_row(x, y, row, hooks)    -- right-click on a prefab row
---   * Coming in Task 11: M.show_for_tree_node    -- right-click on a tree node
+--       M.show_for_tree_node(x, y, node, hooks)  -- right-click on a tree node
 --
 -- All callbacks return immediately (no modal blocking). pcall-guarded
 -- internally so a missing widget binding degrades to a no-op + log line.
@@ -206,5 +206,54 @@ function M.show_for_file_row(x, y, row, hooks)
 end
 
 M._build_place_snippet = build_place_snippet  -- exposed for tests
+
+-- ---------------------------------------------------------------------------
+-- Public: tree-node right-click menu.
+--
+-- Args:
+--   x, y         cursor position
+--   node         { path = 'CAP' / 'CAP/Tomcats' / '' (root) }
+--   hooks        { on_new = function(parent_path),
+--                  on_rename = function(node),
+--                  on_delete = function(node) }
+--
+-- Entries (root node hides Rename/Delete):
+--   New subfolder
+--   (separator)  — only if Rename/Delete visible
+--   Rename
+--   Delete
+-- ---------------------------------------------------------------------------
+
+function M.show_for_tree_node(x, y, node, hooks)
+    if not node then return false end
+    hooks = hooks or {}
+    local is_root = (node.path == '' or node.path == nil)
+
+    local entries = {
+        {
+            label = 'New subfolder',
+            visible = true,
+            on_click = function() if hooks.on_new then hooks.on_new(node.path or '') end end,
+        },
+        {
+            label = '--',
+            visible = not is_root,
+            on_click = function() end,
+        },
+        {
+            label = 'Rename',
+            visible = not is_root,
+            on_click = function() if hooks.on_rename then hooks.on_rename(node) end end,
+        },
+        {
+            label = 'Delete',
+            visible = not is_root,
+            on_click = function() if hooks.on_delete then hooks.on_delete(node) end end,
+        },
+    }
+
+    local menu = build_menu(entries)
+    return popup_menu(menu, x, y)
+end
 
 return M
