@@ -255,29 +255,6 @@ local function update_header_labels()
     end)
 end
 
--- Pure filter: returns a new array of rows whose name OR theatre contains
--- filter_text (case-insensitive substring). Empty filter → shallow copy of
--- the input. Plain-text find (4th arg = true) avoids regex surprises.
--- Exposed via M._filter_rows for unit testing.
-local function filter_rows(rows, filter_text)
-    local f = (filter_text or ''):lower()
-    if f == '' then
-        local copy = {}
-        for i, r in ipairs(rows) do copy[i] = r end
-        return copy
-    end
-    local out = {}
-    for _, r in ipairs(rows) do
-        local name_l    = tostring(r.name    or ''):lower()
-        local theatre_l = tostring(r.theatre or ''):lower()
-        if name_l:find(f, 1, true) or theatre_l:find(f, 1, true) then
-            out[#out + 1] = r
-        end
-    end
-    return out
-end
-M._filter_rows = filter_rows
-
 -- Folder-aware filter composition (Task 12). Used by apply_filter and exposed
 -- for tests as M._compose_filter. Selected-folder semantics:
 --   nil or ''  → recursive show-all (legacy behaviour, all rows pass the
@@ -312,6 +289,13 @@ local function compose_filter(rows, selected_folder, filter_text)
     return out
 end
 M._compose_filter = compose_filter  -- exposed for tests
+
+-- Legacy single-arg filter; kept for test backward-compat. New callers
+-- should use compose_filter directly with the desired selected_folder.
+local function filter_rows(rows, filter_text)
+    return compose_filter(rows, nil, filter_text)
+end
+M._filter_rows = filter_rows
 
 -- Build a nested tree node structure from a folder_set (map of folder
 -- paths to true). Each node:
