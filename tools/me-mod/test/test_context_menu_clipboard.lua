@@ -53,4 +53,72 @@ do
     check('snippet has anchor',    s:match('{x = 0, y = 0}') ~= nil)
 end
 
+-- Regression guard: build_menu must attach click handlers as item.func and
+-- dispatch via onChange(item) (matches DCS Menu contract — see menu.lua:58).
+-- Earlier code used onChange(label) + a by_label map, which silently no-op'd
+-- every click because DCS passes the item table, not a string.
+do
+    package.loaded['dcs_sms_me.context_menu'] = nil
+
+    -- Fake MenuItem: a plain table with :setText that stores the label.
+    package.preload['MenuItem'] = function()
+        return {
+            new = function()
+                return { setText = function(self, t) self.text = t end }
+            end,
+        }
+    end
+
+    -- Fake Menu: collects inserted items; onChange is monkey-patched by
+    -- build_menu itself, so we just need :insertItem + a table to attach to.
+    local fake_menu_mt = {}
+    fake_menu_mt.__index = fake_menu_mt
+    function fake_menu_mt:insertItem(it)
+        self._items = self._items or {}
+        self._items[#self._items + 1] = it
+    end
+    package.preload['Menu'] = function()
+        return {
+            new = function() return setmetatable({}, fake_menu_mt) end,
+        }
+    end
+
+    _G.Gui = { setClipboard = function() return true end }
+
+    local cm = require('dcs_sms_me.context_menu')
+
+    -- Three entries with distinct hooks.
+    local clicked = {}
+    local entries = {
+        { label = 'Alpha', visible = true,  on_click = function() clicked.alpha = true end },
+        { label = '--',    visible = true,  on_click = function() clicked.sep   = true end },
+        { label = 'Hidden', visible = false, on_click = function() clicked.hidden = true end },
+        { label = 'Beta',  visible = true,  on_click = function() clicked.beta  = true end },
+    }
+
+    local menu = cm._build_menu(entries)
+    check('build_menu returned a menu', menu ~= nil)
+    check('build_menu honored visibility filter', #menu._items == 3)
+
+    -- Each item must carry a func field (the click handler).
+    for _, it in ipairs(menu._items) do
+        check('item ' .. tostring(it.text) .. ' has func', type(it.func) == 'function')
+    end
+
+    -- Firing onChange(item) must dispatch to that item's func — this is the
+    -- exact regression: pre-fix, onChange got a label string and the lookup
+    -- silently no-op'd. Now it gets the item table and dispatches via .func.
+    menu:onChange(menu._items[1])  -- Alpha
+    check('onChange(item) dispatches Alpha', clicked.alpha == true)
+    menu:onChange(menu._items[3])  -- Beta (separator was [2])
+    check('onChange(item) dispatches Beta', clicked.beta == true)
+    -- Separator's no-op func runs without error.
+    menu:onChange(menu._items[2])
+    check('separator no-op runs cleanly', clicked.sep == true)
+
+    package.preload['Menu'] = nil
+    package.preload['MenuItem'] = nil
+    _G.Gui = nil
+end
+
 io.write('All context_menu clipboard tests passed.\n')

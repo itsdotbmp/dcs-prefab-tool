@@ -90,18 +90,16 @@ end
 local function build_menu(entries)
     if not Menu or not MenuItem then return nil end
     local menu = Menu.new()
-    local by_label = {}
     for _, e in ipairs(entries) do
         if e.visible ~= false then
             local item = MenuItem.new()
             item:setText(e.label)
+            item.func = e.on_click   -- canonical ME pattern (see menu.lua)
             menu:insertItem(item)
-            by_label[e.label] = e.on_click
         end
     end
-    function menu:onChange(label)
-        local cb = by_label[label]
-        if cb then pcall(cb) end
+    function menu:onChange(item)
+        if item and item.func then pcall(item.func) end
         return true  -- dxgui closes the menu
     end
     return menu
@@ -206,6 +204,7 @@ function M.show_for_file_row(x, y, row, hooks)
 end
 
 M._build_place_snippet = build_place_snippet  -- exposed for tests
+M._build_menu = build_menu                    -- exposed for tests
 
 -- ---------------------------------------------------------------------------
 -- Public: tree-node right-click menu.
