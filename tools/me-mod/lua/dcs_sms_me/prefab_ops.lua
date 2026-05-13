@@ -192,6 +192,9 @@ function M.rename_folder(old_rel, new_name)
     local old_abs = paths.folder_to_abs(old_rel):sub(1, -2)  -- strip trailing '\'
     local new_abs = paths.folder_to_abs(new_rel):sub(1, -2)
 
+    if not lfs.attributes(old_abs) then
+        return nil, 'folder not found: ' .. old_rel
+    end
     if old_abs == new_abs then
         return nil, 'old and new are the same'
     end
@@ -201,8 +204,8 @@ function M.rename_folder(old_rel, new_name)
         return nil, 'target folder already exists: ' .. new_rel
     end
 
-    local ok = os.rename(old_abs, new_abs)
-    if not ok then return nil, 'os.rename failed' end
+    local ok, oerr = os.rename(old_abs, new_abs)
+    if not ok then return nil, 'os.rename failed: ' .. tostring(oerr) end
     return true, new_rel
 end
 
