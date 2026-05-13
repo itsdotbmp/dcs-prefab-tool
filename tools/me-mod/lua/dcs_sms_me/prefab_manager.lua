@@ -1588,52 +1588,11 @@ local function relayout(w, h)
     set(W.place_click_btn,  w - 132, row5_y + 10, 122, 22)
 end
 
--- Folder operation handlers (Task 17). All use the existing show_overlay
--- (MsgWindow) for confirmations and prompts.
-
--- Prompt for a folder name via a one-line MsgWindow text input. The native
--- MsgWindow doesn't ship an "input prompt" variant on every build, so we
--- fall back to using the manager's Name field if the prompt isn't available.
-local function prompt_for_folder_name(title, message, prefill, on_accept)
-    -- MsgWindow has `text(...)` with an optional input field on some builds;
-    -- but for portability, we use a tiny ad-hoc Window: title + EditBox + OK/Cancel.
-    local ok = pcall(function()
-        local Window = require('Window')
-        local TextBox = require('EditBox')
-        local Static = require('Static')
-        local Button = require('Button')
-        local dlg = Window.new()
-        dlg:setText(title or 'Folder name')
-        dlg:setBounds(200, 200, 320, 130)
-
-        local lbl = Static.new(); lbl:setText(message or ''); lbl:setBounds(10, 10, 300, 22)
-        dlg:insertWidget(lbl)
-        local input = TextBox.new(); input:setText(prefill or ''); input:setBounds(10, 36, 300, 22)
-        dlg:insertWidget(input)
-        local btn_ok = Button.new(); btn_ok:setText('OK');     btn_ok:setBounds(80, 70, 70, 22)
-        local btn_cn = Button.new(); btn_cn:setText('Cancel'); btn_cn:setBounds(160, 70, 70, 22)
-        dlg:insertWidget(btn_ok); dlg:insertWidget(btn_cn)
-
-        btn_ok:addChangeCallback(function()
-            local v = input.getText and input:getText() or ''
-            pcall(function() dlg:setVisible(false) end)
-            if on_accept then on_accept(v) end
-        end)
-        btn_cn:addChangeCallback(function()
-            pcall(function() dlg:setVisible(false) end)
-        end)
-        pcall(function() input:setFocused(true) end)
-        pcall(function() dlg:setVisible(true) end)
-    end)
-    if not ok then
-        set_status('Folder prompt failed — see dcs.log.', 'error')
-    end
-end
-
+-- Folder operation handlers (Task 17). Confirmations use show_overlay;
+-- name prompts reuse show_rename_overlay for consistent skinning + centering.
 local function on_new_folder(parent_path)
     parent_path = parent_path or W.selected_folder or ''
-    prompt_for_folder_name(
-        'New folder',
+    show_rename_overlay(
         'Folder name (under "' .. (parent_path == '' and '(root)' or parent_path) .. '"):',
         '',
         function(name)
@@ -1660,8 +1619,7 @@ end
 local function on_rename_folder(node)
     if not node or not node.path or node.path == '' then return end
     local current_name = node.path:match('([^/]+)$')
-    prompt_for_folder_name(
-        'Rename folder',
+    show_rename_overlay(
         'New name for "' .. node.path .. '":',
         current_name,
         function(new_name)
