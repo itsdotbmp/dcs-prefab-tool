@@ -644,15 +644,17 @@ local function read_fixed_check()
     return v
 end
 
-local function do_save(name, place_at_origin, airbases)
-    local ok, path_or_err = prefab_ops.save_selection(name, place_at_origin, airbases)
+local function do_save(name, place_at_origin, airbases, folder)
+    folder = folder or ''
+    local ok, path_or_err = prefab_ops.save_selection(name, place_at_origin, airbases, folder)
     if ok then
         local extras = {}
+        if folder ~= '' then extras[#extras + 1] = 'in ' .. folder end
         if place_at_origin then extras[#extras + 1] = 'fixed' end
         if airbases and #airbases > 0 then extras[#extras + 1] = #airbases .. ' airbase(s)' end
         local suffix = #extras > 0 and ' [' .. table.concat(extras, ', ') .. ']' or ''
         set_status('Saved ' .. name .. suffix .. ' → ' .. tostring(path_or_err))
-        log.write('sms.me.prefab', log.INFO, 'saved ' .. name)
+        log.write('sms.me.prefab', log.INFO, 'saved ' .. name .. ' in folder "' .. folder .. '"')
         refresh_list()
         pcall(function()
             if W.name_input and W.name_input.setText then W.name_input:setText('') end
@@ -674,7 +676,7 @@ local function on_save_click()
             set_status('Empty name — using timestamped fallback. See dcs.log.', 'warning')
             name = 'prefab-' .. os.date('!%Y%m%dT%H%M%SZ')
             log.write('sms.me.prefab', log.WARNING, 'save with empty name → ' .. name)
-            do_save(name, fixed, airbases)
+            do_save(name, fixed, airbases, W.selected_folder)
             return
         end
 
@@ -682,7 +684,7 @@ local function on_save_click()
             show_overlay(
                 'Prefab "' .. name .. '" already exists.\n\nOverwrite, rename, or cancel?',
                 {
-                    { label = 'Overwrite', on_click = function() do_save(name, fixed, airbases) end },
+                    { label = 'Overwrite', on_click = function() do_save(name, fixed, airbases, W.selected_folder) end },
                     { label = 'Rename',    on_click = function() focus_name_input(); set_status('Type a new name and click Save.') end },
                     { label = 'Cancel',    on_click = function() set_status('Save cancelled.') end },
                 },
@@ -691,7 +693,7 @@ local function on_save_click()
             return
         end
 
-        do_save(name, fixed, airbases)
+        do_save(name, fixed, airbases, W.selected_folder)
     end)
 end
 
