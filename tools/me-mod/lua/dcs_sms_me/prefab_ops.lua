@@ -49,6 +49,26 @@ function M._validate_folder_name(name)
     return true
 end
 
+-- Validate a multi-segment folder path (in-memory '/'-form). Empty string is
+-- valid (means "root"). Otherwise every segment must pass _validate_folder_name
+-- AND be neither '.' nor '..' (path-traversal guard). Returns true on valid,
+-- false + reason on invalid.
+function M._validate_folder_path(folder_rel)
+    if type(folder_rel) ~= 'string' then return false, 'must be a string' end
+    if folder_rel == '' then return true end
+    if folder_rel:find('\\') then
+        return false, 'use / as folder separator, not \\'
+    end
+    for segment in folder_rel:gmatch('[^/]+') do
+        if segment == '.' or segment == '..' then
+            return false, 'folder path cannot contain "." or ".." segments'
+        end
+        local ok, why = M._validate_folder_name(segment)
+        if not ok then return false, why end
+    end
+    return true
+end
+
 function M.exists(name)
     if type(name) ~= 'string' or name == '' then return false end
     local f = io.open(prefab_path(name), 'r')
@@ -81,6 +101,8 @@ function M.save_selection(name, place_at_origin, airbases, folder)
         return nil, 'name required'
     end
     folder = folder or ''
+    local valid, why = M._validate_folder_path(folder)
+    if not valid then return nil, 'invalid folder: ' .. why end
 
     local snap = selection.snapshot()
     if not snap or not snap.ok then
@@ -152,6 +174,10 @@ function M.move_prefab(source_folder, name, target_folder)
     end
     source_folder = source_folder or ''
     target_folder = target_folder or ''
+    local svalid, swhy = M._validate_folder_path(source_folder)
+    if not svalid then return nil, 'invalid source folder: ' .. swhy end
+    local tvalid, twhy = M._validate_folder_path(target_folder)
+    if not tvalid then return nil, 'invalid target folder: ' .. twhy end
 
     local source_path = paths.folder_to_abs(source_folder) .. name .. '.prefab'
     if not lfs.attributes(source_path) then
@@ -182,6 +208,8 @@ function M.rename_folder(old_rel, new_name)
     if type(old_rel) ~= 'string' or old_rel == '' then
         return nil, 'old folder required'
     end
+    local ovalid, owhy = M._validate_folder_path(old_rel)
+    if not ovalid then return nil, 'invalid folder: ' .. owhy end
     local valid, why = M._validate_folder_name(new_name)
     if not valid then return nil, why end
 
@@ -217,6 +245,8 @@ function M.delete_folder(folder_rel)
     if type(folder_rel) ~= 'string' or folder_rel == '' then
         return nil, 'folder required'
     end
+    local valid, why = M._validate_folder_path(folder_rel)
+    if not valid then return nil, 'invalid folder: ' .. why end
     local abs = paths.folder_to_abs(folder_rel):sub(1, -2)
     if not lfs.attributes(abs) then
         return nil, 'folder not found: ' .. folder_rel
@@ -241,8 +271,8 @@ function M.delete_folder(folder_rel)
         return true
     end
 
-    local ok, err = pcall(remove_recursive, abs)
-    if not ok then return nil, 'walk failed: ' .. tostring(err) end
+    local ok, err = remove_recursive(abs)
+    if not ok then return nil, err end
     return true
 end
 
@@ -250,6 +280,7 @@ end
 -- "Delete folder" confirmation UI. Returns prefab_count, subfolder_count.
 function M.count_folder_contents(folder_rel)
     if type(folder_rel) ~= 'string' or folder_rel == '' then return 0, 0 end
+    if not M._validate_folder_path(folder_rel) then return 0, 0 end
     local abs = paths.folder_to_abs(folder_rel):sub(1, -2)
     if not lfs.attributes(abs) then return 0, 0 end
     local files, dirs = 0, 0

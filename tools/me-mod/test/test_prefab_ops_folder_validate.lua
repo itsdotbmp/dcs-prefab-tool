@@ -43,4 +43,22 @@ check('CON lowercase rejected',  not v('con'))
 check('PRN rejected',            not v('PRN'))
 check('NUL rejected',            not v('NUL'))
 
+-- Multi-segment folder-path validation (path-traversal guard).
+local vp = prefab_ops._validate_folder_path
+check('empty path OK',             vp(''))
+check('single segment OK',         vp('CAP'))
+check('multi segment OK',          vp('CAP/Tomcats'))
+check('deep segment OK',           vp('A/B/C/D'))
+
+check('. segment rejected',        not vp('.'))
+check('.. segment rejected',       not vp('..'))
+check('nested .. rejected',        not vp('CAP/..'))
+check('mid-path .. rejected',      not vp('CAP/../X'))
+check('mid-path . rejected',       not vp('CAP/./X'))
+check('backslash rejected',        not vp('CAP\\Tomcats'))
+check('absolute Windows rejected', not vp('C:/Windows'))
+check('reserved segment rejected', not vp('CAP/CON'))
+check('trailing slash OK',         vp('CAP/'))    -- single empty segment after split = no segments, so OK
+check('reserved char rejected',    not vp('CAP/Bad>Name'))
+
 io.write('All _validate_folder_name tests passed.\n')

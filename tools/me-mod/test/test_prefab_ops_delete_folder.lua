@@ -69,5 +69,14 @@ check('empty folder gone', not is_dir(run_dir .. 'Empty'))
 local ok3, err = prefab_ops.delete_folder('DoesNotExist')
 check('missing rejected', ok3 == nil and tostring(err):match('not found') ~= nil)
 
+-- Path-traversal rejection.
+local ok5, err5 = prefab_ops.delete_folder('..')
+check('.. rejected',
+      ok5 == nil and tostring(err5):match('invalid folder') ~= nil)
+
+local ok6, err6 = prefab_ops.delete_folder('CAP/../X')
+check('embedded .. rejected',
+      ok6 == nil and tostring(err6):match('invalid folder') ~= nil)
+
 os.execute('rmdir "' .. run_dir:sub(1, -2) .. '" 2>nul')
 io.write('All delete_folder tests passed.\n')
