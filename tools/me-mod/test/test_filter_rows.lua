@@ -88,9 +88,10 @@ out = filter_rows(rows, 'broken')
 eq('error rows are filterable by name', #out, 1)
 eq('  → has error', out[1].error, 'load failed')
 
--- Folder-aware composition: when selected_folder is given, only rows whose
--- row.folder matches (direct-children semantics) are kept; then the text
--- filter applies.
+-- Folder-aware composition: when selected_folder is given, rows whose
+-- row.folder matches the selected folder OR is a descendant (recursive
+-- prefix match — clicking "Iraq" includes prefabs in "Iraq", "Iraq/FARPs",
+-- "Iraq/Planes", etc.) are kept; then the text filter applies.
 local compose = window._compose_filter or window._filter_rows  -- may be a new helper
 if window._compose_filter then
     local sample = {
@@ -100,24 +101,39 @@ if window._compose_filter then
         { name = 'cap_nested', folder = 'CAP/Tomcats', theatre = 'Caucasus' },
         { name = 'sam_a',   folder = 'SAM',        theatre = 'Caucasus' },
     }
+    local function names(rows_in)
+        local s = {}; for _, r in ipairs(rows_in) do s[r.name] = true end; return s
+    end
 
     local out = compose(sample, '', '')
     eq('folder="" + text="" returns all', #out, 5)
 
     out = compose(sample, 'CAP', '')
-    eq('folder="CAP" returns direct children only', #out, 2)
-    eq('  → no nested', out[1].name ~= 'cap_nested' and out[2].name ~= 'cap_nested', true)
+    eq('folder="CAP" returns folder + descendants', #out, 3)
+    local n = names(out)
+    eq('  → cap_a included',      n.cap_a      == true, true)
+    eq('  → cap_b included',      n.cap_b      == true, true)
+    eq('  → cap_nested included', n.cap_nested == true, true)
 
-    out = compose(sample, 'CAP', 'a')
-    eq('folder="CAP" + text="a" narrows', #out, 2)
-    eq('  → cap_a present', (out[1].name == 'cap_a' or out[2].name == 'cap_a'), true)
+    out = compose(sample, 'CAP', 'cap')
+    eq('folder="CAP" + text narrows by name across descendants', #out, 3)
 
     out = compose(sample, 'CAP/Tomcats', '')
-    eq('folder="CAP/Tomcats" returns just that', #out, 1)
+    eq('folder="CAP/Tomcats" returns just that leaf', #out, 1)
     eq('  → cap_nested', out[1].name, 'cap_nested')
 
     out = compose(sample, '', 'cap')
     eq('folder="" + text="cap" matches by name across all folders', #out, 3)
+
+    -- Prefix match must use the boundary "/" — a folder "CAPLAND" must not
+    -- be claimed by "CAP" selection.
+    local edge = {
+        { name = 'cap_a',     folder = 'CAP',     theatre = '' },
+        { name = 'capland_a', folder = 'CAPLAND', theatre = '' },
+    }
+    out = compose(edge, 'CAP', '')
+    eq('folder="CAP" does NOT spill into sibling "CAPLAND"', #out, 1)
+    eq('  → cap_a only', out[1].name, 'cap_a')
 end
 
 -- build_tree: takes (folder_set, optional name_filter) and returns a nested
