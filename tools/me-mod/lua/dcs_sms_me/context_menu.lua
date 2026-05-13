@@ -4,9 +4,9 @@
 --   * Lazy dxgui Menu construction (one menu per call site, rebuilt each show).
 --   * Clipboard probe — resolves on first use to the best available strategy
 --     and caches the result.
---   * Public:
---       M.show_for_file_row(x, y, row, on_move)   -- right-click on a prefab row
---       M.show_for_tree_node(x, y, node, hooks)   -- right-click on a tree node
+--   * Public (this commit):
+--       M.show_for_file_row(x, y, row, hooks)    -- right-click on a prefab row
+--   * Coming in Task 11: M.show_for_tree_node    -- right-click on a tree node
 --
 -- All callbacks return immediately (no modal blocking). pcall-guarded
 -- internally so a missing widget binding degrades to a no-op + log line.
@@ -49,11 +49,26 @@ local function resolve_clipboard()
         return clipboard_fn
     end
 
-    -- Last resort: pipe to `clip` via cmd.exe. Escape double-quotes.
+    -- Last resort: write payload to a temp file and pipe it into `clip` via
+    -- cmd.exe. Writing through a file avoids cmd metacharacter escaping and
+    -- preserves newlines (the realistic payload is multi-line Lua text).
     clipboard_fn = function(s)
         if type(s) ~= 'string' then return false end
-        local escaped = s:gsub('"', '""'):gsub('[\r\n]', ' ')
-        local rc = os.execute('echo ' .. escaped .. '|clip')
+        local tmpdir = os.getenv('TEMP') or os.getenv('TMP') or '.'
+        local tmpname = string.format('%s\\dcs_sms_clip_%d_%d.tmp',
+            tmpdir, os.time(), math.random(1, 1e9))
+        local f, err = io.open(tmpname, 'wb')
+        if not f then
+            if log and log.write then
+                log.write('sms.me', log.WARNING,
+                    'clipboard fallback: cannot open temp file: ' .. tostring(err))
+            end
+            return false
+        end
+        f:write(s)
+        f:close()
+        local rc = os.execute('cmd /c clip < "' .. tmpname .. '"')
+        os.remove(tmpname)
         return rc == 0 or rc == true
     end
     return clipboard_fn
