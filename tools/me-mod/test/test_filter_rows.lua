@@ -41,6 +41,8 @@ package.preload['dcs_sms_me.dtc_skins']  = function()
     }
 end
 package.preload['dcs_sms_me.undo']       = function() return { has_record = function() return false end, undo = function() return false end, capture_pre = function() end, record = function() end } end
+package.preload['me_multiSelection']     = function() return {} end
+package.preload['me_toolbar']            = function() return {} end
 
 local window = require('dcs_sms_me.prefab_manager')
 local filter_rows = window._filter_rows
@@ -85,5 +87,37 @@ eq('  → name', out[1].name, 'modern_mixed')
 out = filter_rows(rows, 'broken')
 eq('error rows are filterable by name', #out, 1)
 eq('  → has error', out[1].error, 'load failed')
+
+-- Folder-aware composition: when selected_folder is given, only rows whose
+-- row.folder matches (direct-children semantics) are kept; then the text
+-- filter applies.
+local compose = window._compose_filter or window._filter_rows  -- may be a new helper
+if window._compose_filter then
+    local sample = {
+        { name = 'root_a',  folder = '',           theatre = 'Caucasus' },
+        { name = 'cap_a',   folder = 'CAP',        theatre = 'Caucasus' },
+        { name = 'cap_b',   folder = 'CAP',        theatre = 'Syria' },
+        { name = 'cap_nested', folder = 'CAP/Tomcats', theatre = 'Caucasus' },
+        { name = 'sam_a',   folder = 'SAM',        theatre = 'Caucasus' },
+    }
+
+    local out = compose(sample, '', '')
+    eq('folder="" + text="" returns all', #out, 5)
+
+    out = compose(sample, 'CAP', '')
+    eq('folder="CAP" returns direct children only', #out, 2)
+    eq('  → no nested', out[1].name ~= 'cap_nested' and out[2].name ~= 'cap_nested', true)
+
+    out = compose(sample, 'CAP', 'a')
+    eq('folder="CAP" + text="a" narrows', #out, 2)
+    eq('  → cap_a present', (out[1].name == 'cap_a' or out[2].name == 'cap_a'), true)
+
+    out = compose(sample, 'CAP/Tomcats', '')
+    eq('folder="CAP/Tomcats" returns just that', #out, 1)
+    eq('  → cap_nested', out[1].name, 'cap_nested')
+
+    out = compose(sample, '', 'cap')
+    eq('folder="" + text="cap" matches by name across all folders', #out, 3)
+end
 
 io.write('All filter_rows tests passed.\n')

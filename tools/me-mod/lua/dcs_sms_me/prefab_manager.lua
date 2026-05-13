@@ -143,6 +143,17 @@ local W = {
     filter_input   = nil,        -- TextBox widget for the filter
     pending_airbases = nil,    -- set by marquee callback; consumed by on_save_click
     marquee_subscribed = false,-- one-shot guard so Ctrl+Shift+R reloads don't multi-subscribe
+
+    -- Folder browser state (Task 12):
+    selected_folder      = '',     -- '' = nothing selected → show all recursively
+    folder_filter_text   = '',     -- substring filter for the tree
+    folder_tree_collapse = {},     -- map folder_path -> true if collapsed
+    folder_set           = {},     -- set of all folder paths (incl. empties), refreshed on scan
+    folder_tree_root     = nil,    -- root node of build_tree result
+    folder_search_input  = nil,    -- EditBox widget
+    folder_tree          = nil,    -- TreeView widget (or ListBox fallback)
+    new_folder_btn       = nil,    -- Button widget
+    folder_tree_uses_listbox = false,  -- true when TreeView is unavailable
 }
 
 -- Column definitions for the prefab grid. Module-level so refresh_list and the
@@ -267,8 +278,43 @@ local function filter_rows(rows, filter_text)
 end
 M._filter_rows = filter_rows
 
+-- Folder-aware filter composition (Task 12). Used by apply_filter and exposed
+-- for tests as M._compose_filter. Selected-folder semantics:
+--   nil or ''  → recursive show-all (legacy behaviour, all rows pass the
+--                folder predicate).
+--   'CAP'      → direct children only (rows whose r.folder == 'CAP'); nested
+--                rows like 'CAP/Tomcats' are excluded.
+-- The text filter applies after the folder predicate and matches name OR
+-- theatre (case-insensitive plain substring), same as filter_rows.
+local function compose_filter(rows, selected_folder, filter_text)
+    local out = {}
+    local text_lower = (filter_text or ''):lower()
+    for _, r in ipairs(rows or {}) do
+        local folder_ok
+        if selected_folder == nil or selected_folder == '' then
+            folder_ok = true  -- recursive show-all
+        else
+            folder_ok = (r.folder == selected_folder)
+        end
+        if folder_ok then
+            if text_lower == '' then
+                out[#out + 1] = r
+            else
+                local name_lower    = tostring(r.name    or ''):lower()
+                local theatre_lower = tostring(r.theatre or ''):lower()
+                if name_lower:find(text_lower, 1, true)
+                    or theatre_lower:find(text_lower, 1, true) then
+                    out[#out + 1] = r
+                end
+            end
+        end
+    end
+    return out
+end
+M._compose_filter = compose_filter  -- exposed for tests
+
 local function apply_filter()
-    W.visible_rows = filter_rows(W.rows, W.filter_text)
+    W.visible_rows = compose_filter(W.rows, W.selected_folder, W.filter_text)
 end
 
 -- Restore selection by row name in the current visible_rows. Returns the
