@@ -207,6 +207,68 @@ function M.rename_folder(old_rel, new_name)
     return true, new_rel
 end
 
+-- Recursively delete a folder under PREFABS_DIR.
+-- Walks depth-first: os.remove every file, then lfs.rmdir each empty directory
+-- bottom-up. Returns true on success; nil, error_string on failure (first error
+-- aborts; the partial deletion is left in place — caller refreshes from disk).
+function M.delete_folder(folder_rel)
+    if type(folder_rel) ~= 'string' or folder_rel == '' then
+        return nil, 'folder required'
+    end
+    local abs = paths.folder_to_abs(folder_rel):sub(1, -2)
+    if not lfs.attributes(abs) then
+        return nil, 'folder not found: ' .. folder_rel
+    end
+
+    local function remove_recursive(dir_abs)
+        for entry in lfs.dir(dir_abs) do
+            if entry ~= '.' and entry ~= '..' then
+                local sub = dir_abs .. '\\' .. entry
+                local attr = lfs.attributes(sub)
+                if attr and attr.mode == 'directory' then
+                    local ok, err = remove_recursive(sub)
+                    if not ok then return nil, err end
+                elseif attr and attr.mode == 'file' then
+                    local ok = os.remove(sub)
+                    if not ok then return nil, 'remove failed: ' .. sub end
+                end
+            end
+        end
+        local ok = lfs.rmdir(dir_abs)
+        if not ok then return nil, 'rmdir failed: ' .. dir_abs end
+        return true
+    end
+
+    local ok, err = pcall(remove_recursive, abs)
+    if not ok then return nil, 'walk failed: ' .. tostring(err) end
+    return true
+end
+
+-- Count prefabs + subfolders under a folder, recursively. Used by the
+-- "Delete folder" confirmation UI. Returns prefab_count, subfolder_count.
+function M.count_folder_contents(folder_rel)
+    if type(folder_rel) ~= 'string' or folder_rel == '' then return 0, 0 end
+    local abs = paths.folder_to_abs(folder_rel):sub(1, -2)
+    if not lfs.attributes(abs) then return 0, 0 end
+    local files, dirs = 0, 0
+    local function walk(d)
+        for entry in lfs.dir(d) do
+            if entry ~= '.' and entry ~= '..' then
+                local sub = d .. '\\' .. entry
+                local attr = lfs.attributes(sub)
+                if attr and attr.mode == 'directory' then
+                    dirs = dirs + 1
+                    walk(sub)
+                elseif attr and attr.mode == 'file' and entry:match('%.prefab$') then
+                    files = files + 1
+                end
+            end
+        end
+    end
+    pcall(walk, abs)
+    return files, dirs
+end
+
 -- ---------------------------------------------------------------------------
 -- Load + scan
 -- ---------------------------------------------------------------------------
