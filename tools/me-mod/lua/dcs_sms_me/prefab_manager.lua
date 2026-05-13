@@ -1588,6 +1588,137 @@ local function relayout(w, h)
     set(W.place_click_btn,  w - 132, row5_y + 10, 122, 22)
 end
 
+-- Folder operation handlers (Task 17). All use the existing show_overlay
+-- (MsgWindow) for confirmations and prompts.
+
+-- Prompt for a folder name via a one-line MsgWindow text input. The native
+-- MsgWindow doesn't ship an "input prompt" variant on every build, so we
+-- fall back to using the manager's Name field if the prompt isn't available.
+local function prompt_for_folder_name(title, message, prefill, on_accept)
+    -- MsgWindow has `text(...)` with an optional input field on some builds;
+    -- but for portability, we use a tiny ad-hoc Window: title + EditBox + OK/Cancel.
+    local ok = pcall(function()
+        local Window = require('Window')
+        local TextBox = require('EditBox')
+        local Static = require('Static')
+        local Button = require('Button')
+        local dlg = Window.new()
+        dlg:setText(title or 'Folder name')
+        dlg:setBounds(200, 200, 320, 130)
+
+        local lbl = Static.new(); lbl:setText(message or ''); lbl:setBounds(10, 10, 300, 22)
+        dlg:insertWidget(lbl)
+        local input = TextBox.new(); input:setText(prefill or ''); input:setBounds(10, 36, 300, 22)
+        dlg:insertWidget(input)
+        local btn_ok = Button.new(); btn_ok:setText('OK');     btn_ok:setBounds(80, 70, 70, 22)
+        local btn_cn = Button.new(); btn_cn:setText('Cancel'); btn_cn:setBounds(160, 70, 70, 22)
+        dlg:insertWidget(btn_ok); dlg:insertWidget(btn_cn)
+
+        btn_ok:addChangeCallback(function()
+            local v = input.getText and input:getText() or ''
+            pcall(function() dlg:setVisible(false) end)
+            if on_accept then on_accept(v) end
+        end)
+        btn_cn:addChangeCallback(function()
+            pcall(function() dlg:setVisible(false) end)
+        end)
+        pcall(function() input:setFocused(true) end)
+        pcall(function() dlg:setVisible(true) end)
+    end)
+    if not ok then
+        set_status('Folder prompt failed — see dcs.log.', 'error')
+    end
+end
+
+local function on_new_folder(parent_path)
+    parent_path = parent_path or W.selected_folder or ''
+    prompt_for_folder_name(
+        'New folder',
+        'Folder name (under "' .. (parent_path == '' and '(root)' or parent_path) .. '"):',
+        '',
+        function(name)
+            if name == nil or name == '' then return end
+            local valid, why = prefab_ops._validate_folder_name(name)
+            if not valid then
+                set_status('Folder name rejected: ' .. tostring(why), 'error')
+                return
+            end
+            local rel = (parent_path == '' and name) or (parent_path .. '/' .. name)
+            local abs = require('dcs_sms_me.paths').folder_to_abs(rel):sub(1, -2)
+            if require('lfs').attributes(abs) then
+                set_status('Folder already exists: ' .. rel, 'error')
+                return
+            end
+            require('dcs_sms_me.paths').ensure_prefab_folder(rel)
+            set_status('Created folder "' .. rel .. '".')
+            W.selected_folder = rel
+            refresh_list()
+        end
+    )
+end
+
+local function on_rename_folder(node)
+    if not node or not node.path or node.path == '' then return end
+    local current_name = node.path:match('([^/]+)$')
+    prompt_for_folder_name(
+        'Rename folder',
+        'New name for "' .. node.path .. '":',
+        current_name,
+        function(new_name)
+            if new_name == nil or new_name == current_name then return end
+            local ok, new_rel = prefab_ops.rename_folder(node.path, new_name)
+            if not ok then
+                set_status('Rename failed: ' .. tostring(new_rel), 'error')
+                return
+            end
+            -- If the selected folder was the renamed one (or under it), rewrite.
+            if W.selected_folder == node.path then
+                W.selected_folder = new_rel
+            elseif W.selected_folder:sub(1, #node.path + 1) == node.path .. '/' then
+                W.selected_folder = new_rel .. W.selected_folder:sub(#node.path + 1)
+            end
+            set_status('Renamed "' .. node.path .. '" -> "' .. new_rel .. '".')
+            refresh_list()
+        end
+    )
+end
+
+local function on_delete_folder(node)
+    if not node or not node.path or node.path == '' then return end
+    local files, dirs = prefab_ops.count_folder_contents(node.path)
+    local function do_delete()
+        local ok, err = prefab_ops.delete_folder(node.path)
+        if not ok then
+            set_status('Delete failed: ' .. tostring(err), 'error')
+            return
+        end
+        if W.selected_folder == node.path or
+           W.selected_folder:sub(1, #node.path + 1) == node.path .. '/' then
+            W.selected_folder = ''
+        end
+        set_status('Deleted folder "' .. node.path .. '".')
+        refresh_list()
+    end
+    if files == 0 and dirs == 0 then
+        do_delete()
+    else
+        show_overlay(
+            string.format('Delete folder "%s"?\n\nContains %d prefab(s) and %d subfolder(s). This cannot be undone.',
+                node.path, files, dirs),
+            {
+                { label = 'Delete', on_click = do_delete },
+                { label = 'Cancel', on_click = function() set_status('Delete cancelled.') end },
+            },
+            'warning',
+            'Confirm delete'
+        )
+    end
+end
+
+M._on_new_folder    = on_new_folder
+M._on_rename_folder = on_rename_folder
+M._on_delete_folder = on_delete_folder
+
 function M.show()
     log.write('sms.me', log.INFO, 'window.show() called (W.window present=' .. tostring(W.window ~= nil) .. ')')
 
@@ -1889,7 +2020,7 @@ function M.show()
         W.new_folder_btn:setText('+ New folder')
         try_skin(W.new_folder_btn, 'dtc_button')
         W.window:insertWidget(W.new_folder_btn)
-        -- on_click handler wired in Task 17.
+        W.new_folder_btn:addChangeCallback(function() on_new_folder(W.selected_folder) end)
 
         -- Rename the existing "Search:" label to "Search files:" for symmetry.
         if W.search_label and W.search_label.setText then
