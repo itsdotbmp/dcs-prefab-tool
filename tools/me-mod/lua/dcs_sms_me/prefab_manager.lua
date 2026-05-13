@@ -2093,17 +2093,45 @@ function M.show()
             end
         end
 
-        -- ListBox fallback double-click toggles collapse.
-        if W.folder_tree_uses_listbox and W.folder_tree.addMouseDownCallback then
+        -- Merged Task 15 (ListBox double-click toggles collapse) + Task 19
+        -- (right-click opens tree-node context menu). Merging into one
+        -- addMouseDownCallback subscription avoids the risk of dxgui only
+        -- supporting a single subscriber per widget — both branches fire
+        -- from the same callback and dispatch by button + isDoubleClick.
+        if W.folder_tree and W.folder_tree.addMouseDownCallback then
             pcall(function()
                 W.folder_tree:addMouseDownCallback(function(self, x, y, button, _, isDoubleClick)
-                    if not isDoubleClick or button ~= 1 then return end
-                    local idx = (self.getSelectedItem and self:getSelectedItem()) or -1
-                    if type(idx) ~= 'number' or idx < 0 then return end
-                    local path = W._tree_listbox_paths and W._tree_listbox_paths[idx + 1]
-                    if not path or path == '' then return end
-                    W.folder_tree_collapse[path] = not W.folder_tree_collapse[path]
-                    render_tree_listbox()
+                    if button == 2 then
+                        -- Right-click: open context menu for the selected node.
+                        local path
+                        if W.folder_tree_uses_listbox then
+                            local idx = (self.getSelectedItem and self:getSelectedItem()) or -1
+                            if type(idx) == 'number' and idx >= 0 and W._tree_listbox_paths then
+                                path = W._tree_listbox_paths[idx + 1]
+                            end
+                        else
+                            local item = self.getSelectedItem and self:getSelectedItem()
+                            if item and item._sms_path then path = item._sms_path end
+                        end
+                        if path == nil then return end
+                        local context_menu = require('dcs_sms_me.context_menu')
+                        context_menu.show_for_tree_node(x, y, { path = path }, {
+                            on_new    = function(parent) on_new_folder(parent) end,
+                            on_rename = function(node)   on_rename_folder(node) end,
+                            on_delete = function(node)   on_delete_folder(node) end,
+                        })
+                        return
+                    end
+
+                    -- ListBox fallback double-click toggles collapse (Task 15).
+                    if W.folder_tree_uses_listbox and isDoubleClick and button == 1 then
+                        local idx = (self.getSelectedItem and self:getSelectedItem()) or -1
+                        if type(idx) ~= 'number' or idx < 0 then return end
+                        local path2 = W._tree_listbox_paths and W._tree_listbox_paths[idx + 1]
+                        if not path2 or path2 == '' then return end
+                        W.folder_tree_collapse[path2] = not W.folder_tree_collapse[path2]
+                        render_tree_listbox()
+                    end
                 end)
             end)
         end
@@ -2155,16 +2183,35 @@ function M.show()
             -- Mirror me_openfile.lua: Grid's default onMouseDown is empty, so
             -- mouse clicks don't change the selected row. Override it to call
             -- selectRow(row) for the clicked row, which then triggers
-            -- addSelectRowCallback.
+            -- addSelectRowCallback. Task 19 extends this with a right-click
+            -- branch that opens the file-row context menu.
             W.grid.onMouseDown = function(self, x, y, button)
-                if button ~= 1 then return end
-                pcall(function()
-                    local _, row = self:getMouseCursorColumnRow(x, y)
-                    if row and row >= 0 then
+                if button == 1 then
+                    pcall(function()
+                        local _, row = self:getMouseCursorColumnRow(x, y)
+                        if row and row >= 0 then
+                            self:selectRow(row)
+                            on_list_select()
+                        end
+                    end)
+                elseif button == 2 then
+                    pcall(function()
+                        local _, row = self:getMouseCursorColumnRow(x, y)
+                        if not (row and row >= 0) then return end
+                        -- Visually select the row first so the menu acts on
+                        -- the row the user just right-clicked.
                         self:selectRow(row)
+                        W.selected_idx = row + 1
                         on_list_select()
-                    end
-                end)
+                        local r = W.visible_rows[row + 1]
+                        if not r then return end
+                        local context_menu = require('dcs_sms_me.context_menu')
+                        context_menu.show_for_file_row(x, y, r, {
+                            on_move   = function(rr)     open_move_modal(rr) end,
+                            on_status = function(t, sev) set_status(t, sev) end,
+                        })
+                    end)
+                end
             end
             -- Double-click a row → enter Place at click mode for that prefab.
             -- Select first so on_place_click sees the right selection, then
