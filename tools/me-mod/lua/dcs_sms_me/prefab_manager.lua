@@ -393,30 +393,25 @@ local function for_each_node(node, depth, visit)
     end
 end
 
--- Native-TreeView render path. Rebuilds TreeViewItem children from W.folder_tree_root.
+-- Native-TreeView render path. DCS's TreeView is node-based — `addNode(text,
+-- parentNode, index)` returns a node table; we stash `_sms_path` on it so the
+-- selection callback can map back to a folder. `clear()` wipes all nodes.
+-- (Earlier draft assumed an `insertItem` API that doesn't exist in DCS dxgui.)
 local function render_tree_native()
     if not W.folder_tree or W.folder_tree_uses_listbox then return end
-    if not W.folder_tree.removeAllItems and not W.folder_tree.removeAll then return end
+    if not W.folder_tree.addNode then return end
     pcall(function()
-        if W.folder_tree.removeAllItems then W.folder_tree:removeAllItems()
-        elseif W.folder_tree.removeAll   then W.folder_tree:removeAll()
-        end
-        local TreeViewItem; do local ok, m = pcall(require, 'TreeViewItem'); if ok then TreeViewItem = m end end
-        if not TreeViewItem then return end
-        local function add_node(node, parent_item)
-            for _, child in ipairs(node.children or {}) do
-                local item = TreeViewItem.new()
-                item:setText(child.name)
-                item._sms_path = child.path     -- stash path on the item for click-handlers
-                if parent_item and parent_item.insertItem then
-                    parent_item:insertItem(item)
-                else
-                    W.folder_tree:insertItem(item)
-                end
-                add_node(child, item)
+        if W.folder_tree.clear then pcall(function() W.folder_tree:clear() end) end
+        local function add_node(node_data, parent_node)
+            for _, child in ipairs(node_data.children or {}) do
+                local n = W.folder_tree:addNode(child.name, parent_node, nil)
+                if type(n) == 'table' then n._sms_path = child.path end
+                add_node(child, n)
             end
         end
         add_node(W.folder_tree_root, nil)
+        -- Expand everything by default so users see their structure.
+        if W.folder_tree.expand then pcall(function() W.folder_tree:expand() end) end
     end)
 end
 
@@ -2087,32 +2082,33 @@ function M.show()
 
         -- Tree selection handler — sets W.selected_folder and re-filters.
         -- Native TreeView fires onSelect with the item; we read item._sms_path.
-        -- ListBox fallback fires onSelect with the row index; we map via W._tree_listbox_paths.
-        if W.folder_tree.onChange or W.folder_tree.addChangeCallback then
-            local function on_tree_select()
-                local path = ''
-                if W.folder_tree_uses_listbox then
-                    local idx = -1
-                    pcall(function() idx = (W.folder_tree.getSelectedItem and W.folder_tree:getSelectedItem()) or -1 end)
-                    if type(idx) == 'number' and idx >= 0 and W._tree_listbox_paths then
-                        path = W._tree_listbox_paths[idx + 1] or ''
-                    end
-                else
-                    pcall(function()
-                        local item = W.folder_tree.getSelectedItem and W.folder_tree:getSelectedItem()
-                        if item and item._sms_path then path = item._sms_path end
-                    end)
+        -- Selection handler: native TreeView fires addSelectionChangeCallback
+        -- (called with `self`) and we read the selected node via
+        -- getSelectedNode() — the node table carries our `_sms_path`.
+        -- ListBox fallback exposes a numeric index via getSelectedItem;
+        -- we map that through W._tree_listbox_paths.
+        local function on_tree_select()
+            local path = ''
+            if W.folder_tree_uses_listbox then
+                local idx = -1
+                pcall(function() idx = (W.folder_tree.getSelectedItem and W.folder_tree:getSelectedItem()) or -1 end)
+                if type(idx) == 'number' and idx >= 0 and W._tree_listbox_paths then
+                    path = W._tree_listbox_paths[idx + 1] or ''
                 end
-                W.selected_folder = path or ''
-                apply_filter()
-                render_grid()
+            else
+                pcall(function()
+                    local node = W.folder_tree.getSelectedNode and W.folder_tree:getSelectedNode()
+                    if node and node._sms_path then path = node._sms_path end
+                end)
             end
-            if W.folder_tree.addChangeCallback then
-                pcall(function() W.folder_tree:addChangeCallback(on_tree_select) end)
-            end
-            if W.folder_tree.onChange then
-                W.folder_tree.onChange = on_tree_select
-            end
+            W.selected_folder = path or ''
+            apply_filter()
+            render_grid()
+        end
+        if W.folder_tree.addSelectionChangeCallback then
+            pcall(function() W.folder_tree:addSelectionChangeCallback(on_tree_select) end)
+        elseif W.folder_tree.addChangeCallback then
+            pcall(function() W.folder_tree:addChangeCallback(on_tree_select) end)
         end
 
         -- Merged Task 15 (ListBox double-click toggles collapse) + Task 19
@@ -2132,8 +2128,8 @@ function M.show()
                                 path = W._tree_listbox_paths[idx + 1]
                             end
                         else
-                            local item = self.getSelectedItem and self:getSelectedItem()
-                            if item and item._sms_path then path = item._sms_path end
+                            local node = self.getSelectedNode and self:getSelectedNode()
+                            if node and node._sms_path then path = node._sms_path end
                         end
                         if path == nil then return end
                         local context_menu = require('dcs_sms_me.context_menu')
