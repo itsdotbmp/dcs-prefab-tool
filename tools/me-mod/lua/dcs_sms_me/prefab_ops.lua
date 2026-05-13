@@ -141,6 +141,40 @@ function M.save_selection(name, place_at_origin, airbases, folder)
     return true, path
 end
 
+-- Move a prefab file from its current location to <target_folder>/<name>.prefab.
+-- target_folder is the in-memory '/'-form ('' = root). Refuses to overwrite.
+-- Returns true, new_path on success; nil, error_string on failure.
+function M.move_prefab(source_path, name, target_folder)
+    if type(source_path) ~= 'string' or source_path == '' then
+        return nil, 'source path required'
+    end
+    if type(name) ~= 'string' or name == '' then
+        return nil, 'name required'
+    end
+    target_folder = target_folder or ''
+
+    local src = io.open(source_path, 'r')
+    if not src then return nil, 'source not found: ' .. source_path end
+    src:close()
+
+    paths.ensure_prefab_folder(target_folder)
+    local target = paths.folder_to_abs(target_folder) .. name .. '.prefab'
+
+    if target == source_path then
+        return nil, 'source and target are the same'
+    end
+
+    local existing = io.open(target, 'r')
+    if existing then
+        existing:close()
+        return nil, 'target already exists: ' .. target
+    end
+
+    local ok = os.rename(source_path, target)
+    if not ok then return nil, 'os.rename failed' end
+    return true, target
+end
+
 -- ---------------------------------------------------------------------------
 -- Load + scan
 -- ---------------------------------------------------------------------------
