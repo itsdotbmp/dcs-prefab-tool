@@ -1683,8 +1683,8 @@ local function open_move_modal(row)
 
     local modal = sms_window.new({
         title = 'Move prefab',
-        size = { w = 360, h = 360 },
-        min_size = { w = 320, h = 240 },
+        size = { w = 360, h = 400 },
+        min_size = { w = 320, h = 320 },
     })
     if not modal then return end
 
@@ -1707,7 +1707,7 @@ local function open_move_modal(row)
     end
     try_skin(picker, 'listBoxSkin_ME')
     raw:insertWidget(picker)
-    picker:setBounds(10, 40, 340, 220)
+    picker:setBounds(10, 40, 340, 245)
 
     -- Build the folder set + tree, render into the picker.
     local folder_set = walk_folders()
@@ -1793,8 +1793,8 @@ local function open_move_modal(row)
     local btn_cancel = Button.new(); btn_cancel:setText('Cancel')
     try_skin(btn_move, 'dtc_button'); try_skin(btn_cancel, 'dtc_button')
     raw:insertWidget(btn_move);     raw:insertWidget(btn_cancel)
-    btn_move:setBounds(180, 270, 80, 22)
-    btn_cancel:setBounds(265, 270, 80, 22)
+    btn_move:setBounds(180, 295, 80, 22)
+    btn_cancel:setBounds(265, 295, 80, 22)
 
     local function selected_target()
         if picker_uses_listbox then
