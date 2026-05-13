@@ -671,6 +671,9 @@ local function on_save_click()
     pcall(function()
         local name = ''
         if W.name_input and W.name_input.getText then name = W.name_input:getText() or '' end
+        -- Trim leading/trailing whitespace so a stray space typed in the
+        -- name input doesn't produce a file literally named " foo ".
+        name = name:gsub('^%s+', ''):gsub('%s+$', '')
         local fixed = read_fixed_check()
         local airbases = W.pending_airbases
         if name == '' then
@@ -1609,7 +1612,8 @@ local function on_new_folder(parent_path)
         'Folder name (under "' .. (parent_path == '' and '(root)' or parent_path) .. '"):',
         '',
         function(name)
-            if name == nil or name == '' then return end
+            name = (name or ''):gsub('^%s+', ''):gsub('%s+$', '')
+            if name == '' then return end
             local valid, why = prefab_ops._validate_folder_name(name)
             if not valid then
                 set_status('Folder name rejected: ' .. tostring(why), 'error')
@@ -1636,7 +1640,8 @@ local function on_rename_folder(node)
         'New name for "' .. node.path .. '":',
         current_name,
         function(new_name)
-            if new_name == nil or new_name == current_name then return end
+            new_name = (new_name or ''):gsub('^%s+', ''):gsub('%s+$', '')
+            if new_name == '' or new_name == current_name then return end
             local ok, new_rel = prefab_ops.rename_folder(node.path, new_name)
             if not ok then
                 set_status('Rename failed: ' .. tostring(new_rel), 'error')
