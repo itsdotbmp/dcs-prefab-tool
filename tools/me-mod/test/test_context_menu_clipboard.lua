@@ -43,4 +43,14 @@ do
     package.preload['Input'] = nil
 end
 
+-- Snippet shape check (pure-string, no dxgui needed).
+do
+    package.loaded['dcs_sms_me.context_menu'] = nil
+    local cm = require('dcs_sms_me.context_menu')
+    local s = cm._build_place_snippet('My Prefab')
+    check('snippet contains call', s:match('sms%.prefab%.place') ~= nil)
+    check('snippet quotes name',   s:match('"My Prefab"') ~= nil)
+    check('snippet has anchor',    s:match('{x = 0, y = 0}') ~= nil)
+end
+
 io.write('All context_menu clipboard tests passed.\n')
