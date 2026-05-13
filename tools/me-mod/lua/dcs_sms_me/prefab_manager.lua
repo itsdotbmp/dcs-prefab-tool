@@ -1754,9 +1754,28 @@ local function open_move_modal(row)
     local sms_window = require('dcs_sms_me.sms_window')
     local paths_mod  = require('dcs_sms_me.paths')
 
+    local mw, mh = 360, 400
+    -- Centre the modal over the Prefab Manager window so it doesn't spawn
+    -- off-screen when the parent is dragged around. SMSWindow defaults to
+    -- top-right of the screen otherwise. Falls back to that default if
+    -- getBounds fails for any reason.
+    local position
+    pcall(function()
+        if W.window and W.window.getBounds then
+            local px, py, pw, ph = W.window:getBounds()
+            if px and py and pw and ph then
+                position = {
+                    x = px + math.floor((pw - mw) / 2),
+                    y = py + math.floor((ph - mh) / 2),
+                }
+            end
+        end
+    end)
+
     local modal = sms_window.new({
         title         = 'Move Prefab',
-        size          = { w = 360, h = 400 },
+        size          = { w = mw, h = mh },
+        position      = position,
         resizable     = false,
         branded_title = false,
         modal_parent  = W.window,
