@@ -227,7 +227,10 @@ function SMSWindow.new(opts)
         x, y = default_position(self._size.w)
     end
 
-    local title_string = M.compose_title(opts.title, version)
+    -- branded_title = false → use opts.title verbatim (no "Coconut Cockpit · …"
+    -- prefix, no version suffix). Modals / secondary dialogs typically don't
+    -- want the full branding wrapper.
+    local title_string = (opts.branded_title == false) and opts.title or M.compose_title(opts.title, version)
     local win
     local ok, err = pcall(function()
         win = Window.new(x, y, self._size.w, self._size.h, title_string)
@@ -247,8 +250,14 @@ function SMSWindow.new(opts)
     -- needed this fix; centralising it here means every window gets it.
     pcall(function() if win.setBounds then win:setBounds(x, y, self._size.w, self._size.h) end end)
     pcall(function() if win.setDraggable then win:setDraggable(true) end end)
-    pcall(function() if win.setResizable then win:setResizable(true) end end)
-    pcall(function() if win.setZOrder    then win:setZOrder(190)   end end)
+    -- resizable defaults to true; pass resizable = false for fixed-size dialogs.
+    local resizable = (opts.resizable ~= false)
+    self._resizable = resizable
+    pcall(function() if win.setResizable then win:setResizable(resizable) end end)
+    -- Modal-style windows sit above the default 190 so the dialog never gets
+    -- buried under its parent.
+    local z = (opts.modal_parent ~= nil) and 250 or 190
+    pcall(function() if win.setZOrder    then win:setZOrder(z)      end end)
 
     -- Footer band: separator + status Static. Geometry is set by relayout
     -- in Task 4. Both inserted into the window before the body so the
@@ -287,12 +296,27 @@ function SMSWindow:show()
         if self.window and self.window.setVisible then self.window:setVisible(true) end
         if self.window and self.window.setEnabled then self.window:setEnabled(true) end
     end)
+    -- Modal-style: disable the parent window so the user can't click through
+    -- to it. dxgui has no exposed setModal at the Lua level, but
+    -- setEnabled(false) blocks input on the parent. hide() reverses this.
+    if self._opts and self._opts.modal_parent then
+        pcall(function()
+            local p = self._opts.modal_parent
+            if p and p.setEnabled then p:setEnabled(false) end
+        end)
+    end
 end
 
 function SMSWindow:hide()
     pcall(function()
         if self.window and self.window.setVisible then self.window:setVisible(false) end
     end)
+    if self._opts and self._opts.modal_parent then
+        pcall(function()
+            local p = self._opts.modal_parent
+            if p and p.setEnabled then p:setEnabled(true) end
+        end)
+    end
     if self._opts and type(self._opts.on_close) == 'function' then
         pcall(self._opts.on_close, self)
     end
@@ -345,6 +369,7 @@ end
 -- which is fine), repositions the footer, then dispatches to the
 -- subclass's relayout method or the opts.on_resize callback.
 function SMSWindow:_install_resize_callback()
+    if not self._resizable then return end
     if not (self.window and self.window.addSizeCallback) then return end
     local me = self
     pcall(function()

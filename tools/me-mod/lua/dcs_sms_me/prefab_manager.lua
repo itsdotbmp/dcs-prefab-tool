@@ -1695,9 +1695,11 @@ local function open_move_modal(row)
     local paths_mod  = require('dcs_sms_me.paths')
 
     local modal = sms_window.new({
-        title = 'Move prefab',
-        size = { w = 360, h = 400 },
-        min_size = { w = 320, h = 320 },
+        title         = 'Move Prefab',
+        size          = { w = 360, h = 400 },
+        resizable     = false,
+        branded_title = false,
+        modal_parent  = W.window,
     })
     if not modal then return end
 
@@ -1718,7 +1720,38 @@ local function open_move_modal(row)
         else            picker = Static.new(); picker:setText('(picker unavailable)')
         end
     end
-    try_skin(picker, 'listBoxSkin_ME')
+    -- Skin is widget-class specific: applying listBoxSkin_ME to a TreeView
+    -- causes addNode to throw on missing `check` sub-shape. Match the main
+    -- tree's skin treatment (transparent panel, white text on dark
+    -- background, ME teal-blue for the selected row).
+    if picker_uses_listbox then
+        try_skin(picker, 'listBoxSkin_ME')
+    else
+        pcall(function()
+            local Skin_mod = require('Skin')
+            local s = Skin_mod.treeViewSkin_ME and Skin_mod.treeViewSkin_ME()
+            if s and s.skinData then
+                if s.skinData.states then
+                    for _, state_name in ipairs({'released', 'disabled'}) do
+                        local st = s.skinData.states[state_name]
+                        if st and st[1] and st[1].bkg then
+                            st[1].bkg.center_center = '0x00000040'
+                        end
+                    end
+                end
+                local item = s.skinData.skins and s.skinData.skins.item
+                local item_sd = item and item.skinData
+                local rel = item_sd and item_sd.states and item_sd.states.released
+                if rel then
+                    if rel[1] and rel[1].text then rel[1].text.color = '0xe0dedaff' end
+                    if rel[2] and rel[2].text then rel[2].text.color = '0xe0dedaff' end
+                    if rel[3] and rel[3].bkg  then rel[3].bkg.center_center = '0x2da1beff' end
+                    if rel[4] and rel[4].bkg  then rel[4].bkg.center_center = '0x2da1beff' end
+                end
+            end
+            if s and picker.setSkin then picker:setSkin(s) end
+        end)
+    end
     raw:insertWidget(picker)
     picker:setBounds(10, 40, 340, 245)
 
@@ -1728,14 +1761,12 @@ local function open_move_modal(row)
     local picker_paths = {}
     local function render_picker()
         pcall(function()
-            if picker.removeAllItems then picker:removeAllItems()
-            elseif picker.removeAll   then picker:removeAll()
-            end
             picker_paths = {}
             if picker_uses_listbox then
+                if picker.removeAllItems then picker:removeAllItems()
+                elseif picker.removeAll   then picker:removeAll()
+                end
                 local ListBoxItem; do local ok, m = pcall(require, 'ListBoxItem'); if ok then ListBoxItem = m end end
-                -- Always-expanded flat render for the picker (small dialog,
-                -- doesn't need collapse state).
                 local function walk(node, depth)
                     for _, child in ipairs(node.children or {}) do
                         if ListBoxItem and picker.insertItem then
@@ -1747,33 +1778,28 @@ local function open_move_modal(row)
                         walk(child, depth + 1)
                     end
                 end
-                -- Root entry first.
-                local ListBoxItem; do local ok, m = pcall(require, 'ListBoxItem'); if ok then ListBoxItem = m end end
                 if ListBoxItem and picker.insertItem then
                     local it = ListBoxItem.new(); it:setText('(root)'); picker:insertItem(it)
                 end
                 picker_paths[1] = ''
                 walk(tree, 1)
             else
-                local TreeViewItem; do local ok, m = pcall(require, 'TreeViewItem'); if ok then TreeViewItem = m end end
-                if TreeViewItem then
-                    local function add_node(node, parent_item)
-                        for _, child in ipairs(node.children or {}) do
-                            local item = TreeViewItem.new()
-                            item:setText(child.name)
-                            item._sms_path = child.path
-                            if parent_item and parent_item.insertItem then
-                                parent_item:insertItem(item)
-                            else
-                                picker:insertItem(item)
-                            end
-                            add_node(child, item)
+                -- Native TreeView is node-based — same API as the main tree:
+                -- addNode(text, parentNode, nil) returns a node table that we
+                -- stash _sms_path on so selected_target() can recover it.
+                if picker.clear then pcall(function() picker:clear() end) end
+                if picker.addNode then
+                    local root_node = picker:addNode('(root)', nil, nil)
+                    if type(root_node) == 'table' then root_node._sms_path = '' end
+                    local function add_node(data, parent_node)
+                        for _, child in ipairs(data.children or {}) do
+                            local n = picker:addNode(child.name, parent_node, nil)
+                            if type(n) == 'table' then n._sms_path = child.path end
+                            add_node(child, n)
                         end
                     end
-                    -- Root row.
-                    local root_item = TreeViewItem.new(); root_item:setText('(root)'); root_item._sms_path = ''
-                    picker:insertItem(root_item)
-                    add_node(tree, root_item)
+                    add_node(tree, root_node)
+                    if picker.expand then pcall(function() picker:expand() end) end
                 end
             end
         end)
@@ -1795,9 +1821,19 @@ local function open_move_modal(row)
             if picker_uses_listbox then
                 if picker.setSelectedItem then picker:setSelectedItem(current_idx - 1) end
             else
-                -- TreeView: try the common shapes; if none work, the user just
-                -- starts with no selection (same as the prior behaviour).
-                if picker.setSelectedItem then picker:setSelectedItem(current_idx - 1) end
+                -- TreeView: walk all nodes via findNode-ish search to find the
+                -- one whose _sms_path matches `current`, then selectNode it.
+                -- Simpler: rely on the path we built and use selectNode on the
+                -- root + descent. DCS TreeView's findNode takes a text-path
+                -- list; we use it when current_idx > 1 (non-root). For root,
+                -- just leave the picker unselected — the user can still pick
+                -- the (root) row explicitly if they want.
+                if current ~= '' and picker.findNode then
+                    local parts = {}
+                    for part in current:gmatch('[^/]+') do parts[#parts + 1] = part end
+                    local node = picker:findNode(parts)
+                    if node and picker.selectNode then picker:selectNode(node) end
+                end
             end
         end)
     end
@@ -1816,8 +1852,9 @@ local function open_move_modal(row)
                 return picker_paths[idx + 1] or ''
             end
         else
-            local item = picker.getSelectedItem and picker:getSelectedItem()
-            if item and item._sms_path ~= nil then return item._sms_path end
+            -- TreeView: getSelectedNode returns the node table (carries _sms_path).
+            local node = picker.getSelectedNode and picker:getSelectedNode()
+            if node and node._sms_path ~= nil then return node._sms_path end
         end
         return nil
     end
@@ -1834,7 +1871,10 @@ local function open_move_modal(row)
         end
         set_status('Moved "' .. row.name .. '" to "' .. (target == '' and '(root)' or target) .. '".')
         pcall(function() modal:hide() end)
-        W.selected_folder = target
+        -- Stay on the folder we started from — jumping to the destination was
+        -- jarring per user feedback. The moved prefab disappears from the
+        -- current view if the current folder no longer contains it, which is
+        -- the expected signal that the move succeeded.
         refresh_list()
     end)
     btn_cancel:addChangeCallback(function() pcall(function() modal:hide() end) end)
@@ -2213,7 +2253,10 @@ function M.show()
         if W.folder_tree and W.folder_tree.addMouseDownCallback then
             pcall(function()
                 W.folder_tree:addMouseDownCallback(function(self, x, y, button, _, isDoubleClick)
-                    if button == 2 then
+                    -- DCS dxgui delivers right-click as button == 3 (verified
+                    -- empirically; matches the me_loadout.lua:1134 pattern).
+                    -- Earlier draft checked button == 2 which never fired.
+                    if button == 3 then
                         -- Right-click: open context menu for the selected node.
                         local path
                         if W.folder_tree_uses_listbox then
@@ -2325,7 +2368,10 @@ function M.show()
                             on_list_select()
                         end
                     end)
-                elseif button == 2 then
+                elseif button == 3 then
+                    -- DCS dxgui delivers right-click as button == 3 (verified
+                    -- empirically; matches me_loadout.lua:1134). Earlier
+                    -- draft checked button == 2 which never matched.
                     pcall(function()
                         local _, row = self:getMouseCursorColumnRow(x, y)
                         if not (row and row >= 0) then return end

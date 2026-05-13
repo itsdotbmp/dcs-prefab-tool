@@ -11,8 +11,10 @@
 -- All callbacks return immediately (no modal blocking). pcall-guarded
 -- internally so a missing widget binding degrades to a no-op + log line.
 
-local Menu;       do local ok, m = pcall(require, 'Menu');       if ok then Menu = m end end
-local MenuItem;   do local ok, m = pcall(require, 'MenuItem');   if ok then MenuItem = m end end
+local Menu;              do local ok, m = pcall(require, 'Menu');              if ok then Menu = m end end
+local MenuItem;          do local ok, m = pcall(require, 'MenuItem');          if ok then MenuItem = m end end
+local MenuSeparatorItem; do local ok, m = pcall(require, 'MenuSeparatorItem'); if ok then MenuSeparatorItem = m end end
+local paths_mod;         do local ok, m = pcall(require, 'dcs_sms_me.paths');  if ok then paths_mod = m end end
 
 local M = {}
 
@@ -92,10 +94,14 @@ local function build_menu(entries)
     local menu = Menu.new()
     for _, e in ipairs(entries) do
         if e.visible ~= false then
-            local item = MenuItem.new()
-            item:setText(e.label)
-            item.func = e.on_click   -- canonical ME pattern (see menu.lua)
-            menu:insertItem(item)
+            if e.separator and MenuSeparatorItem then
+                menu:insertItem(MenuSeparatorItem.new())
+            else
+                local item = MenuItem.new()
+                item:setText(e.label)
+                item.func = e.on_click   -- canonical ME pattern (see menu.lua)
+                menu:insertItem(item)
+            end
         end
     end
     function menu:onChange(item)
@@ -107,18 +113,30 @@ end
 
 local function popup_menu(menu, x, y)
     if not menu then return false end
-    if menu.popup then
-        local ok = pcall(function() menu:popup(x, y) end)
-        if ok then return true end
+    -- DCS dxgui Menu widget has no popup() and no show() — earlier draft
+    -- guessed at those and silently no-op'd via pcall. The working ME
+    -- pattern (me_loadout.lua:1115-1118) is: getSize() to measure the
+    -- intrinsic menu height (depends on item count + skin), then
+    -- setBounds(x, y, w, h) + setVisible(true).
+    local ok, err = pcall(function()
+        local w, h = menu:getSize()
+        if (not w or w == 0) and menu.getItemCount then
+            -- Fallback default width if the widget hasn't measured yet.
+            w = 180
+        end
+        if (not h or h == 0) and menu.getItemCount then
+            h = math.max(20, menu:getItemCount() * 20)
+        end
+        menu:setBounds(x, y, w or 180, h or 80)
+        menu:setVisible(true)
+    end)
+    if not ok then
+        if log and log.write then
+            log.write('sms.me', log.WARNING, 'context_menu: show failed: ' .. tostring(err))
+        end
+        return false
     end
-    if menu.show then
-        local ok = pcall(function() menu:show(x, y) end)
-        if ok then return true end
-    end
-    if log and log.write then
-        log.write('sms.me', log.WARNING, 'context_menu: no popup/show on Menu widget')
-    end
-    return false
+    return true
 end
 
 -- Build the place-snippet string per GH#50.
@@ -155,9 +173,8 @@ function M.show_for_file_row(x, y, row, hooks)
             on_click = function() if hooks.on_move then hooks.on_move(row) end end,
         },
         {
-            label = '--',  -- visual separator; rendered as a disabled blank item if MenuItem supports it
+            separator = true,
             visible = not is_error,
-            on_click = function() end,
         },
         {
             label = 'Copy file contents',
@@ -235,9 +252,8 @@ function M.show_for_tree_node(x, y, node, hooks)
             on_click = function() if hooks.on_new then hooks.on_new(node.path or '') end end,
         },
         {
-            label = '--',
+            separator = true,
             visible = not is_root,
-            on_click = function() end,
         },
         {
             label = 'Rename',
@@ -248,6 +264,19 @@ function M.show_for_tree_node(x, y, node, hooks)
             label = 'Delete',
             visible = not is_root,
             on_click = function() if hooks.on_delete then hooks.on_delete(node) end end,
+        },
+        {
+            separator = true,
+            visible = true,
+        },
+        {
+            label = 'Open in Explorer',
+            visible = true,
+            on_click = function()
+                if not paths_mod or not paths_mod.folder_to_abs then return end
+                local abs = paths_mod.folder_to_abs(node.path or '')
+                os.execute('explorer "' .. tostring(abs) .. '"')
+            end,
         },
     }
 
