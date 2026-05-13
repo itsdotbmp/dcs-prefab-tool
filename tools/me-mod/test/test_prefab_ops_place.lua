@@ -562,6 +562,54 @@ do
           twice.route.points[1].linkUnit.unitId == 14)
 end
 
+-- ---------------------------------------------------------------------------
+-- GH#57: when a source id overlaps a freshly-allocated destination id (which
+-- always happens placing into a fresh mission, where getNewUnitId starts at
+-- 1 and source ids also start near 1), the remap MUST still rewrite — the
+-- pre-fix `is_new_uid` guard incorrectly treated source-side values that
+-- happened to also be dest-side values as "already remapped" and skipped
+-- them. Result: two placed groups landed on the same final unitId, and
+-- Mission.unit_by_id[id] = whichever was injected second; the first became
+-- a "ghost" — invisible to the marquee hit-test, which iterates unit_by_id.
+-- ---------------------------------------------------------------------------
+do
+    -- Overlap scenario: source id 10 is also the destination for source 99.
+    --   uid_map = { [10] = 50, [99] = 10 }
+    -- A unit whose source unitId is 10 must be remapped to 50, not preserved
+    -- as 10. (Pre-fix: is_new_uid[10]=true → skip → unit.unitId stays at 10.)
+    local uid_map = { [10] = 50, [99] = 10 }
+    local gid_map = {}
+    local g = { units = { { unitId = 10 } } }
+    prefab_ops._remap_ids(g, uid_map, gid_map, {})
+    check('GH#57: source unitId 10 (also a dest value) remaps to 50, not preserved as 10',
+          g.units[1].unitId == 50, 'got ' .. tostring(g.units[1].unitId))
+
+    -- Same shape for groupId. Source 10 is also dest for source 99.
+    local uid_map_b = {}
+    local gid_map_b = { [10] = 50, [99] = 10 }
+    local g_b = { groupId = 10 }
+    prefab_ops._remap_ids(g_b, uid_map_b, gid_map_b, {})
+    check('GH#57: source groupId 10 (also a dest value) remaps to 50, not preserved as 10',
+          g_b.groupId == 50, 'got ' .. tostring(g_b.groupId))
+
+    -- Pass-D-style: two source units, source ids overlap dest values.
+    -- Both must end up with DIFFERENT final unitIds (no collision in the
+    -- caller's downstream Mission.unit_by_id[uid] = unit assignment).
+    local uid_map_c = { [10] = 50, [99] = 10 }
+    local gid_map_c = {}
+    local unit_a = { unitId = 10 }   -- source 10 → expect 50
+    local unit_b = { unitId = 99 }   -- source 99 → expect 10
+    prefab_ops._remap_ids({ units = { unit_a } }, uid_map_c, gid_map_c, {})
+    prefab_ops._remap_ids({ units = { unit_b } }, uid_map_c, gid_map_c, {})
+    check('GH#57: two units with overlapping ids end up with distinct dest ids',
+          unit_a.unitId ~= unit_b.unitId,
+          'unit_a=' .. tostring(unit_a.unitId) .. ' unit_b=' .. tostring(unit_b.unitId))
+    check('GH#57: unit_a (source 10) remaps to 50',
+          unit_a.unitId == 50, 'got ' .. tostring(unit_a.unitId))
+    check('GH#57: unit_b (source 99) remaps to 10',
+          unit_b.unitId == 10, 'got ' .. tostring(unit_b.unitId))
+end
+
 if failures > 0 then
     print(string.format('%d failure(s)', failures))
     os.exit(1)

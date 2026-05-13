@@ -621,11 +621,40 @@ function M._remap_ids(group, uid_map, gid_map, opts)
     uid_map = uid_map or {}
     gid_map = gid_map or {}
 
-    -- Build "already a new id" sets so a second pass over already-remapped
-    -- data is a no-op (idempotency: call-twice does not nil out fresh ids).
-    local is_new_uid, is_new_gid = {}, {}
-    for _, new in pairs(uid_map) do is_new_uid[new] = true end
-    for _, new in pairs(gid_map) do is_new_gid[new] = true end
+    -- Three-way classification per id value `v` encountered in the walk:
+    --   (a) v is a SOURCE id (key of the map) → rewrite to map[v]
+    --   (b) v is an already-allocated DEST id (value of the map) AND not
+    --       also a source key → preserve (idempotency on re-walk)
+    --   (c) v is in neither set → cross-mission reference; nil it
+    --
+    -- The pre-fix code used a single guard "if not is_new_uid[v]" — which
+    -- collapsed cases (a) and (b) when source and dest spaces overlapped.
+    -- Placing into a fresh mission, getNewUnitId starts at 1 and source ids
+    -- also begin near 1, so overlap is the rule, not the exception. The
+    -- effect was that any source id v whose value happened to also be a
+    -- freshly-allocated dest got skipped, while another unit (whose source
+    -- mapped TO v) got correctly remapped — both ended up with the same
+    -- final unitId. Mission.unit_by_id[v] = whichever inject ran last;
+    -- the other became a "ghost" group invisible to the marquee hit-test
+    -- (which iterates Mission.unit_by_id). See GH#57.
+    --
+    -- Note on idempotency: when source and dest spaces overlap on a value
+    -- that is BOTH a source key AND a dest value (e.g. uid_map[10]=50,
+    -- uid_map[99]=10), a second walk over already-remapped data will
+    -- re-rewrite that value (because case (a) wins over case (b) when the
+    -- value is in both sets). M.place calls _remap_ids exactly once per
+    -- group, so this does not arise in production. Tests in the
+    -- non-overlapping case still demonstrate idempotency.
+    local is_source_uid, is_new_uid = {}, {}
+    for old, new in pairs(uid_map) do
+        is_source_uid[old] = true
+        is_new_uid[new] = true
+    end
+    local is_source_gid, is_new_gid = {}, {}
+    for old, new in pairs(gid_map) do
+        is_source_gid[old] = true
+        is_new_gid[new] = true
+    end
 
     local seen = {}
     local function walk(t)
@@ -635,9 +664,11 @@ function M._remap_ids(group, uid_map, gid_map, opts)
         for k, v in pairs(t) do
             if type(v) == 'number' then
                 if UID_KEYS[k] then
-                    if not is_new_uid[v] then t[k] = uid_map[v] end
+                    if is_source_uid[v] then t[k] = uid_map[v]
+                    elseif not is_new_uid[v] then t[k] = nil end
                 elseif GID_KEYS[k] then
-                    if not is_new_gid[v] then t[k] = gid_map[v] end
+                    if is_source_gid[v] then t[k] = gid_map[v]
+                    elseif not is_new_gid[v] then t[k] = nil end
                 elseif k == 'airdromeId' then
                     if not keep_airdrome_ids then t[k] = nil end
                 end

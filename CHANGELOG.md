@@ -105,6 +105,11 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.7.3] — 2026-05-13
+
+**Fixed**
+- Placed prefabs were partially un-pickable by the ME's marquee multi-select tool: a subset of statics (~10% on real prefabs) rendered correctly on the F10 map but the drag walked right over them, and clicking elsewhere on the same prefab selected the wrong group. Root cause was inside `prefab_ops._remap_ids`: the idempotency guard short-circuited every value that happened to also be a freshly-allocated destination id, which is the rule (not the exception) when placing into a fresh mission — `Mission.getNewUnitId` starts at 1 and source-mission unit ids do too. Skipped units kept their source unitId, while other units in the same prefab were correctly remapped to that same value, collapsing two distinct units onto one entry in `Mission.unit_by_id`. Whichever was injected last won the registry slot; the other became a "ghost" group — present in `Mission.group_by_id`, drawn on the map, but invisible to `me_multiSelection`'s rect hit-test (which iterates `Mission.unit_by_id`). The guard now distinguishes source-side keys from already-allocated destination values via two separate sets, so source ids that happen to coincide with dest values still get rewritten while genuinely already-fresh values on a re-walk are preserved. Closes [#57](https://github.com/nielsvaes/dcs-sms/issues/57).
+
 ### [0.7.2] — 2026-05-12
 
 Major release. Folds the entire `feat/me-execution-bridge` body of work (in-flight as 0.7.0 and 0.7.1) into this tag, plus the prefab Search-Then-Engage fix.
