@@ -313,6 +313,91 @@ local function compose_filter(rows, selected_folder, filter_text)
 end
 M._compose_filter = compose_filter  -- exposed for tests
 
+-- Build a nested tree node structure from a folder_set (map of folder
+-- paths to true). Each node:
+--   { name = 'CAP', path = 'CAP', children = { ...nodes... } }
+-- Root node has name = '', path = '', children = top-level folder nodes.
+-- If `name_filter` is non-empty, prunes nodes whose name (case-insensitive)
+-- doesn't match AND have no matching descendant.
+local function build_tree(folder_set, name_filter)
+    name_filter = (name_filter or ''):lower()
+
+    -- Step 1: collect all folder paths, ensure parent paths are present.
+    local all = {}
+    for path, _ in pairs(folder_set or {}) do
+        if path ~= '' then
+            all[path] = true
+            -- Walk ancestors so the tree is connected even if a deep folder
+            -- exists without its intermediate ancestors in folder_set.
+            local p = path:match('^(.+)/[^/]+$')
+            while p and p ~= '' do
+                all[p] = true
+                p = p:match('^(.+)/[^/]+$')
+            end
+        end
+    end
+
+    -- Step 2: build a map from parent path -> sorted list of direct children.
+    local children_of = {}
+    for path, _ in pairs(all) do
+        local parent = path:match('^(.+)/[^/]+$') or ''
+        children_of[parent] = children_of[parent] or {}
+        local leaf = path:match('([^/]+)$')
+        children_of[parent][#children_of[parent] + 1] = { name = leaf, path = path }
+    end
+    for _, list in pairs(children_of) do
+        table.sort(list, function(a, b) return a.name:lower() < b.name:lower() end)
+    end
+
+    -- Step 3: recurse from root, attaching children. Filtering: keep a node
+    -- if its name matches OR any descendant matches.
+    local function attach(node)
+        node.children = {}
+        local raw = children_of[node.path] or {}
+        for _, child in ipairs(raw) do
+            attach(child)
+            local self_match = (name_filter == '' or child.name:lower():find(name_filter, 1, true) ~= nil)
+            if self_match or #child.children > 0 then
+                node.children[#node.children + 1] = child
+            end
+        end
+        return node
+    end
+
+    local root = attach({ name = '', path = '' })
+    return root
+end
+M._build_tree = build_tree  -- exposed for tests
+
+-- Walk PREFABS_DIR collecting every subfolder path (in '/'-form) into a
+-- set. Used to feed build_tree so empty folders appear in the tree.
+local function walk_folders()
+    local paths_mod = require('dcs_sms_me.paths')
+    local lfs = require('lfs')
+    local set = { [''] = true }
+    local function walk(abs_dir, rel)
+        local ok = pcall(function()
+            for entry in lfs.dir(abs_dir) do
+                if entry ~= '.' and entry ~= '..' then
+                    local abs = abs_dir .. entry
+                    local attr = lfs.attributes(abs)
+                    if attr and attr.mode == 'directory' then
+                        local sub_rel = (rel == '' and entry) or (rel .. '/' .. entry)
+                        set[sub_rel] = true
+                        walk(abs .. '\\', sub_rel)
+                    end
+                end
+            end
+        end)
+        if not ok and log and log.write then
+            log.write('sms.me.prefab', log.WARNING, 'walk_folders at "' .. rel .. '" failed')
+        end
+    end
+    walk(paths_mod.PREFABS_DIR, '')
+    return set
+end
+M._walk_folders = walk_folders  -- exposed for tests/inspection
+
 local function apply_filter()
     W.visible_rows = compose_filter(W.rows, W.selected_folder, W.filter_text)
 end

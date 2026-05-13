@@ -120,4 +120,25 @@ if window._compose_filter then
     eq('folder="" + text="cap" matches by name across all folders', #out, 3)
 end
 
+-- build_tree: takes (folder_set, optional name_filter) and returns a nested
+-- node structure. Each node = { name, path, children = {}, expanded? }.
+local build_tree = window._build_tree
+if build_tree then
+    local folder_set = { ['']=true, ['CAP']=true, ['CAP/Tomcats']=true, ['SAM']=true, ['Empty']=true }
+    local root = build_tree(folder_set, '')
+    eq('root has 3 children', #root.children, 3)  -- CAP, Empty, SAM
+    -- Children are sorted alphabetically.
+    eq('  -> CAP first', root.children[1].name, 'CAP')
+    eq('  -> Empty second', root.children[2].name, 'Empty')
+    eq('  -> SAM third', root.children[3].name, 'SAM')
+    eq('  -> CAP has Tomcats child', #root.children[1].children, 1)
+    eq('  -> Tomcats path', root.children[1].children[1].path, 'CAP/Tomcats')
+
+    -- name filter hides non-matching branches.
+    local filtered = build_tree(folder_set, 'tom')
+    eq('filter "tom" surfaces CAP (parent) only', #filtered.children, 1)
+    eq('  -> CAP visible', filtered.children[1].name, 'CAP')
+    eq('  -> Tomcats visible under it', #filtered.children[1].children, 1)
+end
+
 io.write('All filter_rows tests passed.\n')
