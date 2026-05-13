@@ -78,5 +78,18 @@ local ok6, err6 = prefab_ops.delete_folder('CAP/../X')
 check('embedded .. rejected',
       ok6 == nil and tostring(err6):match('invalid folder') ~= nil)
 
+-- count_folder_contents must count ALL files (not just .prefab) because
+-- delete_folder unconditionally removes every file. The confirmation UI
+-- relies on this count to honestly report what's about to be wiped.
+os.execute('mkdir "' .. run_dir .. 'MixedTree" 2>nul')
+os.execute('mkdir "' .. run_dir .. 'MixedTree\\Sub" 2>nul')
+write(run_dir .. 'MixedTree\\a.prefab')
+write(run_dir .. 'MixedTree\\notes.txt')
+write(run_dir .. 'MixedTree\\legacy.lua')
+write(run_dir .. 'MixedTree\\Sub\\b.prefab')
+local files, dirs = prefab_ops.count_folder_contents('MixedTree')
+check('count_folder_contents counts non-.prefab files too', files == 4 and dirs == 1)
+os.execute('rmdir /s /q "' .. run_dir .. 'MixedTree" 2>nul')
+
 os.execute('rmdir "' .. run_dir:sub(1, -2) .. '" 2>nul')
 io.write('All delete_folder tests passed.\n')

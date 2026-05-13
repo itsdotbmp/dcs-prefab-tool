@@ -275,6 +275,17 @@ function SMSWindow.new(opts)
 
     pcall(function() if win.setVisible then win:setVisible(true) end end)
 
+    -- Route the dxgui-default close X through our :hide() so all dismissal
+    -- paths run the same teardown (modal_parent re-enable, on_close hook,
+    -- new_mission_hook subscription consistency). dxgui's default onClose
+    -- just does setVisible(false), which bypasses our state cleanup —
+    -- without this override, closing a modal via the X would leave its
+    -- parent permanently disabled.
+    local self_ref = self
+    pcall(function()
+        win.onClose = function() self_ref:hide() end
+    end)
+
     -- Initial layout pass + resize callback. _install_resize_callback uses
     -- get_content_bounds and relayout, both defined later — Lua resolves
     -- method lookups at call time, so the forward reference is fine.

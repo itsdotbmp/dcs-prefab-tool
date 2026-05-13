@@ -276,8 +276,11 @@ function M.delete_folder(folder_rel)
     return true
 end
 
--- Count prefabs + subfolders under a folder, recursively. Used by the
--- "Delete folder" confirmation UI. Returns prefab_count, subfolder_count.
+-- Count files + subfolders under a folder, recursively. Used by the
+-- "Delete folder" confirmation UI. Returns file_count, subfolder_count.
+-- Counts ALL files (not just .prefab) because delete_folder removes
+-- every file under the tree — the confirmation must reflect what will
+-- actually be deleted, including .bak / .lua legacy / stray notes.
 function M.count_folder_contents(folder_rel)
     if type(folder_rel) ~= 'string' or folder_rel == '' then return 0, 0 end
     if not M._validate_folder_path(folder_rel) then return 0, 0 end
@@ -292,7 +295,7 @@ function M.count_folder_contents(folder_rel)
                 if attr and attr.mode == 'directory' then
                     dirs = dirs + 1
                     walk(sub)
-                elseif attr and attr.mode == 'file' and entry:match('%.prefab$') then
+                elseif attr and attr.mode == 'file' then
                     files = files + 1
                 end
             end

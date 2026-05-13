@@ -95,11 +95,11 @@ Verify the refactor preserved Prefab Manager behaviour exactly:
 - [ ] Open Prefab Manager. Tree pane visible on the left; "+ New folder" button below the tree; "Search folders:" input above the tree.
 - [ ] "Search files:" label (right of tree) renamed from "Search:".
 - [ ] Click "+ New folder" with nothing selected → name prompt opens. Enter "CAP". Folder appears in tree at root level.
-- [ ] Right-click root area (or empty tree) → no menu.
-- [ ] Right-click "CAP" → menu shows New subfolder, Rename, Delete.
+- [ ] Right-click "CAP" → menu shows New subfolder, Rename, Delete, Open in Explorer.
 - [ ] Right-click "CAP" → New subfolder → "Tomcats". Nested folder appears.
 - [ ] Select "CAP/Tomcats". Save a new prefab. Verify file lands in `<SavedGames>\DCS\dcs-sms\prefabs\CAP\Tomcats\<name>.prefab`.
-- [ ] Click empty tree area → selection clears, file pane shows all prefabs (root + nested) recursively.
+- [ ] Click "Show all" button → selection clears (tree highlight gone), file pane shows all prefabs (root + nested) recursively.
+- [ ] Click "CAP" parent → file pane shows prefabs from CAP and ALL its subfolders (recursive prefix match).
 - [ ] Type "horn" in Search files while a folder is selected → narrows within folder.
 - [ ] Type "horn" in Search files with no selection → matches across all folders.
 - [ ] Type "tom" in Search folders → only tree nodes named or containing "Tom" are shown.

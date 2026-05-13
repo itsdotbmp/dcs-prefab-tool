@@ -1674,7 +1674,7 @@ local function on_delete_folder(node)
         do_delete()
     else
         show_overlay(
-            string.format('Delete folder "%s"?\n\nContains %d prefab(s) and %d subfolder(s). This cannot be undone.',
+            string.format('Delete folder "%s"?\n\nContains %d file(s) and %d subfolder(s). This cannot be undone.',
                 node.path, files, dirs),
             {
                 { label = 'Delete', on_click = do_delete },
