@@ -1467,33 +1467,6 @@ local function show_rename_overlay(prompt, current_name, on_ok, on_cancel)
     end
 end
 
-local function rename_file(old_path, old_name, new_name)
-    local prefab, lerr = prefab_ops.load(old_path)
-    if not prefab then return false, 'load failed: ' .. tostring(lerr) end
-    prefab.meta = prefab.meta or {}
-    prefab.meta.name = new_name
-
-    local serializer = require('dcs_sms_me.serializer')
-    local serialized = serializer.serialize(prefab)
-    local paths = require('dcs_sms_me.paths')
-    local new_path = paths.PREFABS_DIR .. new_name .. '.prefab'
-    if old_path == new_path then return true, old_path end  -- no-op rename
-    if prefab_ops.exists(new_name) then return false, 'target name already exists' end
-
-    local f, oerr = io.open(new_path, 'w')
-    if not f then return false, 'open failed: ' .. tostring(oerr) end
-    f:write(serialized)
-    f:close()
-
-    local rok = os.remove(old_path)
-    if not rok then
-        -- Roll back: delete the new file, keep old.
-        os.remove(new_path)
-        return false, 'could not delete old file (rolled back)'
-    end
-    return true, new_path
-end
-
 local function on_rename_click()
     local row = require_selection('rename')
     if not row then return end
@@ -1502,7 +1475,7 @@ local function on_rename_click()
             new_name = (new_name or ''):gsub('^%s+', ''):gsub('%s+$', '')
             if new_name == '' then set_status('Rename cancelled (empty name).'); return end
             if new_name == row.name then set_status('Rename cancelled (same name).'); return end
-            local ok, msg = rename_file(row.path, row.name, new_name)
+            local ok, msg = prefab_ops.rename_file(row.path, new_name)
             if ok then
                 set_status('Renamed ' .. row.name .. ' → ' .. new_name)
                 log.write('sms.me.prefab', log.INFO, 'renamed ' .. row.name .. ' → ' .. new_name)

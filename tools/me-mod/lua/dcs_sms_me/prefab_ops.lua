@@ -237,6 +237,55 @@ function M.rename_folder(old_rel, new_name)
     return true, new_rel
 end
 
+-- Rename a single prefab file in place — i.e. keep its containing folder and
+-- only swap the basename. old_path is the absolute path to the existing file
+-- (as returned by scan_dir's `path`). new_name is a bare prefab name (no
+-- extension, no separators) and replaces meta.name as well as the filename.
+--
+-- Returns true, new_path on success; false, error_string on failure. Returns
+-- true, old_path (no-op) when old_path's basename already matches new_name.
+function M.rename_file(old_path, new_name)
+    if type(old_path) ~= 'string' or old_path == '' then
+        return false, 'old_path required'
+    end
+    local valid, why = M._validate_folder_name(new_name)
+    if not valid then return false, why end
+
+    -- Derive new_path by replacing the basename of old_path. Match either
+    -- separator so the function works regardless of how the caller assembled
+    -- the path (folder_to_abs uses '\', tests/fixtures sometimes use '/').
+    local dir = old_path:match('^(.*[\\/])[^\\/]+$')
+    local new_path = (dir or '') .. new_name .. '.prefab'
+    if old_path == new_path then return true, old_path end
+
+    -- Collision check at the actual destination — NOT against PREFABS_DIR
+    -- root. Also probe the legacy '.lua' sibling, since scan_dir treats both
+    -- extensions as the same prefab.
+    local probe = io.open(new_path, 'r')
+    if probe then probe:close(); return false, 'target name already exists' end
+    local legacy_path = new_path:gsub('%.prefab$', '.lua')
+    probe = io.open(legacy_path, 'r')
+    if probe then probe:close(); return false, 'target name already exists' end
+
+    local prefab, lerr = M.load(old_path)
+    if not prefab then return false, 'load failed: ' .. tostring(lerr) end
+    prefab.meta = prefab.meta or {}
+    prefab.meta.name = new_name
+
+    local serialized = serializer.serialize(prefab)
+    local f, oerr = io.open(new_path, 'w')
+    if not f then return false, 'open failed: ' .. tostring(oerr) end
+    f:write(serialized)
+    f:close()
+
+    local rok = os.remove(old_path)
+    if not rok then
+        os.remove(new_path)
+        return false, 'could not delete old file (rolled back)'
+    end
+    return true, new_path
+end
+
 -- Recursively delete a folder under PREFABS_DIR.
 -- Walks depth-first: os.remove every file, then lfs.rmdir each empty directory
 -- bottom-up. Returns true on success; nil, error_string on failure (first error
