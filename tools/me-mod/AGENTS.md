@@ -332,7 +332,7 @@ The research notes in [`../../research/me-bridge-discovery-2026-05-08.md`](../..
 Two test surfaces:
 
 - **Go tests** (`tools/cmd/dcs-sms/me_<noun>_<verb>_test.go`) — exercise flag parsing, the Lua-args expression, and exit codes. Run with `cd tools && go test ./cmd/dcs-sms/`.
-- **Lua mock tests** (`tools/me-mod/test/`) — use `mock_me_mission.lua` to stand up a fake `mission` table and call verbs against it. Run with `tools/me-mod/test/run-tests.ps1`.
+- **Lua mock tests** (`tools/me-mod/test/`) — use `mock_me_mission.lua` to stand up a fake `mission` table and call verbs against it. Run with `tools/me-mod/test/run-tests.ps1`. See [`test/AGENTS.md`](test/AGENTS.md) for how to install a standalone Lua 5.1 interpreter when the host machine doesn't already have one, plus conventions for adding new tests.
 
 For verb logic that involves heavy ME-internal API surface (the trigger panel, the map-object refresh), the only reliable test is the manual smoke. Add a checklist item to [`../../docs/release-gate/me-mod-smoke.md`](../../docs/release-gate/me-mod-smoke.md).
 
