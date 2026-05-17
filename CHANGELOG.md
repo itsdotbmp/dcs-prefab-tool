@@ -105,7 +105,7 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
-### [Unreleased]
+### [0.9.0] — 2026-05-18
 
 **Added**
 - New `dcs-sms setup` subcommand: orchestrates the .exe update + ME mod install + hook install in one shot. After a binary swap the new dcs-sms.exe re-execs itself with `--skip-update` so the freshly-embedded Lua tree is what reaches DCS.
