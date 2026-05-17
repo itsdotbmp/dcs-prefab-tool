@@ -1,6 +1,31 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
+
+func TestRunUpdate_SkipsOnDevBuild(t *testing.T) {
+	prev := version
+	t.Cleanup(func() { version = prev })
+	version = "0.1.1-dev"
+
+	var stdout, stderr bytes.Buffer
+	swapped, code := runUpdate(nil, &stdout, &stderr)
+	if swapped {
+		t.Error("dev build should not swap binary")
+	}
+	if code != 0 {
+		t.Errorf("exit code %d, want 0 (dev build is up-to-date by definition)", code)
+	}
+	if !strings.Contains(stdout.String(), "Dev build") {
+		t.Errorf("expected 'Dev build' notice in stdout, got %q", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("expected empty stderr, got %q", stderr.String())
+	}
+}
 
 func TestTagToVersion(t *testing.T) {
 	cases := []struct {

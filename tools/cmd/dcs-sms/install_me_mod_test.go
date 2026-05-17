@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nielsvaes/dcs-sms/tools/internal/elevate"
 )
 
 // helper: build a fake DCS install dir and return its path.
@@ -103,5 +106,27 @@ func TestInstallMeMod_Idempotent_ReinstallPreservesPatch(t *testing.T) {
 	// Module files should still exist.
 	if _, err := os.Stat(filepath.Join(install, "MissionEditor", "modules", "dcs_sms_me", "init.lua")); err != nil {
 		t.Fatalf("module file missing after re-install: %v", err)
+	}
+}
+
+func TestInstallMeMod_ReturnsExitCode5WhenDirNotWritable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows: read-only chmod doesn't block writes the same way; covered by manual testing")
+	}
+	install := newFakeInstall(t)
+	// Make the MissionEditor dir read-only so the CanWrite probe fails.
+	meDir := filepath.Join(install, "MissionEditor")
+	if err := os.Chmod(meDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(meDir, 0o755) // restore so t.TempDir cleanup works
+
+	var stdout, stderr bytes.Buffer
+	code := installMeModCmd([]string{"--dcs-path", install, "--no-config-save"}, &stdout, &stderr)
+	if code != elevate.ExitCodeNeedsElevation {
+		t.Errorf("exit code %d, want %d (needs elevation)", code, elevate.ExitCodeNeedsElevation)
+	}
+	if !strings.Contains(stderr.String(), "admin") {
+		t.Errorf("stderr should mention admin / elevation, got: %s", stderr.String())
 	}
 }

@@ -10,7 +10,7 @@ func TestSkillMarkdownEmbeddedAndShaped(t *testing.T) {
 	if !strings.HasPrefix(s, "---\nname: dcs-sms\n") {
 		t.Errorf("SKILL.md should start with YAML frontmatter naming the skill; got first 60 bytes: %q", s[:min(60, len(s))])
 	}
-	if !strings.Contains(s, "Allow External Execution") {
+	if !strings.Contains(s, "External execution") {
 		t.Errorf("SKILL.md should mention the ME External Execution switch")
 	}
 	if !strings.Contains(s, "dcs-sms.exe") {

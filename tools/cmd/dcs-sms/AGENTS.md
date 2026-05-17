@@ -135,6 +135,9 @@ Add the file. The `init()` registers it. No other wiring needed.
 | `2` | Bad CLI usage — unknown command, missing required flag, parse failure. |
 | `3` | Environment/setup failure — couldn't find Saved Games, couldn't write to the mailbox, install path missing. |
 | `4` | Bridge target unavailable — e.g. `--target gui` requested but the ME-side bridge is disabled. |
+| `5` | Needs elevation — operation requires admin privileges (Windows UAC). |
+
+When the interactive menu catches exit code `5` and the user agrees to re-launch, the elevated child is spawned via `ShellExecute("runas", cmd.exe, ...)`. Crucially, **environment variables like `DCS_SMS_SAVED_GAMES` / `DCS_SMS_DCS_INSTALL` are NOT inherited** across the UAC boundary — the new console starts with a fresh env. The elevated child relies on the config file at `%AppData%\dcs-sms\config.toml` for paths. Power users who need an env-only path override should either set it in config first or run from an already-elevated terminal (which skips the re-exec entirely).
 
 The doc generator surfaces these in the `--help` output of each command. Stay consistent.
 
@@ -307,9 +310,13 @@ The synopsis appears in three places: `dcs-sms --help`, the `me` group of `dcs-s
 
 ## 8. The required `MissionScripting.lua` edit
 
-`exec --target mission`, `status`, and `tail-log` all rely on the `Scripts/Hooks` Lua bypassing DCS's mailbox sandbox. The user must edit `<DCS install>/Scripts/MissionScripting.lua` once to comment out the `sanitizeModule('os')` / `('io')` / `('lfs')` lines (the same edit `dcs_code_injector` requires).
+`exec --target mission`, `status`, and `tail-log` all rely on the `Scripts/Hooks` Lua bypassing DCS's mailbox sandbox. `<DCS install>/Scripts/MissionScripting.lua` must have the `sanitizeModule('os')` / `('io')` / `('lfs')` lines commented out (the same edit `dcs_code_injector` requires).
 
-This is documented in `tools/cmd/dcs-sms/README.md` and is **not** something the installer can do automatically (and shouldn't — DCS itself rewrites this file on update). Reference it in user-facing error messages when bridge calls fail, don't try to patch it.
+**The installer now does this for you.** `install-hook --dcs-path <PATH>` comments out the three lines idempotently, leaving a `-- dcs-sms` trailing tag on each so `uninstall-hook` can revert only the lines it owns (commented-by-hand lines and other tools' edits are left alone). `setup` discovers the DCS path once and forwards it to `install-hook` automatically. `install-hook` invoked without `--dcs-path` prints a "skipping MissionScripting.lua patch" notice and falls back to the manual instructions.
+
+The patch survives DCS game updates: DCS rewrites `MissionScripting.lua` on update, re-activating the sanitize calls; the next `setup` re-patches idempotently (the original-state backup at `MissionScripting.lua.dcs-sms.bak` is preserved on re-patches and only removed by `uninstall-hook`).
+
+Helpers live in `tools/cmd/dcs-sms/mission_scripting.go`: `patchMissionScripting`, `unpatchMissionScripting`, plus the pure string helpers `commentOutSanitizeLines` and `revertTaggedComments` (the latter two are what the tests cover most thoroughly).
 
 `install-me-mod` does **not** need this edit. The ME-side bridge runs in the ME Lua state where I/O isn't sandboxed.
 

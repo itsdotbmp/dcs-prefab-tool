@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/nielsvaes/dcs-sms/tools/internal/dcspath"
+	"github.com/nielsvaes/dcs-sms/tools/internal/elevate"
 	memod "github.com/nielsvaes/dcs-sms/tools/me-mod/lua"
 )
 
@@ -58,6 +59,21 @@ func installMeModCmd(args []string, stdout, stderr io.Writer) int {
 	if _, err := os.Stat(meFile); err != nil {
 		fmt.Fprintf(stderr, "dcs-sms install-me-mod: %s not found (is --dcs-path correct?)\n", meFile)
 		return 3
+	}
+
+	// Pre-flight: confirm the MissionEditor dir is writable. If not, the
+	// caller likely needs admin privileges (e.g. DCS lives under Program
+	// Files). Return exit code 5 so the interactive menu can prompt for
+	// a UAC re-launch; non-interactive callers see a clear error.
+	if !elevate.CanWrite(meDir) {
+		if elevate.IsElevated() {
+			fmt.Fprintf(stderr, "dcs-sms install-me-mod: cannot write to %s even with admin privileges (file locks? antivirus?)\n", meDir)
+			return 3
+		}
+		fmt.Fprintf(stderr, "dcs-sms install-me-mod: %s is not writable.\n", meDir)
+		fmt.Fprintln(stderr, "  This usually means DCS is installed under Program Files and admin permission is needed.")
+		fmt.Fprintln(stderr, "  Re-run dcs-sms.exe from an admin terminal, or use the interactive menu (double-click) to be prompted.")
+		return elevate.ExitCodeNeedsElevation
 	}
 
 	// Step 1: copy module files.

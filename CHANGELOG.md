@@ -105,6 +105,21 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [Unreleased]
+
+**Added**
+- New `dcs-sms setup` subcommand: orchestrates the .exe update + ME mod install + hook install in one shot. After a binary swap the new dcs-sms.exe re-execs itself with `--skip-update` so the freshly-embedded Lua tree is what reaches DCS.
+- New `dcs-sms teardown` subcommand: removes the ME mod and the hook in one shot.
+- New `dcs-sms uninstall-hook` subcommand: peer to `install-hook`; removes `Scripts/Hooks/dcs-sms-hook.lua` and (when `--dcs-path` is known) reverts the `MissionScripting.lua` patch.
+- New `dcs-sms reload-me-mod` subcommand (CLI only, not in the interactive menu): hot-reloads the installed ME mod via the gui bridge. Closes [#59](https://github.com/nielsvaes/dcs-sms/issues/59).
+- Interactive menu detects when DCS lives under `Program Files` (or any other admin-only path) and prompts the user to re-launch with admin permission via Windows UAC.
+- **`MissionScripting.lua` auto-patch.** `install-hook --dcs-path <PATH>` (and `setup`, which forwards the path automatically) comments out `sanitizeModule('os'|'io'|'lfs')` so the in-mission hook can talk to the bridge. Idempotent across DCS game updates (DCS rewrites the file → next `setup` re-patches). `uninstall-hook` reverts the lines it owns via a `-- dcs-sms` trailing tag; commented-by-hand lines and other tools' edits are left alone.
+
+**Changed**
+- Interactive menu collapses to five flat options: install-or-update / uninstall / install-AI-skill / uninstall-AI-skill / set-DCS-path. The previous AI-agent picker submenu (Claude / Codex / Gemini / All) is gone — entries 3 and 4 always install or uninstall the skill for all three agents. Option 1 now carries a "Not sure what to pick? Pick this." sub-line.
+- `runUpdate` refuses to swap when the running binary's version ends in `-dev`. Prevents the dev workflow from downgrading the local build to the latest release when testing in-flight subcommands.
+- New exit code `5` reserved for "operation needs admin privileges" (see [`tools/cmd/dcs-sms/AGENTS.md`](tools/cmd/dcs-sms/AGENTS.md#4-exit-codes-conventional)).
+
 ### [0.8.1] — 2026-05-17
 
 **Fixed**

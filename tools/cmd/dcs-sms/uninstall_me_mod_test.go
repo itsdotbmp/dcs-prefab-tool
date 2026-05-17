@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/nielsvaes/dcs-sms/tools/internal/elevate"
 )
 
 // reuse newFakeInstall from install_me_mod_test.go (same package).
@@ -89,5 +92,26 @@ func TestUninstallMeMod_NoOpWhenNothingInstalled(t *testing.T) {
 	me, _ := os.ReadFile(filepath.Join(install, "MissionEditor", "MissionEditor.lua"))
 	if !strings.Contains(string(me), "original ME bootstrap") {
 		t.Fatalf("original content lost: %s", me)
+	}
+}
+
+func TestUninstallMeMod_ReturnsExitCode5WhenDirNotWritable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows: read-only chmod doesn't block writes the same way; covered by manual testing")
+	}
+	install := newFakeInstall(t) // helper defined in install_me_mod_test.go
+	meDir := filepath.Join(install, "MissionEditor")
+	if err := os.Chmod(meDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(meDir, 0o755)
+
+	var stdout, stderr bytes.Buffer
+	code := uninstallMeModCmd([]string{"--dcs-path", install}, &stdout, &stderr)
+	if code != elevate.ExitCodeNeedsElevation {
+		t.Errorf("exit code %d, want %d (needs elevation)", code, elevate.ExitCodeNeedsElevation)
+	}
+	if !strings.Contains(stderr.String(), "admin") {
+		t.Errorf("stderr should mention admin, got: %s", stderr.String())
 	}
 }

@@ -31,27 +31,35 @@ func init() {
 	})
 }
 
-// updateCmd is the entry point for `dcs-sms update`.
+// runUpdate performs the same work as `dcs-sms update` and reports whether
+// the binary on disk was swapped. Used by `setup` to decide whether to
+// re-exec the new binary.
 //
-// Flow:
-//  1. Refuse on non-Windows.
-//  2. Parse --check flag.
-//  3. Hit GitHub Releases API for the latest release with a dcs-sms.exe.
-//  4. Compare its tag-derived version against this binary's `version`.
-//  5. If equal-or-newer locally: print "Up to date".
-//     If --check: print availability.
-//     Otherwise: download the asset and swap in place.
-func updateCmd(args []string, stdout, stderr io.Writer) int {
+//	swapped == true   → a new binary was written; caller should re-exec.
+//	swapped == false  → up-to-date, --check mode, or a recoverable error
+//	                    that was reported to stderr (caller may proceed
+//	                    with the currently-installed embedded content).
+//	exitCode          → same 0/3 semantics as updateCmd.
+func runUpdate(args []string, stdout, stderr io.Writer) (swapped bool, exitCode int) {
 	fs, opts := updateFlags()
 	fs.SetOutput(stderr)
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return false, 2
+	}
+
+	// Dev builds (version string ends in "-dev") must never self-update.
+	// Otherwise `setup` would download the latest release and overwrite
+	// the unreleased binary the developer is testing, including the very
+	// subcommands they're trying to use.
+	if strings.HasSuffix(version, "-dev") {
+		fmt.Fprintf(stdout, "Dev build (v%s) — skipping self-update.\n", version)
+		return false, 0
 	}
 
 	if runtime.GOOS != "windows" {
 		fmt.Fprintln(stderr, "dcs-sms update: self-update is currently Windows-only.")
 		fmt.Fprintln(stderr, "  On Linux/macOS, pull the latest source and rebuild via `go build ./cmd/dcs-sms`.")
-		return 3
+		return false, 3
 	}
 
 	apiCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -61,7 +69,7 @@ func updateCmd(args []string, stdout, stderr io.Writer) int {
 	rel, err := findLatestRelease(apiCtx, apiClient, defaultReleasesURL)
 	if err != nil {
 		fmt.Fprintf(stderr, "dcs-sms update: %v\n", err)
-		return 3
+		return false, 3
 	}
 
 	latestVer := tagToVersion(rel.TagName)
@@ -69,13 +77,13 @@ func updateCmd(args []string, stdout, stderr io.Writer) int {
 
 	if cmp >= 0 {
 		fmt.Fprintf(stdout, "Up to date (v%s)\n", version)
-		return 0
+		return false, 0
 	}
 
 	if opts.Check {
 		fmt.Fprintf(stdout, "Update available: v%s → v%s\n", version, latestVer)
 		fmt.Fprintln(stdout, "Run `dcs-sms.exe update` to install.")
-		return 0
+		return false, 0
 	}
 
 	fmt.Fprintf(stdout, "Updating v%s → v%s...\n", version, latestVer)
@@ -87,7 +95,7 @@ func updateCmd(args []string, stdout, stderr io.Writer) int {
 	body, sizeMB, err := downloadAsset(dlCtx, dlClient, rel.AssetURL)
 	if err != nil {
 		fmt.Fprintf(stderr, "dcs-sms update: %v\n", err)
-		return 3
+		return false, 3
 	}
 	defer body.Close()
 
@@ -96,17 +104,24 @@ func updateCmd(args []string, stdout, stderr io.Writer) int {
 	exePath, err := os.Executable()
 	if err != nil {
 		fmt.Fprintf(stderr, "dcs-sms update: locate running binary: %v\n", err)
-		return 3
+		return false, 3
 	}
 
 	if err := swapBinary(exePath, body); err != nil {
 		fmt.Fprintf(stderr, "dcs-sms update: %v\n", err)
 		fmt.Fprintln(stderr, "  The previous binary should still be in place. Re-run `dcs-sms update` to retry.")
-		return 3
+		return false, 3
 	}
 
 	fmt.Fprintln(stdout, "Updated. Run `dcs-sms.exe install-me-mod` to apply.")
-	return 0
+	return true, 0
+}
+
+// updateCmd is the entry point for `dcs-sms update`. See runUpdate for
+// the full flow.
+func updateCmd(args []string, stdout, stderr io.Writer) int {
+	_, code := runUpdate(args, stdout, stderr)
+	return code
 }
 
 // downloadAsset GETs url and returns a ReadCloser plus a size hint
