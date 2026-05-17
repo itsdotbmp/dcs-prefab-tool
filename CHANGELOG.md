@@ -105,6 +105,11 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.8.1] — 2026-05-17
+
+**Fixed**
+- Renaming a prefab from a subfolder placed the renamed file at the `prefabs/` root instead of keeping it in its original subfolder. The collision check was also rooted, producing wrong false positives (a same-named prefab at root blocked a safe subfolder rename) and false negatives (a same-named prefab already in the destination subfolder was missed). `rename_file` now lives in `prefab_ops` alongside `move_prefab` / `rename_folder`, derives the destination by basename swap on `old_path`, and checks collisions at the actual destination (plus the legacy `.lua` sibling).
+
 ### [0.8.0] — 2026-05-13
 
 **Added**
