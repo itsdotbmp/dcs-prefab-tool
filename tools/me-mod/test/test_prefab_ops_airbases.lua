@@ -111,7 +111,14 @@ end
 
 -- Case: load() reads an airbases-bearing prefab from disk.
 do
+    -- os.tmpname() on the Windows LuaBinaries build returns paths rooted at
+    -- '\' (e.g. '\s5vg.'), which resolve to C:\ — not writable for normal
+    -- users. Prepend %TEMP% when the path looks root-relative so the test
+    -- runs on those interpreters without requiring admin rights.
     local tmppath = os.tmpname()
+    if tmppath:sub(1, 1) == '\\' or tmppath:sub(1, 1) == '/' then
+        tmppath = (os.getenv('TEMP') or os.getenv('TMP') or '.') .. tmppath
+    end
     local f = real_open(tmppath, 'w')
     f:write([[return {
   meta = {
