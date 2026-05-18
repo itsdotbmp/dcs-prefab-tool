@@ -318,6 +318,8 @@ When adding a new verb, find the existing noun's section and add inside it (alph
 
 ## 2.7 ME API quirks you'll hit
 
+> **dxgui / runtime quirks** (skinning, widget lifecycle, undo bus, marquee, context menus) live in a separate running log: [`GOTCHAS.md`](GOTCHAS.md). Skim it before touching `prefab_manager.lua`, `context_menu.lua`, `sms_window.lua`, or `menu.lua`. The bullets below cover ME mission-table API quirks.
+
 - **The mission table is the source of truth.** `require('me_mission').mission` returns the table the editor is currently editing. Most verbs walk it directly. The runtime DCS APIs (`Group.getByName`, `coalition.addGroup`) are **not** available here — those are mission-env only.
 - **Panel refresh is needed after mutation.** If a panel (route, payload, options) is open when you mutate the underlying data, the panel won't redraw automatically. Use the canonical refresh path for the panel (`require('panel_route').fixActions` and friends — read existing verbs for the right call).
 - **`mapObjects` lazy creation.** Disk-loaded groups don't have `mapObjects` until selected. After a position mutation, call `Mission.create_group_map_objects(g)` if `g.mapObjects == nil`, then `Mission.update_group_map_objects(g)`. `refresh_group_view(g)` in `verbs.lua` does this.
