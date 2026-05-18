@@ -2941,15 +2941,18 @@ function M.drawing_list(args)
     local f_type = args.type
     local f_mode = args.mode and string.lower(args.mode) or nil
     local f_name = args.name and string.lower(args.name) or nil
+    local f_name_prefix = args.name_prefix and string.lower(args.name_prefix) or nil
 
     local panel = require('me_draw_panel')
     local out = {}
     for name, obj in pairs(panel.getObjects()) do
         local mode = obj.polygonMode or obj.lineMode
+        local name_lc = string.lower(name)
         if not (f_layer and obj.layerName ~= f_layer)
                 and not (f_type and obj.primitiveType ~= f_type)
                 and not (f_mode and (not mode or string.lower(mode) ~= f_mode))
-                and not (f_name and not string.find(string.lower(name), f_name, 1, true)) then
+                and not (f_name and not string.find(name_lc, f_name, 1, true))
+                and not (f_name_prefix and string.sub(name_lc, 1, #f_name_prefix) ~= f_name_prefix) then
             table.insert(out, summarize_drawing(obj))
         end
     end
@@ -2985,6 +2988,21 @@ function M.drawing_get(args)
                 -- level (matches the get-verb shape used elsewhere).
                 snapshot.north = obj_save.mapX
                 snapshot.east = obj_save.mapY
+                -- points[] from saveToMission is stored relative to the anchor
+                -- (mapX, mapY). That round-trips through loadFromMission but
+                -- is non-obvious for callers that just want to draw the shape
+                -- somewhere else — surface absolute world coords too so they
+                -- don't have to redo the sum every time.
+                if type(obj_save.points) == 'table' and #obj_save.points > 0 then
+                    local abs = {}
+                    for i, p in ipairs(obj_save.points) do
+                        abs[i] = {
+                            north = (obj_save.mapX or 0) + (p.x or 0),
+                            east  = (obj_save.mapY or 0) + (p.y or 0),
+                        }
+                    end
+                    snapshot.points_absolute = abs
+                end
                 return { ok = true, drawing = snapshot }
             end
         end
@@ -2992,21 +3010,87 @@ function M.drawing_get(args)
     return { ok = false, error = 'drawing not found' }
 end
 
--- drawing_remove — remove a drawing by name. Wraps panel.objectDelete.
+-- drawing_remove — delete one or many drawings.
+--
+-- Three calling shapes (validated by the CLI; this verb is forgiving and
+-- works directly too):
+--   1. { name = 'X' }                        — exact single delete.
+--   2. { name_prefix = 'P' [, layer = 'L'] } — batch delete every drawing
+--                                              whose name starts with P
+--                                              (case-insensitive), optionally
+--                                              scoped to a single layer.
+--   3. { layer = 'L', all = true }           — wipe a full layer (the `all`
+--                                              flag exists so callers don't
+--                                              do this by accident).
+--
+-- Returns { ok=true, removed = {names...}, count = N }. Reports
+-- ok=false when zero drawings matched the selector so the CLI can
+-- distinguish "no-op" from "environment problem".
 function M.drawing_remove(args)
-    if type(args) ~= 'table' or type(args.name) ~= 'string' or args.name == '' then
-        return { ok = false, error = 'drawing_remove requires args.name (string)' }
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'drawing_remove requires args (table)' }
     end
+    local has_name = type(args.name) == 'string' and args.name ~= ''
+    local has_prefix = type(args.name_prefix) == 'string' and args.name_prefix ~= ''
+    local has_layer = type(args.layer) == 'string' and args.layer ~= ''
+    local wipe_layer = args.all == true
+
+    if not has_name and not has_prefix and not has_layer then
+        return { ok = false, error = 'drawing_remove: provide name, name_prefix, or layer (with all=true)' }
+    end
+    if has_name and (has_prefix or has_layer) then
+        return { ok = false, error = 'drawing_remove: name is exclusive with name_prefix and layer' }
+    end
+    if not has_name and not has_prefix and has_layer and not wipe_layer then
+        return { ok = false, error = 'drawing_remove: layer-only selector requires all=true' }
+    end
+
     local panel = require('me_draw_panel')
-    local obj = panel.getObjects()[args.name]
-    if not obj then
-        return { ok = false, error = 'drawing not found' }
+    local objects = panel.getObjects()
+
+    -- Single-name fast path keeps the legacy shape.
+    if has_name then
+        local obj = objects[args.name]
+        if not obj then
+            return { ok = false, error = 'drawing not found' }
+        end
+        local ok_call, err = pcall(panel.objectDelete, obj)
+        if not ok_call then
+            return { ok = false, error = 'objectDelete: ' .. tostring(err) }
+        end
+        return { ok = true, removed = { args.name }, count = 1, name = args.name }
     end
-    local ok_call, err = pcall(panel.objectDelete, obj)
-    if not ok_call then
-        return { ok = false, error = 'objectDelete: ' .. tostring(err) }
+
+    -- Batch path. Collect first (don't mutate while iterating panel.getObjects).
+    local prefix_lc = has_prefix and string.lower(args.name_prefix) or nil
+    local to_remove = {}
+    for name, obj in pairs(objects) do
+        local match_layer = (not has_layer) or obj.layerName == args.layer
+        local match_prefix = (not prefix_lc) or string.sub(string.lower(name), 1, #prefix_lc) == prefix_lc
+        if match_layer and match_prefix then
+            table.insert(to_remove, { name = name, obj = obj })
+        end
     end
-    return { ok = true, name = args.name }
+    table.sort(to_remove, function(a, b) return a.name < b.name end)
+
+    if #to_remove == 0 then
+        return { ok = false, error = 'no drawings matched selector', removed = {}, count = 0 }
+    end
+
+    local removed = {}
+    for _, entry in ipairs(to_remove) do
+        local ok_call, err = pcall(panel.objectDelete, entry.obj)
+        if not ok_call then
+            return {
+                ok = false,
+                error = 'objectDelete failed on "' .. entry.name .. '": ' .. tostring(err),
+                removed = removed,
+                count = #removed,
+            }
+        end
+        table.insert(removed, entry.name)
+    end
+    return { ok = true, removed = removed, count = #removed }
 end
 
 -- ============================================================
@@ -3272,6 +3356,90 @@ function M.drawing_create_line(args)
     return { ok = true, name = name, type = 'Line', mode = obj.lineMode,
              north = cx, east = cy, vertex_count = #rel,
              closed = obj.closed, layer = args.layer or 'Common' }
+end
+
+-- drawing_create_chevron — V-shape / directional tick mark.
+--
+-- Built on top of the same Line/segments plumbing as drawing_create_line,
+-- but the 3 vertices (left-arm, tip, right-arm) are computed from a
+-- compact spec so callers don't have to redo the trig for every tick they
+-- want to draw on a route or threat-direction indicator.
+--
+-- args (required):
+--   north, east   meters; the tip of the V
+--   bearing       degrees, 0=N, 90=E, clockwise; the direction the tip points
+--   size          meters; length of each arm extending backward from the tip
+--
+-- args (optional):
+--   arm_angle           degrees; angle of each arm from the forward bearing.
+--                       Default 100 (wide V — 160° tip, good for route ticks).
+--                       150 gives a tight 60° arrowhead. Must be in (0, 180).
+--   name, color, thickness, style, layer, hidden_on_planner — same as
+--   drawing_create_line.
+function M.drawing_create_chevron(args)
+    if type(args) ~= 'table' then
+        return { ok = false, error = 'drawing_create_chevron requires args (table)' }
+    end
+    if type(args.north) ~= 'number' or type(args.east) ~= 'number' then
+        return { ok = false, error = 'drawing_create_chevron requires args.north and args.east (numbers, meters)' }
+    end
+    if type(args.bearing) ~= 'number' then
+        return { ok = false, error = 'drawing_create_chevron requires args.bearing (degrees)' }
+    end
+    if type(args.size) ~= 'number' or args.size <= 0 then
+        return { ok = false, error = 'drawing_create_chevron requires args.size (meters > 0)' }
+    end
+    local arm_angle = args.arm_angle or 100
+    if type(arm_angle) ~= 'number' or arm_angle <= 0 or arm_angle >= 180 then
+        return { ok = false, error = 'drawing_create_chevron: arm_angle must be in (0, 180) degrees' }
+    end
+
+    -- Bearing 0 = north (mission-table x axis); rotate clockwise.
+    -- Arm endpoints sit at bearing +/- arm_angle from the tip.
+    local rad = math.pi / 180
+    local b = args.bearing
+    local n_tip, e_tip = args.north, args.east
+    local function arm_endpoint(offset_deg)
+        local theta = (b + offset_deg) * rad
+        return n_tip + args.size * math.cos(theta),
+               e_tip + args.size * math.sin(theta)
+    end
+    local n_left,  e_left  = arm_endpoint( arm_angle)
+    local n_right, e_right = arm_endpoint(-arm_angle)
+
+    -- Order: left-arm -> tip -> right-arm. Segments mode draws the two
+    -- arms of the V; the tip is the shared vertex.
+    local vertices = {
+        { north = n_left,  east = e_left  },
+        { north = n_tip,   east = e_tip   },
+        { north = n_right, east = e_right },
+    }
+    local cx, cy, rel = compute_center_and_relative_points(vertices)
+    local name = (type(args.name) == 'string' and args.name ~= '') and args.name
+                 or unique_drawing_name('Chevron')
+
+    local obj = {
+        primitiveType = 'Line',
+        name = name,
+        colorString = args.color or '0xff0000ff',
+        mapX = cx, mapY = cy,
+        visible = true,
+        hiddenOnPlanner = (args.hidden_on_planner == true),
+        lineMode = 'segments',
+        style = args.style or DEFAULT_LINE_STYLE,
+        thickness = args.thickness or DEFAULT_THICKNESS,
+        closed = false,
+        points = rel,
+    }
+    local _, err = inject_drawing(obj, args.layer or 'Common')
+    if err then return { ok = false, error = err } end
+    return {
+        ok = true, name = name, type = 'Line', mode = 'segments',
+        north = cx, east = cy,
+        tip = { north = n_tip, east = e_tip },
+        bearing = b, size = args.size, arm_angle = arm_angle,
+        layer = args.layer or 'Common',
+    }
 end
 
 -- drawing_create_polygon — free-shape polygon (closed, filled).
@@ -4900,7 +5068,19 @@ function M.unit_list(args)
     local f_category = args.category and string.lower(args.category) or nil
     local f_group = args.group or nil
     local f_name = args.name and string.lower(args.name) or nil
-    local f_type = args.type or nil
+    -- f_type accepts a single string (exact match) or a list of strings
+    -- (any-of). The CLI passes a list when --type has commas. Internally
+    -- we always normalize to a set for O(1) lookup.
+    local f_type_set
+    if type(args.type) == 'string' and args.type ~= '' then
+        f_type_set = { [args.type] = true }
+    elseif type(args.type) == 'table' then
+        f_type_set = {}
+        for _, t in ipairs(args.type) do
+            if type(t) == 'string' and t ~= '' then f_type_set[t] = true end
+        end
+        if next(f_type_set) == nil then f_type_set = nil end
+    end
 
     local out = {}
     walk_groups(function(g, country, side_name, cat)
@@ -4910,7 +5090,7 @@ function M.unit_list(args)
         if f_group and g.name ~= f_group then return end
         for _, u in ipairs(g.units or {}) do
             if not (f_name and not string.find(string.lower(u.name or ''), f_name, 1, true)) then
-                if not (f_type and u.type ~= f_type) then
+                if not (f_type_set and not f_type_set[u.type]) then
                     table.insert(out, {
                         id = u.unitId,
                         name = u.name,

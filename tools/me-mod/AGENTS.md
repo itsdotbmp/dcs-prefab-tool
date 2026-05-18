@@ -52,7 +52,7 @@ The full set of nouns and verbs (see [`../../docs/cli/`](../../docs/cli/) for fl
 | **`group`** | `list`, `get`, `create-plane`, `create-helicopter`, `create-vehicle`, `create-ship`, `create-static`, `remove`, `add-unit`, `remove-unit`, `set-name`, `set-task`, `set-hidden`, `set-frequency`, `set-pos`, `set-country`, `set-formation`, `set-late-activation`, `set-uncontrolled` |
 | **`unit`** | `list`, `get`, `set-name`, `set-skill`, `set-livery`, `set-pos`, `set-heading`, `set-alt`, `set-onboard-num`, `set-callsign`, `set-loadout`, `set-fuel`, `set-chaff`, `set-flare`, `set-gun`, `set-parking`, `payload` |
 | **`zone`** | `list`, `get`, `create`, `remove`, `set-name`, `set-pos`, `set-radius`, `set-color`, `set-hidden`, `set-link`, `set-vertices` |
-| **`drawing`** | `list`, `get`, `remove`, `create-circle`, `create-oval`, `create-rect`, `create-arrow`, `create-line`, `create-polygon`, `create-textbox`, `create-icon`, `set-name`, `set-pos`, `set-angle`, `set-color`, `set-fill-color`, `set-thickness`, `set-text` |
+| **`drawing`** | `list`, `get`, `remove`, `create-circle`, `create-oval`, `create-rect`, `create-arrow`, `create-line`, `create-polygon`, `create-chevron`, `create-textbox`, `create-icon`, `set-name`, `set-pos`, `set-angle`, `set-color`, `set-fill-color`, `set-thickness`, `set-text` |
 | **`trigger`** | `list`, `get`, `list-predicates`, `describe-predicate`, `create`, `remove`, `set-name`, `set-eventlist`, `add-condition`, `remove-condition`, `add-action`, `remove-action`, `reorder`, `reorder-condition`, `reorder-action` |
 | **`route`** | `list`, `get`, `clear` |
 | **`waypoint`** | `add`, `insert`, `remove`, `get`, `set-pos`, `set-alt`, `set-speed`, `set-speed-locked`, `set-eta`, `set-eta-locked`, `set-type`, `set-action`, `set-mode`, `set-name`, `set-formation`, `link-airbase` |
@@ -124,7 +124,9 @@ For things no verb covers, drop to:
 dcs-sms exec --target gui --code '<lua>'
 ```
 
-This runs your Lua in the same ME state the verbs do — full I/O, full access to the editable `mission` table. **Flag the gap.** If you find yourself doing this for anything other than one-shot exploration, the right answer is usually a new verb. See [`Part 2.5`](#25-adding-a-new-verb-end-to-end) for the workflow, or ask the user to file an issue.
+This runs your Lua in the same ME state the verbs do — full I/O, full access to the editable `mission` table. **Flag the gap.** If you find yourself doing this for anything other than one-shot exploration, the right answer is usually a new verb. See [`Part 2.5`](#25-adding-a-new-verb-end-to-end) for the workflow, or offer to file a GitHub issue.
+
+When filing, use the **`dcs-sms-bridge`** label (the repo's dedicated category for CLI / Go / missing-verb work) plus `enhancement` or `bug`. The body must spell out: what the user was trying to do in plain English, what command(s) failed or were missing, the workaround Lua/Python/PowerShell you actually ran, and a concrete example of the verb/flag you wish existed. Issue #60 ("gaps found in AI-assisted mission scripting") is the reference template — match that shape.
 
 ---
 

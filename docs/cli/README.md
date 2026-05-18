@@ -42,6 +42,7 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | Command | Description |
 |---|---|
 | [`me drawing create-arrow`](me-drawing-create-arrow.md) | draw an arrow on the F10 map |
+| [`me drawing create-chevron`](me-drawing-create-chevron.md) | draw a V-shape chevron / directional tick mark on the F10 map |
 | [`me drawing create-circle`](me-drawing-create-circle.md) | draw a circle on the F10 map |
 | [`me drawing create-icon`](me-drawing-create-icon.md) | place an icon on the F10 map |
 | [`me drawing create-line`](me-drawing-create-line.md) | draw a polyline on the F10 map (segments / segment / free; --closed wraps it) |
@@ -51,7 +52,7 @@ Every command on the dcs-sms CLI, grouped by namespace.
 | [`me drawing create-textbox`](me-drawing-create-textbox.md) | place a text label on the F10 map |
 | [`me drawing get`](me-drawing-get.md) | return full data for a drawing by name |
 | [`me drawing list`](me-drawing-list.md) | list all drawings in the open mission |
-| [`me drawing remove`](me-drawing-remove.md) | delete a drawing from the open mission |
+| [`me drawing remove`](me-drawing-remove.md) | delete one or many drawings from the open mission |
 | [`me drawing set-angle`](me-drawing-set-angle.md) | set a drawing's rotation in degrees (CW positive) |
 | [`me drawing set-color`](me-drawing-set-color.md) | change a drawing's outline / line color |
 | [`me drawing set-fill-color`](me-drawing-set-fill-color.md) | change a drawing's fill color |

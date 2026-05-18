@@ -105,6 +105,19 @@ This is the first tag after a long quiet period — `sms.version` had been froze
 
 ## ME-mod
 
+### [0.10.0] — 2026-05-18
+
+Closes part of [#60](https://github.com/nielsvaes/dcs-sms/issues/60) — gaps found in AI-assisted mission scripting. Six existing verbs get filters / batch / file-input ergonomics; one new verb lands. Gaps 1, 8, 10 (waypoint_get red-side bug, route-overlay composite, polygon-union) remain open for a follow-up session.
+
+**Added**
+- **`me drawing create-chevron`** — new verb. V-shape / directional tick mark at `--north/--east` pointing in `--bearing` direction, arms of length `--size`, opening configurable via `--arm-angle` (default 100° — matches Mav's flight-plan tick style; 150° gives a tight arrowhead). Replaces hand-rolled trig in calling scripts. Closes Mav's gap 9.
+- **`me drawing list --name-prefix <P>`** — anchored prefix match alongside the existing case-insensitive `--name` substring. One targeted call instead of list + filter in the caller. Mav's gap 2.
+- **`me drawing remove --name-prefix <P>` / `--layer <L>` / `--all`** — batch delete by name prefix, optional layer scope, or full-layer wipe (`--all` guard required). Returns `{removed=[...], count=N}`. Single `--name` form unchanged. Mav's gap 3.
+- **`me drawing create-polygon --vertices-file <path>`** and **`me drawing create-line --vertices-file <path>`** — read one `north,east` per line (blanks and `#` comments ignored, CRLF tolerant). Sidesteps the Windows `CreateProcess` ~32 KB arg-length limit for Shapely-sized polygons. Mutually exclusive with `--vertices`. Mav's gap 5.
+- **`me drawing get` returns `points_absolute`** — sibling to the existing anchor-relative `points[]`, summed with `mapX/mapY` so callers don't have to redo the math when round-tripping geometry. Emitted only when the drawing has a `points` array. Mav's gap 4.
+- **`me unit list --type` accepts a comma-separated any-of list** — e.g. `--type flak18,flak36,bofors40`. Single-value form unchanged. Mav's gap 7.
+- **Color flags accept `0x`-prefixed hex** on every drawing `--color` / `--fill-color` — `0x000000aa` round-trips cleanly from `drawing get` output. `#rrggbb` / `#rrggbbaa` / named colors still work. Mav's gap 6.
+
 ### [0.9.0] — 2026-05-18
 
 **Added**
