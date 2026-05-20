@@ -2,7 +2,7 @@
   <img src="../../assets/logo.png" alt="Coconut Cockpit" width="160">
 </p>
 
-# dcs-sms — Mission Editor mod
+# dcs Prefab tool fork
 
 [![Latest ME-mod release](https://img.shields.io/github/v/release/nielsvaes/dcs-sms?filter=me-mod-v*&label=latest&color=blue)](https://github.com/nielsvaes/dcs-sms/releases/latest)
 [![Release ME-mod](https://github.com/nielsvaes/dcs-sms/actions/workflows/release-me-mod.yml/badge.svg)](https://github.com/nielsvaes/dcs-sms/actions/workflows/release-me-mod.yml)
