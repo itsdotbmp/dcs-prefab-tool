@@ -24,8 +24,8 @@
 --   airbase_snapshots? [{airdrome_number, prev}]      -- prev=nil → skipped on undo
 --   errors             [string]
 
-local prefab_ops    = require('dcs_sms_me.prefab_ops')
-local warehouse_ops = require('dcs_sms_me.warehouse_ops')
+local prefab_ops    = require('dcs_prefab_tool.prefab_ops')
+local warehouse_ops = require('dcs_prefab_tool.warehouse_ops')
 
 local M = {}
 local slot = nil

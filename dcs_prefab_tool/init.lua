@@ -8,30 +8,31 @@
 -- breaks, the ME continues loading normally.
 
 local ok, err = pcall(function()
-    local version = require('dcs_sms_me.version')
+    local version = require('dcs_prefab_tool.version')
     log.write('sms.me', log.INFO, 'bootstrap (version ' .. tostring(version) .. ')')
 
-    local menu = require('dcs_sms_me.menu')
+    local menu = require('dcs_prefab_tool.menu')
     menu.install()
 
     -- Install the marquee hook eagerly on bootstrap so a rect drawn before the
     -- prefab manager window opens still gets remembered. Subscribers attach
     -- later (window.lua attaches on its first show).
-    local marquee_hook = require('dcs_sms_me.marquee_hook')
+    local marquee_hook = require('dcs_prefab_tool.marquee_hook')
     marquee_hook.install()
 
     -- Install the File > New hook eagerly too, so the wrapper is in place
     -- before the prefab manager window first opens. Subscribers attach
     -- from window.lua on its first show.
-    local new_mission_hook = require('dcs_sms_me.new_mission_hook')
+    local new_mission_hook = require('dcs_prefab_tool.new_mission_hook')
     new_mission_hook.install()
 
     -- Install the ME-side execution bridge: registers an UpdateManager poll
     -- of <SavedGames>/DCS/dcs-sms/inbox for target=gui requests. Gated by
     -- the External-execution toggle in menu.lua. Independent of the Prefab
     -- Manager window — runs from the moment the ME starts.
-    local bridge = require('dcs_sms_me.bridge')
-    bridge.install()
+    -- local bridge = require('dcs_prefab_tool.bridge')
+    -- bridge.install()
+    -- Bridge  removed, I do not want any CLI or ai interface
 end)
 if not ok then
     log.write('sms.me', log.ERROR, 'init failed: ' .. tostring(err))

@@ -7,12 +7,12 @@
 -- record) on success, or nil + error_string on failure. No throws.
 
 local lfs            = require('lfs')
-local paths          = require('dcs_sms_me.paths')
-local distill        = require('dcs_sms_me.prefab_distill').distill
-local serializer     = require('dcs_sms_me.serializer')
-local selection      = require('dcs_sms_me.selection')
-local warehouse_ops  = require('dcs_sms_me.warehouse_ops')
-local ship_warehouse = require('dcs_sms_me.ship_warehouse')
+local paths          = require('dcs_prefab_tool.paths')
+local distill        = require('dcs_prefab_tool.prefab_distill').distill
+local serializer     = require('dcs_prefab_tool.serializer')
+local selection      = require('dcs_prefab_tool.selection')
+local warehouse_ops  = require('dcs_prefab_tool.warehouse_ops')
+local ship_warehouse = require('dcs_prefab_tool.ship_warehouse')
 
 local M = {}
 

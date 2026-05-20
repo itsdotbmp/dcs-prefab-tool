@@ -76,7 +76,7 @@ local function add_top_level_menu()
     item.func = function()
         log.write('sms.me', log.INFO, 'DCS-SMS > Prefab Manager menu clicked')
         local ok_t, terr = pcall(function()
-            local win = require('dcs_sms_me.prefab_manager')
+            local win = require('dcs_prefab_tool.prefab_manager')
             win.toggle()
         end)
         if not ok_t then
@@ -85,7 +85,7 @@ local function add_top_level_menu()
     end
 
     -- Sibling "About" menu entry. Same skin-clone pattern as the Prefab
-    -- Manager item; opens the about-dialog via require('dcs_sms_me.about').
+    -- Manager item; opens the about-dialog via require('dcs_prefab_tool.about').
     local about_item
     local ok_about, about_err = pcall(function() about_item = menu:newItem('About') end)
     if ok_about and about_item then
@@ -100,7 +100,7 @@ local function add_top_level_menu()
         about_item.func = function()
             log.write('sms.me', log.INFO, 'DCS-SMS > About menu clicked')
             local ok_a, aerr = pcall(function()
-                require('dcs_sms_me.about').show()
+                require('dcs_prefab_tool.about').show()
             end)
             if not ok_a then
                 log.write('sms.me', log.ERROR, 'About dialog failed: ' .. tostring(aerr))
@@ -113,37 +113,38 @@ local function add_top_level_menu()
     -- "External execution: ON/OFF" toggle — controls _G.DCS_SMS_GUI_BRIDGE_ENABLED
     -- which the dcs-sms hook checks before honoring target=gui requests.
     -- Default off at every DCS launch (session-only; no persistence).
-    local exec_item
-    local ok_exec, exec_err = pcall(function()
-        exec_item = menu:newItem('External execution: OFF')
-    end)
-    if ok_exec and exec_item then
-        pcall(function()
-            local sibling_item = sibling_menu
-                and (sibling_menu.missionOptions or sibling_menu.mapOptions
-                     or sibling_menu.setPosition  or sibling_menu.logbook)
-            if sibling_item and sibling_item.getSkin and exec_item.setSkin then
-                exec_item:setSkin(sibling_item:getSkin())
-            end
-        end)
-        exec_item.func = function()
-            _G.DCS_SMS_GUI_BRIDGE_ENABLED = not (_G.DCS_SMS_GUI_BRIDGE_ENABLED == true)
-            local on = _G.DCS_SMS_GUI_BRIDGE_ENABLED == true
-            local label = on and 'External execution: ON' or 'External execution: OFF'
-            -- Menu items expose either :setText or a `text` field across DCS
-            -- versions — try both for forward-compat.
-            pcall(function()
-                if type(exec_item.setText) == 'function' then
-                    exec_item:setText(label)
-                else
-                    exec_item.text = label
-                end
-            end)
-            log.write('sms.me', log.INFO, 'gui bridge ' .. (on and 'enabled' or 'disabled'))
-        end
-    else
-        log.write('sms.me', log.ERROR, 'External-execution menu:newItem failed: ' .. tostring(exec_err))
-    end
+    -- REMOVED BRIDGE - dotbmp
+    -- local exec_item
+    -- local ok_exec, exec_err = pcall(function()
+    --     exec_item = menu:newItem('External execution: OFF')
+    -- end)
+    -- if ok_exec and exec_item then
+    --     pcall(function()
+    --         local sibling_item = sibling_menu
+    --             and (sibling_menu.missionOptions or sibling_menu.mapOptions
+    --                  or sibling_menu.setPosition  or sibling_menu.logbook)
+    --         if sibling_item and sibling_item.getSkin and exec_item.setSkin then
+    --             exec_item:setSkin(sibling_item:getSkin())
+    --         end
+    --     end)
+    --     exec_item.func = function()
+    --         _G.DCS_SMS_GUI_BRIDGE_ENABLED = not (_G.DCS_SMS_GUI_BRIDGE_ENABLED == true)
+    --         local on = _G.DCS_SMS_GUI_BRIDGE_ENABLED == true
+    --         local label = on and 'External execution: ON' or 'External execution: OFF'
+    --         -- Menu items expose either :setText or a `text` field across DCS
+    --         -- versions — try both for forward-compat.
+    --         pcall(function()
+    --             if type(exec_item.setText) == 'function' then
+    --                 exec_item:setText(label)
+    --             else
+    --                 exec_item.text = label
+    --             end
+    --         end)
+    --         log.write('sms.me', log.INFO, 'gui bridge ' .. (on and 'enabled' or 'disabled'))
+    --     end
+    -- else
+    --     log.write('sms.me', log.ERROR, 'External-execution menu:newItem failed: ' .. tostring(exec_err))
+    -- end
 
     -- Wrap the menu in a MenuBarItem and insert at the end of the bar.
     local bar_item
@@ -197,7 +198,7 @@ local function patch_menubar_hideME()
     local orig_hideME = mb.hideME
     mb.hideME = function(...)
         pcall(function()
-            local w = package.loaded['dcs_sms_me.prefab_manager']
+            local w = package.loaded['dcs_prefab_tool.prefab_manager']
             if w and w.hide then w.hide() end
         end)
         return orig_hideME(...)

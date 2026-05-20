@@ -14,7 +14,7 @@
 local Menu;              do local ok, m = pcall(require, 'Menu');              if ok then Menu = m end end
 local MenuItem;          do local ok, m = pcall(require, 'MenuItem');          if ok then MenuItem = m end end
 local MenuSeparatorItem; do local ok, m = pcall(require, 'MenuSeparatorItem'); if ok then MenuSeparatorItem = m end end
-local paths_mod;         do local ok, m = pcall(require, 'dcs_sms_me.paths');  if ok then paths_mod = m end end
+local paths_mod;         do local ok, m = pcall(require, 'dcs_prefab_tool.paths');  if ok then paths_mod = m end end
 
 local M = {}
 

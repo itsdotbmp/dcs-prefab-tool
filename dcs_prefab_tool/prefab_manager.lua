@@ -53,15 +53,15 @@ local UpdateManager;   do local ok, mod = pcall(require, 'UpdateManager');   if 
 -- requires). pcall-guarded so the module still loads under the test VM.
 local MsgWindow;       do local ok, mod = pcall(require, 'MsgWindow');       if ok then MsgWindow       = mod end end
 
-local prefab_ops = require('dcs_sms_me.prefab_ops')
-local sms_window     = require('dcs_sms_me.sms_window')
-local undo       = require('dcs_sms_me.undo')
-local dtc_skins  = require('dcs_sms_me.dtc_skins')
-local marquee_hook  = require('dcs_sms_me.marquee_hook')
-local new_mission_hook = require('dcs_sms_me.new_mission_hook')
-local airbase_detect = require('dcs_sms_me.airbase_detect')
-local warehouse_ops = require('dcs_sms_me.warehouse_ops')
-local version       = require('dcs_sms_me.version')
+local prefab_ops = require('dcs_prefab_tool.prefab_ops')
+local sms_window     = require('dcs_prefab_tool.sms_window')
+local undo       = require('dcs_prefab_tool.undo')
+local dtc_skins  = require('dcs_prefab_tool.dtc_skins')
+local marquee_hook  = require('dcs_prefab_tool.marquee_hook')
+local new_mission_hook = require('dcs_prefab_tool.new_mission_hook')
+local airbase_detect = require('dcs_prefab_tool.airbase_detect')
+local warehouse_ops = require('dcs_prefab_tool.warehouse_ops')
+local version       = require('dcs_prefab_tool.version')
 
 -- Apply a skin by name. Resolves in this order:
 --   * 'dtc_button' / 'dtc_grid' / 'dtc_grid_header' → DTC-dialog-style skins
@@ -417,7 +417,7 @@ M._build_tree = build_tree  -- exposed for tests
 -- Walk PREFABS_DIR collecting every subfolder path (in '/'-form) into a
 -- set. Used to feed build_tree so empty folders appear in the tree.
 local function walk_folders()
-    local paths_mod = require('dcs_sms_me.paths')
+    local paths_mod = require('dcs_prefab_tool.paths')
     local lfs = require('lfs')
     local set = { [''] = true }
     local function walk(abs_dir, rel)
@@ -1648,12 +1648,12 @@ local function on_new_folder(parent_path)
                 return
             end
             local rel = (parent_path == '' and name) or (parent_path .. '/' .. name)
-            local abs = require('dcs_sms_me.paths').folder_to_abs(rel):sub(1, -2)
+            local abs = require('dcs_prefab_tool.paths').folder_to_abs(rel):sub(1, -2)
             if require('lfs').attributes(abs) then
                 set_status('Folder already exists: ' .. rel, 'error')
                 return
             end
-            require('dcs_sms_me.paths').ensure_prefab_folder(rel)
+            require('dcs_prefab_tool.paths').ensure_prefab_folder(rel)
             set_status('Created folder "' .. rel .. '".')
             W.selected_folder = rel
             refresh_list()
@@ -1724,8 +1724,8 @@ end
 
 local function open_move_modal(row)
     if not row or row.error then return end
-    local sms_window = require('dcs_sms_me.sms_window')
-    local paths_mod  = require('dcs_sms_me.paths')
+    local sms_window = require('dcs_prefab_tool.sms_window')
+    local paths_mod  = require('dcs_prefab_tool.paths')
 
     local mw, mh = 360, 400
     -- Centre the modal over the Prefab Manager window so it doesn't spawn
@@ -1924,7 +1924,7 @@ function M.show()
     -- handler. Guard with a one-shot flag so multiple M.show() calls don't
     -- stack subscribers in the same session.
     --
-    -- Ctrl+Shift+R is a special case: M.reload() clears every dcs_sms_me.*
+    -- Ctrl+Shift+R is a special case: M.reload() clears every dcs_prefab_tool.*
     -- module from package.loaded, so a fresh marquee_hook + window pair
     -- replaces this one. The OLD window's subscriber callback persists on
     -- the me_multiSelection table (we can't clear me_multiSelection because
@@ -2252,7 +2252,7 @@ function M.show()
                             if node and node._sms_path then path = node._sms_path end
                         end
                         if path == nil then return end
-                        local context_menu = require('dcs_sms_me.context_menu')
+                        local context_menu = require('dcs_prefab_tool.context_menu')
                         context_menu.show_for_tree_node(x, y, { path = path }, {
                             on_new    = function(parent) on_new_folder(parent) end,
                             on_rename = function(node)   on_rename_folder(node) end,
@@ -2365,7 +2365,7 @@ function M.show()
                         on_list_select()
                         local r = W.visible_rows[row + 1]
                         if not r then return end
-                        local context_menu = require('dcs_sms_me.context_menu')
+                        local context_menu = require('dcs_prefab_tool.context_menu')
                         context_menu.show_for_file_row(x, y, r, {
                             on_move   = function(rr)     open_move_modal(rr) end,
                             on_status = function(t, sev) set_status(t, sev) end,
@@ -2596,7 +2596,7 @@ end
 -- Dev-loop helper: dispose, clear package.loaded for our modules, then
 -- re-require the bootstrap. Lets you iterate on Lua without restarting
 -- DCS. Works cleanly because the Customize-menu item's click callback
--- (set in menu.lua) does `require('dcs_sms_me.prefab_manager')` AT CLICK TIME,
+-- (set in menu.lua) does `require('dcs_prefab_tool.prefab_manager')` AT CLICK TIME,
 -- not at registration — so once package.loaded is cleared, the menu
 -- entry naturally picks up the new code on the next click. The menu
 -- widget itself is in the dxgui scene and outlives the require, and
@@ -2608,7 +2608,7 @@ function M.reload()
 
     local cleared = {}
     for k in pairs(package.loaded) do
-        if type(k) == 'string' and k:find('^dcs_sms_me') then
+        if type(k) == 'string' and k:find('^dcs_prefab_tool') then
             cleared[#cleared + 1] = k
         end
     end
@@ -2618,7 +2618,7 @@ function M.reload()
     -- Re-require the bootstrap. Any error surfaces in dcs.log; the old
     -- window is already gone so a failed reload leaves the user with
     -- "no Prefab Manager" rather than a half-broken one.
-    local ok, err = pcall(require, 'dcs_sms_me.init')
+    local ok, err = pcall(require, 'dcs_prefab_tool.init')
     if not ok then
         log.write('sms.me', log.ERROR, 'reload failed: ' .. tostring(err))
         return false, tostring(err)
@@ -2627,10 +2627,10 @@ function M.reload()
 
     -- Show the freshly reloaded window. We have to go through the new
     -- module — our M is the OLD one; the just-required init.lua already
-    -- reset package.loaded['dcs_sms_me.prefab_manager'], so a fresh require picks
+    -- reset package.loaded['dcs_prefab_tool.prefab_manager'], so a fresh require picks
     -- up the new code.
     pcall(function()
-        local fresh = require('dcs_sms_me.prefab_manager')
+        local fresh = require('dcs_prefab_tool.prefab_manager')
         if fresh and fresh.show then fresh.show() end
     end)
     return true

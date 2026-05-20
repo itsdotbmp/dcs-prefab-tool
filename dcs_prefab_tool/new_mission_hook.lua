@@ -15,7 +15,7 @@
 -- event, so each panel hooks the toolbar functions directly.
 --
 -- Reload safety: same shape as marquee_hook. Ctrl+Shift+R clears every
--- `dcs_sms_me.*` from package.loaded but leaves `me_toolbar` cached; the
+-- `dcs_prefab_tool.*` from package.loaded but leaves `me_toolbar` cached; the
 -- patched wrappers survive, so we keep the subscriber list on the
 -- `me_toolbar` table itself (`me_toolbar._sms_new_mission_state`) and
 -- look it up live at call time. Reloads then transparently share state

@@ -24,7 +24,7 @@ local function safe_require(name)
 end
 
 local module_mission = safe_require('me_mission')
-local warehouse_ops  = require('dcs_sms_me.warehouse_ops')
+local warehouse_ops  = require('dcs_prefab_tool.warehouse_ops')
 
 -- Walk every unit in the prefab's groups + statics and, for any unit
 -- whose unitId points at a non-default live warehouse, deep-copy that

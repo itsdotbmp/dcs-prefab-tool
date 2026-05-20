@@ -11,7 +11,7 @@
 -- (start_xy, end_xy) — both in MAP coords. Drags without a preceding
 -- createRectSelect (e.g. ctrl-clicks, mouse-up off-canvas) are ignored.
 --
--- Reload safety: the dev-loop Ctrl+Shift+R clears every `dcs_sms_me.*` from
+-- Reload safety: the dev-loop Ctrl+Shift+R clears every `dcs_prefab_tool.*` from
 -- package.loaded but leaves `me_multiSelection` cached. Our patched wrappers
 -- on mms.* therefore survive the reload, but a fresh require of marquee_hook
 -- creates new module-local closures — so the wrappers and the new module

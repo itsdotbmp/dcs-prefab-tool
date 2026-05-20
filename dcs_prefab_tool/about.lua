@@ -8,6 +8,8 @@
 -- the bundled logo.png — the same trick dtc_skins.icon_static uses for
 -- its warning/question glyphs (see dtc_skins.lua line 64+).
 
+-- FORKED BY DOTBMP. I've removed the bridge and the CLI code.
+
 local M = {}
 
 -- Single dialog instance, reused on subsequent opens. Cleared on error
@@ -16,7 +18,7 @@ local W = nil
 
 -- DCS runs with its install dir as CWD; this path resolves to the file
 -- copied there by `dcs-sms.exe install-me-mod`.
-local LOGO_FILE = './MissionEditor/modules/dcs_sms_me/logo.png'
+local LOGO_FILE = './MissionEditor/modules/dcs_prefab_tool/logo.png'
 
 -- Build a Static skin whose released state renders the bundled logo.png
 -- at its natural 128x128 size. Pattern mirrors dtc_skins.icon_static.
@@ -63,14 +65,14 @@ function M.show()
         local Button  = require('Button')
         local Skin    = require('Skin')
         local Gui     = require('dxgui')
-        local version = require('dcs_sms_me.version')
+        local version = require('dcs_prefab_tool.version')
 
         local w, h = 360, 360
         local screen_w, screen_h = Gui.GetWindowSize()
         local x = math.floor((screen_w - w) / 2)
         local y = math.floor((screen_h - h) / 2)
 
-        W = Window.new(x, y, w, h, 'About DCS-SMS')
+        W = Window.new(x, y, w, h, 'About DCS PREFAB TOOL')
         pcall(function()
             local skin = (Skin.windowSkinME and Skin.windowSkinME()) or Skin.windowSkin()
             if skin then W:setSkin(skin) end

@@ -119,10 +119,10 @@ local Skin;          do local ok, mod = pcall(require, 'Skin');          if ok t
 local Gui;           do local ok, mod = pcall(require, 'dxgui');         if ok then Gui           = mod end end
 local UpdateManager; do local ok, mod = pcall(require, 'UpdateManager'); if ok then UpdateManager = mod end end
 
-local dtc_skins;        do local ok, mod = pcall(require, 'dcs_sms_me.dtc_skins');        if ok then dtc_skins        = mod end end
-local version          = require('dcs_sms_me.version')
-local undo;             do local ok, mod = pcall(require, 'dcs_sms_me.undo');             if ok then undo             = mod end end
-local new_mission_hook; do local ok, mod = pcall(require, 'dcs_sms_me.new_mission_hook'); if ok then new_mission_hook = mod end end
+local dtc_skins;        do local ok, mod = pcall(require, 'dcs_prefab_tool.dtc_skins');        if ok then dtc_skins        = mod end end
+local version          = require('dcs_prefab_tool.version')
+local undo;             do local ok, mod = pcall(require, 'dcs_prefab_tool.undo');             if ok then undo             = mod end end
+local new_mission_hook; do local ok, mod = pcall(require, 'dcs_prefab_tool.new_mission_hook'); if ok then new_mission_hook = mod end end
 
 -- Layout constants (see spec — Layout model section).
 --
