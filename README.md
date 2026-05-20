@@ -1,11 +1,17 @@
 # dcs Prefab tool fork
-## Forked by dotbmp
+### Forked by dotbmp
 
 This fork removes the CLI and AI agent interface from the prefab tool. It also renames the tool so to ensure no compatability conflicts with other versions.
 
 To install this you need to copy the `dcs_prefab_tool` folder to your `dcs_install\MissionEditor\modules\` folder, and edit the `dcs_install\MissionEditor\MissionEditor.lua` to add `pcall(require, 'dcs_prefab_tool.init')` (ideally at the end of the file).
 
 Included is the rest of the readme as i have not edited it yet.
+
+## Security Risks
+Use at your own risk, there is no warranty or guarantee for this software.
+This software does run the prefabs as raw lua, so ensure your prefabs are safe and not executing malicious code.
+
+-----
 
 
 [![Latest ME-mod release](https://img.shields.io/github/v/release/nielsvaes/dcs-sms?filter=me-mod-v*&label=latest&color=blue)](https://github.com/nielsvaes/dcs-sms/releases/latest)
