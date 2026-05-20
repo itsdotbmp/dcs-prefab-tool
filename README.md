@@ -1,8 +1,12 @@
-<p align="center">
-  <img src="../../assets/logo.png" alt="Coconut Cockpit" width="160">
-</p>
-
 # dcs Prefab tool fork
+## Forked by dotbmp
+
+This fork removes the CLI and AI agent interface from the prefab tool. It also renames the tool so to ensure no compatability conflicts with other versions.
+
+To install this you need to copy the `dcs_prefab_tool` folder to your `dcs_install\MissionEditor\modules\` folder, and edit the `dcs_install\MissionEditor\MissionEditor.lua` to add `pcall(require, 'dcs_prefab_tool.init')` (ideally at the end of the file).
+
+Included is the rest of the readme as i have not edited it yet.
+
 
 [![Latest ME-mod release](https://img.shields.io/github/v/release/nielsvaes/dcs-sms?filter=me-mod-v*&label=latest&color=blue)](https://github.com/nielsvaes/dcs-sms/releases/latest)
 [![Release ME-mod](https://github.com/nielsvaes/dcs-sms/actions/workflows/release-me-mod.yml/badge.svg)](https://github.com/nielsvaes/dcs-sms/actions/workflows/release-me-mod.yml)
